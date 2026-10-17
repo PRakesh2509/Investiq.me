@@ -86,3 +86,19 @@ export const getGrowwStatus = createServerFn({ method: "GET" }).handler(async ()
     return { ok: false as const, error: (e as Error).message };
   }
 });
+
+export const getGrowwHoldings = createServerFn({ method: "GET" }).handler(async () => {
+  const { growwEnrichedHoldings } = await import("@/lib/groww.server");
+  try {
+    const data = await growwEnrichedHoldings();
+    return { ok: true as const, ...data };
+  } catch (e) {
+    return {
+      ok: false as const,
+      holdings: [],
+      summary: { totalInvested: 0, totalCurrent: 0, totalPnl: 0, totalPnlPct: 0 },
+      error: (e as Error).message,
+    };
+  }
+});
+

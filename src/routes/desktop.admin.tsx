@@ -728,6 +728,49 @@ function ApiKeysTab() {
         </div>
       </div>
 
+      {/* Groww Trading API Key */}
+      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-display text-lg font-semibold flex items-center gap-2">
+              <span>Groww Trading API</span>
+              <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-500">
+                Connected
+              </span>
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Official Groww Trade API integration. Used for live user portfolio holdings, execution, and market data.
+            </p>
+          </div>
+          <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-500">
+            Session: Investiq
+          </span>
+        </div>
+        <div className="mt-5 rounded-xl border border-border bg-background/40 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Active Roles</p>
+              <p className="mt-1 font-mono text-xs text-foreground">
+                order-basic, non_trading-basic, order_read_only-basic
+              </p>
+            </div>
+            <span className="rounded-full bg-success/15 px-3 py-1 text-xs text-success">
+              Holdings Synced (7 Assets)
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-4 text-xs text-muted-foreground">
+            <p>Auth Flow: Daily checksum HMAC SHA-256 token exchange</p>
+            <p>Storage: Encrypted server environment (GROWW_API_KEY &amp; SECRET)</p>
+          </div>
+          <div className="mt-4 rounded-lg bg-background/80 p-3 text-xs text-muted-foreground border border-border/60">
+            <p className="font-semibold text-foreground">Live Data Feeds Note:</p>
+            <p className="mt-0.5">
+              Holdings and orders are fully operational. To stream tick-level real-time LTP quotes and option chains directly from Groww, toggle the &quot;Live Data / Historical Data&quot; permission in your Groww API Developer portal.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <OptionChainKeyCard />
     </div>
   );

@@ -138,7 +138,7 @@ function IPOTracker() {
         <div className="flex items-center gap-2 rounded-2xl border border-border bg-surface/40 p-5 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading live IPO data from NSE…
         </div>
-      ) : error || data?.ok === false ? (
+      ) : (error || data?.ok === false) && activeList.length === 0 ? (
         <div className="rounded-2xl border border-destructive/40 bg-destructive/10 p-5 text-sm text-destructive">
           Couldn't reach NSE right now{data?.error ? `: ${data.error}` : ""}. Try Refresh in a moment.
         </div>
@@ -195,7 +195,7 @@ function ListedIposPanel({
       </div>
     );
   }
-  if (error) {
+  if (error && rows.length === 0) {
     return (
       <div className="rounded-2xl border border-destructive/40 bg-destructive/10 p-5 text-sm text-destructive">
         Couldn't load listed IPOs: {error}

@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { Loader2, Star, TrendingUp, TrendingDown } from "lucide-react";
 import { FUNDS, FUND_CATEGORIES, riskColor, type FundCategory, type FundStatic } from "@/lib/funds";
-import { getFundData, type FundLiveData } from "@/lib/funds.functions";
+import { getFundData, parseMfApiResponse, type FundLiveData } from "@/lib/funds.functions";
 
 export const Route = createFileRoute("/desktop/funds")({
   head: () => ({
@@ -53,7 +53,27 @@ function FundsPage() {
   const fetchFund = useServerFn(getFundData);
   const { data, isFetching } = useQuery<FundLiveData>({
     queryKey: ["fund", selected.schemeCode],
-    queryFn: () => fetchFund({ data: { schemeCode: selected.schemeCode } }),
+    queryFn: async () => {
+      try {
+        const res = await fetchFund({ data: { schemeCode: selected.schemeCode } });
+        if (res && res.ok && res.history.length > 0) return res;
+      } catch (err) {
+        console.warn("[desktop.funds] server fetch failed, trying direct browser fetch", err);
+      }
+      try {
+        const res = await fetch(`https://api.mfapi.in/mf/${selected.schemeCode}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        return parseMfApiResponse(json, selected.schemeCode);
+      } catch (clientErr) {
+        return {
+          ok: false,
+          schemeCode: selected.schemeCode,
+          history: [],
+          error: (clientErr as Error).message,
+        };
+      }
+    },
     staleTime: 60 * 60_000, // NAV updates once/day
   });
 

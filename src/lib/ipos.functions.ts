@@ -10,19 +10,31 @@ async function nseFetch(path: string): Promise<any> {
     "Accept-Language": "en-US,en;q=0.9",
     "Referer": "https://www.nseindia.com/market-data/all-upcoming-issues-ipo",
   };
-  // Prime cookies
-  const prime = await fetch("https://www.nseindia.com/market-data/all-upcoming-issues-ipo", {
-    headers: { "User-Agent": headers["User-Agent"], "Accept": "text/html" },
-  });
-  const cookie = prime.headers
-    .getSetCookie?.()
-    ?.map((c) => c.split(";")[0])
-    .join("; ") ?? prime.headers.get("set-cookie")?.split(",").map((c) => c.split(";")[0]).join("; ") ?? "";
-  const res = await fetch(`https://www.nseindia.com${path}`, {
-    headers: { ...headers, Cookie: cookie },
-  });
-  if (!res.ok) throw new Error(`NSE ${path} HTTP ${res.status}`);
-  return res.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3500);
+  try {
+    // Prime cookies
+    const prime = await fetch("https://www.nseindia.com/market-data/all-upcoming-issues-ipo", {
+      headers: { "User-Agent": headers["User-Agent"], Accept: "text/html" },
+      signal: controller.signal,
+    });
+    if (!prime.ok) throw new Error(`NSE prime HTTP ${prime.status}`);
+    const cookie =
+      prime.headers
+        .getSetCookie?.()
+        ?.map((c) => c.split(";")[0])
+        .join("; ") ??
+      prime.headers.get("set-cookie")?.split(",").map((c) => c.split(";")[0]).join("; ") ??
+      "";
+    const res = await fetch(`https://www.nseindia.com${path}`, {
+      headers: { ...headers, Cookie: cookie },
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`NSE ${path} HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Parse "23-Jul-2026" → ISO YYYY-MM-DD
@@ -80,29 +92,42 @@ export const getLiveIpos = createServerFn({ method: "GET" }).handler(async (): P
   ok: boolean;
   ipos: IPO[];
   error?: string;
+  source?: "nse" | "curated";
 }> => {
+  const baseIpos: IPO[] = MANUAL_IPOS.map((m) => ({ ...m, status: resolveIpoStatus(m) }));
   try {
     const [current, upcoming] = await Promise.all([
       nseFetch("/api/ipo-current-issue").catch(() => []),
       nseFetch("/api/all-upcoming-issues?category=ipo").catch(() => []),
     ]);
+    const curArr = Array.isArray(current) ? current.filter((x: any) => !x.category || x.category === "Total") : [];
+    const upArr = Array.isArray(upcoming) ? upcoming : [];
+
+    if (curArr.length === 0 && upArr.length === 0) {
+      return { ok: true, ipos: baseIpos, source: "curated" };
+    }
+
     const seen = new Set<string>();
     const out: IPO[] = [];
-    for (const m of MANUAL_IPOS) { seen.add(m.id); out.push({ ...m, status: resolveIpoStatus(m) }); }
     const norm = (s: string) => s.toLowerCase().replace(/\b(ltd|limited|private|pvt)\b|[^a-z0-9]/g, "");
-    const manualNames = new Set(MANUAL_IPOS.map((m) => norm(m.company)));
-    const curArr = Array.isArray(current) ? current.filter((x: any) => !x.category || x.category === "Total") : [];
+
     for (const r of curArr) {
       const n = normalize(r, "current");
-      if (n && !seen.has(n.id) && !manualNames.has(norm(n.company))) { seen.add(n.id); out.push(n); }
+      if (n && !seen.has(n.id)) { seen.add(n.id); out.push(n); }
     }
-    const upArr = Array.isArray(upcoming) ? upcoming : [];
     for (const r of upArr) {
       const n = normalize(r, "upcoming");
-      if (n && !seen.has(n.id) && !manualNames.has(norm(n.company))) { seen.add(n.id); out.push(n); }
+      if (n && !seen.has(n.id)) { seen.add(n.id); out.push(n); }
     }
-    return { ok: true, ipos: out };
+
+    const outNames = new Set(out.map((o) => norm(o.company)));
+    for (const b of baseIpos) {
+      if (!outNames.has(norm(b.company)) && !seen.has(b.id)) {
+        out.push(b);
+      }
+    }
+    return { ok: true, ipos: out.length > 0 ? out : baseIpos, source: "nse" };
   } catch (e) {
-    return { ok: false, ipos: MANUAL_IPOS.map((m) => ({ ...m, status: resolveIpoStatus(m) })), error: (e as Error).message };
+    return { ok: true, ipos: baseIpos, source: "curated", error: (e as Error).message };
   }
 });

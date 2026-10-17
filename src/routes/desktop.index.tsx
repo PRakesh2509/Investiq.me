@@ -6,7 +6,8 @@ import { NEWS } from "@/lib/desktop-data";
 import { NIFTY_UNIVERSE, NIFTY_YAHOO_SYMBOLS } from "@/lib/nifty-universe";
 import { getYahooQuotes } from "@/lib/yahoo.functions";
 import { useRecentViewed } from "@/lib/recent-viewed";
-import { ArrowDownRight, ArrowUpRight, ExternalLink, RefreshCw, Clock, Search, Sparkles } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ExternalLink, RefreshCw, Clock, Search, Sparkles, Briefcase } from "lucide-react";
+import { getGrowwHoldings } from "@/lib/groww.functions";
 
 export const Route = createFileRoute("/desktop/")({
   component: DesktopDashboard,
@@ -22,10 +23,12 @@ type LiveQuote = {
 
 function DesktopDashboard() {
   const fetchQuotes = useServerFn(getYahooQuotes);
+  const fetchHoldings = useServerFn(getGrowwHoldings);
   const recent = useRecentViewed();
   const navigate = useNavigate();
   const [quotes, setQuotes] = useState<LiveQuote[]>([]);
   const [indices, setIndices] = useState<LiveQuote[]>([]);
+  const [growwData, setGrowwData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false);
   const [live, setLive] = useState(true);
@@ -47,12 +50,16 @@ function DesktopDashboard() {
     loadingRef.current = true;
     setLoading(true);
     try {
-      const [stocksResult, indicesResult] = await Promise.allSettled([
+      const [stocksResult, indicesResult, growwResult] = await Promise.allSettled([
         fetchQuotes({ data: { symbols: NIFTY_YAHOO_SYMBOLS } }),
         fetchQuotes({ data: { symbols: "^NSEI,^BSESN,^NSEBANK,^CNXIT" } }),
+        fetchHoldings(),
       ]);
       const stocksRes = stocksResult.status === "fulfilled" ? stocksResult.value : null;
       const idxRes = indicesResult.status === "fulfilled" ? indicesResult.value : null;
+      if (growwResult.status === "fulfilled" && growwResult.value?.ok) {
+        setGrowwData(growwResult.value);
+      }
       if (stocksRes?.ok) {
         setQuotes(
           stocksRes.quotes.map((q) => ({
@@ -88,7 +95,7 @@ function DesktopDashboard() {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [fetchQuotes]);
+  }, [fetchQuotes, fetchHoldings]);
 
 
   useEffect(() => { void load(); }, [load]);
@@ -247,7 +254,82 @@ function DesktopDashboard() {
 
 
 
-      {/* Live movers */}
+      {/* Groww Connected Portfolio */}
+      {growwData?.ok && growwData?.holdings?.length > 0 && (
+        <div className="rounded-2xl border border-emerald-500/30 bg-surface/70 p-5 shadow-lg backdrop-blur">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+                <Briefcase className="h-4 w-4" />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-display text-base font-semibold">Groww Portfolio</h2>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-500">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Live Synced
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Direct Groww Trading API feed · {growwData.holdings.length} assets held
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-right">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Current Value</p>
+                <p className="font-display text-lg font-bold">{formatINR(growwData.summary.totalCurrent)}</p>
+              </div>
+              <div className="border-l border-border pl-4">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total P&amp;L</p>
+                <p
+                  className={`font-display text-lg font-bold ${
+                    growwData.summary.totalPnl >= 0 ? "text-success" : "text-destructive"
+                  }`}
+                >
+                  {growwData.summary.totalPnl >= 0 ? "+" : ""}
+                  {formatINR(growwData.summary.totalPnl)}
+                  <span className="ml-1 text-xs font-normal">
+                    ({growwData.summary.totalPnl >= 0 ? "+" : ""}
+                    {growwData.summary.totalPnlPct.toFixed(2)}%)
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+            {growwData.holdings.map((h: any) => {
+              const pos = h.pnl >= 0;
+              return (
+                <Link
+                  key={h.symbol}
+                  to="/desktop/charts"
+                  search={{ symbol: h.symbol }}
+                  className="group rounded-xl border border-border/70 bg-background/50 p-3 transition hover:border-emerald-500/50 hover:bg-accent"
+                >
+                  <div className="flex items-start justify-between">
+                    <span className="font-semibold text-xs text-foreground group-hover:text-emerald-500">
+                      {h.symbol}
+                    </span>
+                    <ExternalLink className="h-3 w-3 text-muted-foreground transition group-hover:text-emerald-500" />
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Qty: {h.quantity} · Avg {formatINR(h.averagePrice)}
+                  </p>
+                  <div className="mt-2 flex items-baseline justify-between">
+                    <span className="font-display text-xs font-medium">{formatINR(h.currentPrice)}</span>
+                    <span className={`text-[11px] font-semibold ${pos ? "text-success" : "text-destructive"}`}>
+                      {pos ? "+" : ""}
+                      {h.pnlPct.toFixed(1)}%
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-4">
         <MoverCard title="Top gainers (live)" quotes={gainers} up />
         <MoverCard title="Top losers (live)" quotes={losers} />

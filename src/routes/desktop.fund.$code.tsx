@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { getFundData } from "@/lib/funds.functions";
+import { getFundData, parseMfApiResponse } from "@/lib/funds.functions";
 import { FUNDS } from "@/lib/funds";
 import { getYahooNews } from "@/lib/yahoo.functions";
 import { ChevronLeft, RefreshCw } from "lucide-react";
@@ -49,12 +49,26 @@ function FundDetail() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetchFund({ data: { schemeCode: code } });
-      if (res.ok) {
+      let res;
+      try {
+        res = await fetchFund({ data: { schemeCode: code } });
+      } catch (err) {
+        console.warn("[desktop.fund.$code] server fetch failed, trying direct browser fetch", err);
+      }
+      if (!res || !res.ok || !res.history.length) {
+        const clientRes = await fetch(`https://api.mfapi.in/mf/${code}`);
+        if (clientRes.ok) {
+          const json = await clientRes.json();
+          res = parseMfApiResponse(json, code);
+        }
+      }
+      if (res && res.ok) {
         setHist(res.history);
         setSchemeName(res.schemeName ?? "");
         setFundHouse(res.fundHouse ?? "");
       }
+    } catch (e) {
+      console.error("[desktop.fund.$code] failed to load fund", e);
     } finally {
       setLoading(false);
     }

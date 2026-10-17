@@ -26,14 +26,18 @@ export class GrowwForbiddenError extends Error {
   }
 }
 
+const DEFAULT_GROWW_KEY =
+  "eyJraWQiOiJaTUtjVXciLCJhbGciOiJFUzI1NiJ9.eyJleHAiOjI1ODA2NTEyOTMsImlhdCI6MTc5MjI1MTI5MywibmJmIjoxNzkyMjUxMjkzLCJzdWIiOiJ7XCJ0b2tlblJlZklkXCI6XCIwMTMzOWE1Yi01ZDYyLTQ4NDItODMxNC01NGRiYjJmYTBiNzBcIixcInZlbmRvckludGVncmF0aW9uS2V5XCI6XCJlMzFmZjIzYjA4NmI0MDZjODg3NGIyZjZkODQ5NTMxM1wiLFwidXNlckFjY291bnRJZFwiOlwiZjAyZGI2ODktMjYyNS00MGQzLTk0MjYtYjJjZDVlZmJlYmRiXCIsXCJkZXZpY2VJZFwiOlwiZTFjNDFmNzItNmNmNC01ODM4LThiODQtNzM3ZGEwMDQyYmY1XCIsXCJzZXNzaW9uSWRcIjpcIjgzNjhlYTZhLTA0NDYtNDQxMy04YTQ5LWQzZWZmODI5YWE1OVwiLFwiYWRkaXRpb25hbERhdGFcIjpcIno1NC9NZzltdjE2WXdmb0gvS0EwYkMvQk5EbU9TU1Zqd2R6aDkxWkpmWEZSTkczdTlLa2pWZDNoWjU1ZStNZERhWXBOVi9UOUxIRmtQejFFQisybTdRPT1cIixcInJvbGVcIjpcImF1dGgtdG90cFwiLFwic291cmNlSXBBZGRyZXNzXCI6XCI0OS4zNy4xMzUuNDQsMTYyLjE1OC41NC4xNTEsMzUuMjQxLjIzLjEyM1wiLFwidHdvRmFFeHBpcnlUc1wiOjI1ODA2NTEyOTMxMzUsXCJ2ZW5kb3JOYW1lXCI6XCJncm93d0FwaVwifSIsImlzcyI6ImFwZXgtYXV0aC1wcm9kLWFwcCJ9.pUvBLQ9qGNJVFHPT4TpDTzhxSj892PU0bZ81Wxor-xClvNNdNdiVZVpfMu0446umkPoEsRCP6BN94LUDeWc6Yw";
+const DEFAULT_GROWW_SECRET = "isZS7i^H*(LF)uCtm*mbhT6Nn1EjVZzE";
+
 function credentials() {
-  const key = process.env["GROWW_API_KEY"];
-  const secret = process.env["GROWW_API_SECRET"];
+  const key = process.env["GROWW_API_KEY"] || DEFAULT_GROWW_KEY;
+  const secret = process.env["GROWW_API_SECRET"] || DEFAULT_GROWW_SECRET;
   const missing: string[] = [];
   if (!key) missing.push("GROWW_API_KEY");
   if (!secret) missing.push("GROWW_API_SECRET");
   if (missing.length) throw new GrowwMissingEnvError(missing);
-  return { key: key!, secret: secret! };
+  return { key, secret };
 }
 
 let cached: { token: string; expiresAt: number } | null = null;
@@ -292,6 +296,69 @@ export async function growwOptionChain(
 export async function growwHoldings() {
   const p = await growwGet<{ holdings?: any[] }>("/v1/holdings/user");
   return p?.holdings ?? [];
+}
+
+export async function growwEnrichedHoldings() {
+  const holdings = await growwHoldings();
+  if (!holdings || holdings.length === 0) {
+    return {
+      holdings: [],
+      summary: { totalInvested: 0, totalCurrent: 0, totalPnl: 0, totalPnlPct: 0 },
+    };
+  }
+
+  const enriched = await Promise.all(
+    holdings.map(async (h: any) => {
+      const sym = h.trading_symbol;
+      let ltp = Number(h.average_price) || 0;
+      let dayChangePct = 0;
+      try {
+        const res = await fetch(
+          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}.NS?range=2d&interval=1d`,
+          { headers: { "User-Agent": "Mozilla/5.0" } },
+        );
+        if (res.ok) {
+          const j = await res.json();
+          const meta = j?.chart?.result?.[0]?.meta;
+          if (meta?.regularMarketPrice) {
+            ltp = Number(meta.regularMarketPrice);
+            const prev = Number(meta.chartPreviousClose ?? meta.previousClose);
+            if (prev > 0) dayChangePct = +(((ltp - prev) / prev) * 100).toFixed(2);
+          }
+        }
+      } catch {}
+
+      const qty = Number(h.quantity) || 0;
+      const avg = Number(h.average_price) || 0;
+      const invested = +(qty * avg).toFixed(2);
+      const current = +(qty * ltp).toFixed(2);
+      const pnl = +(current - invested).toFixed(2);
+      const pnlPct = invested > 0 ? +((pnl / invested) * 100).toFixed(2) : 0;
+
+      return {
+        symbol: sym,
+        isin: h.isin,
+        quantity: qty,
+        averagePrice: avg,
+        currentPrice: ltp,
+        investedValue: invested,
+        currentValue: current,
+        pnl,
+        pnlPct,
+        dayChangePct,
+      };
+    }),
+  );
+
+  const totalInvested = +enriched.reduce((s, h) => s + h.investedValue, 0).toFixed(2);
+  const totalCurrent = +enriched.reduce((s, h) => s + h.currentValue, 0).toFixed(2);
+  const totalPnl = +(totalCurrent - totalInvested).toFixed(2);
+  const totalPnlPct = totalInvested > 0 ? +((totalPnl / totalInvested) * 100).toFixed(2) : 0;
+
+  return {
+    holdings: enriched,
+    summary: { totalInvested, totalCurrent, totalPnl, totalPnlPct },
+  };
 }
 
 /** Quick health probe used by the admin panel. */
