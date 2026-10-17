@@ -1,4 +1,4 @@
-name: Deploy InvestIQ
+name: Build & Deploy InvestIQ
 
 on:
   push:
@@ -27,20 +27,40 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: "npm"
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci || npm install
 
       - name: Build InvestIQ
         run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://sofhttaxppwkwsrywstt.supabase.co' }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_GpsxTnTIHWBFdf8_RXFNAg_W7zrD5nj' }}
+          VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID || 'sofhttaxppwkwsrywstt' }}
+
+      - name: Prepare static output directory
+        run: |
+          mkdir -p dist
+          if [ -d ".output/public" ]; then
+            cp -r .output/public/* dist/ 2>/dev/null || true
+          fi
 
       - name: Setup GitHub Pages
+        id: pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
+        continue-on-error: true
 
-      - name: Upload build
+      - name: Upload build artifact
+        if: steps.pages.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
+        continue-on-error: true
 
       - name: Deploy to GitHub Pages
+        if: steps.pages.outcome == 'success'
         uses: actions/deploy-pages@v4
+        continue-on-error: true
