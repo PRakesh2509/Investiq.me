@@ -19,13 +19,18 @@ import {
   TrendingDown,
   BarChart3,
   Sliders,
+  ExternalLink,
 } from "lucide-react";
 import {
   computeTerminalData,
   getTerminalMarketData,
+  getTerminalBars,
+  generateFallbackBars,
   WORKSTATION_INSTRUMENTS,
   type TerminalWorkstationData,
+  type WorkstationBar,
 } from "@/lib/terminal-workstation.functions";
+import WorkstationTradingChart from "./WorkstationTradingChart";
 import { toast } from "sonner";
 
 const TIMEFRAMES = ["1M", "3M", "5M", "15M", "30M", "1H", "1D"] as const;
@@ -71,9 +76,14 @@ export default function TradingTerminalWorkstation() {
 
   // Server functions
   const fetchMarketData = useServerFn(getTerminalMarketData);
+  const fetchBars = useServerFn(getTerminalBars);
 
   // Initial synchronous state so page never flickers or starts empty
   const [data, setData] = useState<TerminalWorkstationData>(() => computeTerminalData("NIFTY 50"));
+  const [bars, setBars] = useState<WorkstationBar[]>(() =>
+    generateFallbackBars(22862.9, "1M", 120),
+  );
+  const [setupActive, setSetupActive] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   const cfg = WORKSTATION_INSTRUMENTS[instrument] ?? WORKSTATION_INSTRUMENTS["NIFTY 50"];
@@ -93,6 +103,18 @@ export default function TradingTerminalWorkstation() {
           setSelectedContract(res.contractName);
           setCustomPremium(res.recommendedPremium.toFixed(2));
         }
+        // Update the latest candle's close price live
+        setBars((prev) => {
+          if (!prev.length) return prev;
+          const last = prev[prev.length - 1];
+          const updatedLast: WorkstationBar = {
+            ...last,
+            high: Math.max(last.high, res.spotPrice),
+            low: Math.min(last.low, res.spotPrice),
+            close: res.spotPrice,
+          };
+          return [...prev.slice(0, -1), updatedLast];
+        });
       }
     } catch {
       setData((prev) => computeTerminalData(inst, prev?.spotPrice));
@@ -100,6 +122,25 @@ export default function TradingTerminalWorkstation() {
       setIsRefreshing(false);
     }
   };
+
+  // Load bars when instrument or timeframe changes
+  useEffect(() => {
+    let isMounted = true;
+    const currentSpot = data?.spotPrice ?? WORKSTATION_INSTRUMENTS[instrument]?.defaultSpot ?? 22862.9;
+    setBars(generateFallbackBars(currentSpot, tf, 120));
+
+    fetchBars({ data: { instrument, timeframe: tf } })
+      .then((res) => {
+        if (isMounted && res?.ok && res.bars?.length) {
+          setBars(res.bars);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [instrument, tf]);
 
   useEffect(() => {
     const cleanInst = instrument.replace(/[^A-Z0-9]/g, "");
@@ -124,16 +165,26 @@ export default function TradingTerminalWorkstation() {
     return () => clearInterval(timer);
   }, []);
 
-  // OHLC bar derived from live quote (Requirement 4)
+  // OHLC bar derived from active chart bars or live quote (Requirement 4)
   const ohlc = useMemo(() => {
+    if (bars.length) {
+      const last = bars[bars.length - 1];
+      return {
+        o: last.open.toFixed(2),
+        h: last.high.toFixed(2),
+        l: last.low.toFixed(2),
+        c: last.close.toFixed(2),
+        vol: last.volume.toLocaleString("en-IN"),
+      };
+    }
     return {
-      o: (data?.open ?? 24521.81).toFixed(2),
-      h: (data?.high ?? 24548.2).toFixed(2),
-      l: (data?.low ?? 24505.7).toFixed(2),
-      c: (data?.spotPrice ?? 24510.22).toFixed(2),
+      o: (data?.open ?? 22840.04).toFixed(2),
+      h: (data?.high ?? 22931.49).toFixed(2),
+      l: (data?.low ?? 22794.31).toFixed(2),
+      c: (data?.spotPrice ?? 22862.9).toFixed(2),
       vol: (data?.volume ?? 27123).toLocaleString("en-IN"),
     };
-  }, [data]);
+  }, [bars, data]);
 
   // Option Calculator formulas (Requirements 20, 23-26)
   const premium = parseFloat(customPremium) || (data?.recommendedPremium ?? 137.18);
@@ -556,13 +607,26 @@ export default function TradingTerminalWorkstation() {
             {/* Action Tools & OHLC Row (Requirements 14, 15, 16) */}
             <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2 text-[11px]">
               <div className="flex items-center gap-2">
-                <span className="rounded bg-teal-500/15 border border-teal-500/40 px-2 py-0.5 font-mono font-bold text-teal-400 text-[10px]">
-                  SETUP TOOL ACTIVE
-                </span>
-                <button className="inline-flex items-center gap-1 rounded-lg border border-border bg-background/50 px-2 py-0.5 font-mono text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground transition">
-                  <Settings className="h-3 w-3 text-muted-foreground" />
-                  ADJUST LEVELS ⚙
+                <button
+                  onClick={() => setSetupActive((p) => !p)}
+                  className={`rounded border px-2 py-0.5 font-mono font-bold text-[10px] transition ${
+                    setupActive
+                      ? "bg-teal-500/15 border-teal-500/40 text-teal-400"
+                      : "bg-surface text-muted-foreground border-border"
+                  }`}
+                >
+                  {setupActive ? "SETUP TOOL ACTIVE" : "SETUP TOOL OFF"}
                 </button>
+                <a
+                  href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-background/50 px-2 py-0.5 font-mono text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground transition"
+                  title="Open live chart on TradingView in new tab"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  <span>TRADINGVIEW ↗</span>
+                </a>
               </div>
 
               {/* Volume & OHLC (Requirement 14) */}
@@ -575,19 +639,17 @@ export default function TradingTerminalWorkstation() {
               </div>
             </div>
 
-            {/* TradingView Live Streaming Graph (Direct from TradingView, not Groww) */}
+            {/* TradingView Lightweight Charts Engine — 100% Reliable, Zero Popups */}
             <div className="relative mt-2 h-[480px] w-full overflow-hidden rounded-xl border border-border bg-[#0B1015] shadow-inner">
-              <iframe
-                key={`tv-chart-${tvSymbol}-${tvInterval}-${chartType}`}
-                src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(
-                  tvSymbol,
-                )}&interval=${tvInterval}&hidesidetoolbar=0&symboledit=1&saveimage=0&toolbarbg=0b1015&theme=dark&style=${
-                  chartType === "LINE" ? "2" : "1"
-                }&timezone=Asia%2FKolkata&locale=in&utm_source=investiqq.me`}
-                className="h-full w-full border-0"
-                title={`Live TradingView chart for ${instrument}`}
-                loading="eager"
-                allowFullScreen
+              <WorkstationTradingChart
+                bars={bars}
+                toggles={toggles}
+                chartType={chartType}
+                entry={data?.spotEntry}
+                tp1={data?.tp1}
+                tp2={data?.tp2}
+                stopLoss={data?.stopLoss}
+                setupActive={setupActive}
               />
 
               {/* Interactive Setup Overlay (Requirements 15, 16, 26) */}
@@ -595,18 +657,18 @@ export default function TradingTerminalWorkstation() {
                 <div className="flex items-center justify-between gap-4 border-b border-border pb-1.5">
                   <div className="flex items-center gap-1.5 text-primary font-bold">
                     <span className="h-2 w-2 rounded-full bg-primary" />
-                    LONG SETUP (1:1.50 R:R)
+                    {data?.direction === "CALL" ? "LONG SETUP" : "SHORT SETUP"} (1:1.50 R:R)
                   </div>
-                  <div className="rounded bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-400">
-                    ▲ STOPPED OUT: ₹24860.54
+                  <div className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+                    ACTIVE · TP1: {curSymbol}{(data?.tp1 ?? 0).toFixed(2)}
                   </div>
                 </div>
 
                 <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
-                  <div>Risk (-SL): <strong className="text-rose-400">-₹8,11,425</strong></div>
-                  <div>Reward (+TP2): <strong className="text-emerald-400">+₹6,11,425</strong></div>
-                  <div>Live Est. MTM: <strong className="text-rose-400">-₹5,11,625</strong></div>
-                  <div>Locked Profit: <strong className="text-emerald-400">+₹0 (100% Banked)</strong></div>
+                  <div>Risk (-SL): <strong className="text-rose-400">-₹{maxLoss.toLocaleString("en-IN")}</strong></div>
+                  <div>Reward (+TP2): <strong className="text-emerald-400">+₹{tp2Profit.toLocaleString("en-IN")}</strong></div>
+                  <div>Entry Spot: <strong className="text-foreground">{(data?.spotEntry ?? 0).toFixed(2)}</strong></div>
+                  <div>Stop Loss: <strong className="text-rose-400">{curSymbol}{(data?.stopLoss ?? 0).toFixed(2)}</strong></div>
                 </div>
               </div>
             </div>

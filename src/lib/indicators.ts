@@ -84,3 +84,83 @@ export function rsi(values: number[], period = 14): (number | null)[] {
   }
   return out;
 }
+
+export interface SupertrendResult {
+  value: (number | null)[];
+  direction: (1 | -1 | null)[];
+}
+
+export function supertrend(bars: Bar[], period = 10, multiplier = 3): SupertrendResult {
+  if (bars.length < period) {
+    return {
+      value: bars.map(() => null),
+      direction: bars.map(() => null),
+    };
+  }
+
+  const tr: number[] = [bars[0].high - bars[0].low];
+  for (let i = 1; i < bars.length; i++) {
+    const prevC = bars[i - 1].close;
+    const h = bars[i].high;
+    const l = bars[i].low;
+    tr.push(Math.max(h - l, Math.abs(h - prevC), Math.abs(l - prevC)));
+  }
+
+  const atr: (number | null)[] = [];
+  let trSum = 0;
+  for (let i = 0; i < bars.length; i++) {
+    trSum += tr[i];
+    if (i < period - 1) {
+      atr.push(null);
+    } else if (i === period - 1) {
+      atr.push(trSum / period);
+    } else {
+      const prevAtr = atr[i - 1]!;
+      atr.push((prevAtr * (period - 1) + tr[i]) / period);
+    }
+  }
+
+  const values: (number | null)[] = [];
+  const directions: (1 | -1 | null)[] = [];
+
+  let prevUpper = 0;
+  let prevLower = 0;
+  let prevSupertrend = 0;
+
+  for (let i = 0; i < bars.length; i++) {
+    const a = atr[i];
+    if (a === null) {
+      values.push(null);
+      directions.push(null);
+      continue;
+    }
+
+    const hl2 = (bars[i].high + bars[i].low) / 2;
+    const basicUpper = hl2 + multiplier * a;
+    const basicLower = hl2 - multiplier * a;
+    const prevClose = i > 0 ? bars[i - 1].close : bars[i].close;
+
+    const finalUpper =
+      basicUpper < prevUpper || prevClose > prevUpper ? basicUpper : prevUpper;
+    const finalLower =
+      basicLower > prevLower || prevClose < prevLower ? basicLower : prevLower;
+
+    let currentDir: 1 | -1;
+    if (prevSupertrend === prevUpper) {
+      currentDir = bars[i].close > finalUpper ? 1 : -1;
+    } else {
+      currentDir = bars[i].close < finalLower ? -1 : 1;
+    }
+
+    const currentSupertrend = currentDir === 1 ? finalLower : finalUpper;
+    values.push(currentSupertrend);
+    directions.push(currentDir);
+
+    prevUpper = finalUpper;
+    prevLower = finalLower;
+    prevSupertrend = currentSupertrend;
+  }
+
+  return { value: values, direction: directions };
+}
+
