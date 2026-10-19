@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { type IPO } from "@/lib/ipos";
 import { formatINR } from "@/lib/market-data";
 import {
@@ -383,15 +383,15 @@ function IpoAnalysisModalContent({
 
           <div className="space-y-3 pt-2 text-xs">
             {[
-              { key: "demand", name: "A. Subscription Demand", weight: "30%", ...factors.demand },
-              { key: "financials", name: "B. Financial Quality", weight: "25%", ...factors.financials },
-              { key: "valuation", name: "C. Valuation & Peer Pricing", weight: "20%", ...factors.valuation },
-              { key: "gmp", name: "D. GMP & Grey Market Sentiment", weight: "15%", ...factors.gmp },
-              { key: "structure", name: "E. Issue Structure & Capital Use", weight: "10%", ...factors.structure },
+              { key: "demand", name: "A. Subscription Demand", weightLabel: "30%", ...factors.demand },
+              { key: "financials", name: "B. Financial Quality", weightLabel: "25%", ...factors.financials },
+              { key: "valuation", name: "C. Valuation & Peer Pricing", weightLabel: "20%", ...factors.valuation },
+              { key: "gmp", name: "D. GMP & Grey Market Sentiment", weightLabel: "15%", ...factors.gmp },
+              { key: "structure", name: "E. Issue Structure & Capital Use", weightLabel: "10%", ...factors.structure },
             ].map((f) => (
               <div key={f.key} className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-foreground">{f.name} <span className="text-[10px] text-muted-foreground">({f.weight})</span></span>
+                  <span className="font-medium text-foreground">{f.name} <span className="text-[10px] text-muted-foreground">({f.weightLabel})</span></span>
                   <span className="font-bold">{f.score}/100</span>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-background overflow-hidden">
