@@ -15,7 +15,7 @@ export const Route = createFileRoute("/desktop")({
 const nav = [
   { to: "/desktop", label: "Home", icon: LayoutDashboard, exact: true },
   { to: "/desktop/charts", label: "Stocks", icon: LineChart },
-  { to: "/desktop/terminal", label: "Terminal", icon: CandlestickChart },
+  { to: "/desktop/terminal", label: "Order Block Engine", icon: CandlestickChart },
   
   { to: "/desktop/funds", label: "Mutual Funds", icon: Wallet },
   { to: "/desktop/ipos", label: "IPO Tracker", icon: CalendarClock },
@@ -90,6 +90,10 @@ function DesktopLayout() {
       toast.error("Invalid credentials");
     }
   };
+
+  if (loc.pathname === "/desktop/terminal" || loc.pathname === "/desktop/fno-india") {
+    return <Outlet />;
+  }
 
   return (
     <div className="min-h-screen bg-hero text-foreground">

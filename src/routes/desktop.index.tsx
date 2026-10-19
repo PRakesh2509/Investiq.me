@@ -134,7 +134,32 @@ function DesktopDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Hero removed */}
+      {/* Order Block Engine CTA Banner */}
+      <Link
+        to="/desktop/terminal"
+        className="group relative flex flex-col md:flex-row items-start md:items-center justify-between gap-4 overflow-hidden rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-[#071318] via-[#091d24] to-[#040d12] p-5 shadow-lg transition hover:border-cyan-400/60"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-500/40 bg-cyan-950/40 text-cyan-400">
+            <span className="font-mono text-sm font-bold">OBE</span>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-display font-semibold text-foreground">ORDER BLOCK ENGINE</span>
+              <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                NSE LIVE · NIFTY 50 &amp; GLOBAL
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Multi-pivot confluence, live TradingView chart, dynamic trailing SL, option chain &amp; telegram execution alerts.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-medium text-cyan-400 group-hover:underline shrink-0">
+          Launch Workstation →
+        </div>
+      </Link>
 
       <div className="flex items-end justify-between">
         <div>

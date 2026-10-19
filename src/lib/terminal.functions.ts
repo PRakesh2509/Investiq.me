@@ -10,12 +10,14 @@ export interface Bar {
   volume: number;
 }
 
-const TF_MAP: Record<string, { interval: string; range: string }> = {
+const TF_MAP: Record<string, { interval: string; range: string; factor?: number }> = {
   "1M": { interval: "1m", range: "1d" },
+  "3M": { interval: "1m", range: "2d", factor: 3 },
   "5M": { interval: "5m", range: "5d" },
   "15M": { interval: "15m", range: "1mo" },
+  "30M": { interval: "15m", range: "1mo", factor: 2 },
   "1H": { interval: "60m", range: "3mo" },
-  "4H": { interval: "60m", range: "1y" },
+  "4H": { interval: "60m", range: "1y", factor: 4 },
   "1D": { interval: "1d", range: "2y" },
 };
 
@@ -24,12 +26,51 @@ export const getBars = createServerFn({ method: "GET" })
     z
       .object({
         symbol: z.string(),
-        timeframe: z.enum(["1M", "5M", "15M", "1H", "4H", "1D"]).default("5M"),
+        timeframe: z.enum(["1M", "3M", "5M", "15M", "30M", "1H", "4H", "1D"]).default("5M"),
       })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    const { interval, range } = TF_MAP[data.timeframe];
+    // Try Groww historical candles first if it's an Indian instrument
+    const isIndian = data.symbol.startsWith("^NSE") || data.symbol.includes("NIFTY") || data.symbol.includes("SENSEX");
+    if (isIndian) {
+      try {
+        const { growwCandles } = await import("@/lib/groww.server");
+        const growwSym = data.symbol.replace(/\^/g, "").replace(/\.NS/g, "").replace(/I$/, "");
+        const minutes =
+          data.timeframe === "1M" ? 1 :
+          data.timeframe === "3M" ? 3 :
+          data.timeframe === "5M" ? 5 :
+          data.timeframe === "15M" ? 15 :
+          data.timeframe === "30M" ? 30 :
+          data.timeframe === "1H" ? 60 : 1440;
+        const end = Date.now();
+        const start = end - (data.timeframe === "1D" ? 60 * 86400_000 : 4 * 86400_000);
+        const gCandles = await growwCandles({
+          tradingSymbol: growwSym,
+          start,
+          end,
+          intervalMinutes: minutes,
+        });
+        if (gCandles && gCandles.length > 0) {
+          const bars: Bar[] = gCandles.map((c) => ({
+            time: c.time,
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            volume: c.volume,
+          }));
+          const price = bars[bars.length - 1]?.close ?? 0;
+          const prevClose = bars[0]?.close ?? price;
+          return { ok: true as const, bars, price, prevClose, currency: "INR", source: "groww" as const };
+        }
+      } catch {
+        // Fall back to Yahoo Finance
+      }
+    }
+
+    const { interval, range, factor } = TF_MAP[data.timeframe] || TF_MAP["5M"];
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
       data.symbol,
     )}?interval=${interval}&range=${range}`;
@@ -58,10 +99,9 @@ export const getBars = createServerFn({ method: "GET" })
           });
         }
       }
-      // Aggregate to 4H
       let out = bars;
-      if (data.timeframe === "4H") {
-        out = aggregate(bars, 4);
+      if (factor && factor > 1) {
+        out = aggregate(bars, factor);
       }
       const price = Number(meta.regularMarketPrice ?? bars[bars.length - 1]?.close ?? 0);
       const prevClose = Number(meta.chartPreviousClose ?? meta.previousClose ?? bars[0]?.close ?? price);
@@ -70,7 +110,8 @@ export const getBars = createServerFn({ method: "GET" })
         bars: out,
         price,
         prevClose,
-        currency: meta.currency ?? "USD",
+        currency: meta.currency ?? "INR",
+        source: "feed" as const,
       };
     } catch (e: any) {
       return { ok: false as const, error: e?.message ?? "fetch failed" };

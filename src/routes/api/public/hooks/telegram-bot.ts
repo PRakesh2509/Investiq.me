@@ -219,7 +219,7 @@ async function handleIpos(token: string, chatId: number) {
   await sendMessage(
     token,
     chatId,
-    ["🚀 <b>Upcoming & Open IPOs</b>", "", ...rows, "", "Track live: https://investiq.app/desktop/ipos"].join("\n"),
+    ["🚀 <b>Upcoming & Open IPOs</b>", "", ...rows, "", "Track live: https://www.investiqq.me/desktop/ipos"].join("\n"),
   );
 }
 

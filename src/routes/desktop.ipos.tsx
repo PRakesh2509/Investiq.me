@@ -369,10 +369,14 @@ function IpoCard({ ipo }: { ipo: IPO }) {
                 <span className="text-2xl">{verdictEmoji(r.verdict)}</span>
                 <div>
                   <p className="font-display text-xl font-bold uppercase tracking-wider">
-                    {r.quant.recommendation}
+                    {r.quant.recommendation.includes("APPLY") && !r.quant.recommendation.includes("CAUTION")
+                      ? "BUY (APPLY)"
+                      : r.quant.recommendation.includes("CAUTION")
+                        ? "HOLD (APPLY WITH CAUTION)"
+                        : "AVOID (DO NOT APPLY)"}
                   </p>
                   <p className="text-[10px] opacity-80">
-                    {r.quant.confidence} confidence · est. listing range {r.quant.gainRange}
+                    {r.quant.confidence} confidence · est. listing range {r.quant.gainRange} · Model Verdict: {r.verdict}
                   </p>
                 </div>
               </div>

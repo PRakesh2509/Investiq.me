@@ -156,7 +156,7 @@ for (const cid of chatIds) {
         disable_web_page_preview: true,
         reply_markup: {
           inline_keyboard: [
-            [{ text: "📊 F&O Alerts", url: "https://exact-view-enchant.lovable.app/desktop/option-chain" }],
+            [{ text: "📊 F&O Alerts", url: "https://www.investiqq.me/desktop/terminal" }],
           ],
         },
       }),
