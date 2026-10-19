@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -16,7 +16,6 @@ import {
   getOrderBlockData,
   INSTRUMENT_CONFIGS,
   type OrderBlockData,
-  type OptionStrikeRow,
 } from "@/lib/orderblock.functions";
 
 const TIMEFRAMES = ["1M", "3M", "5M", "15M", "30M", "1H", "1D"] as const;
@@ -149,22 +148,18 @@ export default function OrderBlockEngine() {
   const isDark = theme === "dark";
 
   return (
-    <div
-      className={`min-h-screen w-full transition-colors duration-200 ${
-        isDark ? "bg-[#090a0f] text-[#f1f5f9]" : "bg-slate-50 text-slate-900"
-      }`}
-    >
-      <div className="mx-auto max-w-[1680px] p-3 space-y-3 sm:p-5">
+    <div className="min-h-screen w-full bg-hero text-foreground">
+      <div className="mx-auto max-w-[1680px] p-3 space-y-4 sm:p-6">
         {/* Top Header Bar */}
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1e2430] pb-3">
+        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-background/80 px-4 py-3 backdrop-blur shadow-sm">
           <div className="flex items-center gap-3">
             <Link
               to="/desktop"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#1e2430] bg-[#12151e]/80 px-3 py-1.5 text-xs font-semibold tracking-wider text-slate-300 transition hover:bg-slate-800 hover:text-white"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface/60 px-3 py-1.5 text-xs font-semibold tracking-wider text-muted-foreground transition hover:bg-accent hover:text-foreground"
             >
               <span>&larr;</span> EXECUTIVE HOME
             </Link>
-            <div className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-950/20 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
+            <div className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-primary shadow-glow">
               ORDER BLOCK ENGINE
             </div>
           </div>
@@ -174,31 +169,31 @@ export default function OrderBlockEngine() {
               <span className="h-2 w-2 rounded-sm bg-emerald-500 animate-pulse" />
               NSE LIVE
             </span>
-            <span className="font-mono text-slate-400">
-              TICK UPDATE: <strong className="text-slate-200">{tickCount}s</strong>
+            <span className="font-mono text-muted-foreground">
+              TICK UPDATE: <strong className="text-foreground">{tickCount}s</strong>
             </span>
             <button
               onClick={() => setTheme(isDark ? "light" : "dark")}
-              className="inline-flex items-center gap-1 rounded-md border border-[#1e2430] bg-[#12151e] px-2.5 py-1 text-slate-300 hover:bg-slate-800"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface/60 px-2.5 py-1 text-muted-foreground transition hover:bg-accent hover:text-foreground"
             >
-              {isDark ? <Sun className="h-3.5 w-3.5 text-amber-400" /> : <Moon className="h-3.5 w-3.5 text-slate-400" />}
+              {isDark ? <Sun className="h-3.5 w-3.5 text-amber-400" /> : <Moon className="h-3.5 w-3.5 text-muted-foreground" />}
               <span className="uppercase text-[11px] font-semibold">{isDark ? "LIGHT" : "DARK"}</span>
             </button>
           </div>
         </header>
 
         {/* Index Selector Sub-Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#1e2430] bg-[#0e111a]/90 px-3 py-2 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface/60 px-4 py-2.5 text-xs backdrop-blur shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[11px] font-bold uppercase text-slate-400">NSE F&amp;O:</span>
+            <span className="font-mono text-[11px] font-bold uppercase text-muted-foreground">NSE F&amp;O:</span>
             {NSE_TABS.map((t) => (
               <button
                 key={t}
                 onClick={() => setInstrument(t)}
-                className={`rounded px-2.5 py-1 font-medium transition ${
+                className={`rounded-lg px-3 py-1 font-medium transition ${
                   instrument === t
-                    ? "bg-slate-200 text-slate-950 font-bold shadow-sm"
-                    : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
+                    ? "bg-gradient-primary text-primary-foreground font-bold shadow-glow"
+                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                 }`}
               >
                 {t}
@@ -206,16 +201,16 @@ export default function OrderBlockEngine() {
             ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-[#1e2430] pt-2 sm:border-t-0 sm:pt-0">
-            <span className="font-mono text-[11px] font-bold uppercase text-slate-400">GLOBAL:</span>
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2 sm:border-t-0 sm:pt-0">
+            <span className="font-mono text-[11px] font-bold uppercase text-muted-foreground">GLOBAL:</span>
             {GLOBAL_TABS.map((t) => (
               <button
                 key={t}
                 onClick={() => setInstrument(t)}
-                className={`rounded px-2.5 py-1 font-medium transition ${
+                className={`rounded-lg px-3 py-1 font-medium transition ${
                   instrument === t
-                    ? "bg-slate-200 text-slate-950 font-bold shadow-sm"
-                    : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
+                    ? "bg-gradient-primary text-primary-foreground font-bold shadow-glow"
+                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                 }`}
               >
                 {t}
@@ -225,29 +220,29 @@ export default function OrderBlockEngine() {
         </div>
 
         {/* Hero Header Section */}
-        <div className="flex flex-wrap items-baseline justify-between gap-2 pt-1">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 px-1 pt-1">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+              <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
                 {instrument}
               </h1>
-              <span className="rounded bg-slate-800/80 px-2 py-0.5 text-[11px] font-mono font-medium text-slate-300">
+              <span className="rounded-md border border-border bg-surface/80 px-2 py-0.5 text-[11px] font-mono font-medium text-muted-foreground">
                 {cfg.tag}
               </span>
             </div>
-            <p className="mt-0.5 text-[11px] sm:text-xs font-semibold tracking-wider uppercase text-slate-400">
+            <p className="mt-0.5 text-[11px] sm:text-xs font-semibold tracking-wider uppercase text-muted-foreground">
               MULTI-PIVOT CONFLUENCE &amp; INSTITUTIONAL OPTION ORDERFLOW ENGINE
             </p>
           </div>
 
           <div className="text-right">
-            <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-white">
+            <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
               {curSymbol}
               {(data?.spotPrice ?? 22862.9).toLocaleString("en-IN", { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
             </div>
             <p
               className={`font-mono text-xs font-semibold ${
-                (data?.change ?? -2.05) >= 0 ? "text-emerald-400" : "text-rose-400"
+                (data?.change ?? -2.05) >= 0 ? "text-success" : "text-destructive"
               }`}
             >
               {(data?.change ?? -2.05) >= 0 ? "▲ +" : "▼ "}
@@ -259,10 +254,22 @@ export default function OrderBlockEngine() {
         </div>
 
         {/* Primary High-Confluence Trade Alert Banner */}
-        <section className="relative overflow-hidden rounded-xl border border-rose-900/50 bg-[#140b0f]/80 p-4 shadow-lg backdrop-blur">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-950/80 pb-3">
+        <section
+          className={`relative overflow-hidden rounded-2xl border p-4 shadow-lg backdrop-blur ${
+            data?.direction === "CALL"
+              ? "border-emerald-500/30 bg-emerald-950/20"
+              : "border-rose-500/30 bg-rose-950/20"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
             <div className="flex items-center gap-2.5">
-              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-rose-500/20 text-rose-500">
+              <span
+                className={`flex h-7 w-7 items-center justify-center rounded-lg ${
+                  data?.direction === "CALL"
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : "bg-rose-500/20 text-rose-400"
+                }`}
+              >
                 {data?.direction === "CALL" ? (
                   <ArrowUp className="h-4 w-4 stroke-[3]" />
                 ) : (
@@ -271,58 +278,62 @@ export default function OrderBlockEngine() {
               </span>
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="font-mono text-sm sm:text-base font-extrabold uppercase tracking-wide text-rose-400">
+                  <h2
+                    className={`font-mono text-sm sm:text-base font-extrabold uppercase tracking-wide ${
+                      data?.direction === "CALL" ? "text-emerald-400" : "text-rose-400"
+                    }`}
+                  >
                     {data?.actionText ?? `BUY ${instrument} PUT`}
                   </h2>
                   <span className="rounded bg-emerald-500/15 border border-emerald-500/40 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
                     {data?.grade ?? "A+ CONFLUENCE"}
                   </span>
                 </div>
-                <p className="text-[11px] font-mono text-slate-400">
+                <p className="text-[11px] font-mono text-muted-foreground">
                   {data?.rationale ?? "EMA9<EMA21 crossdown · RSI 44"}
                 </p>
               </div>
             </div>
 
-            <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-700/60 bg-slate-900/80 px-2.5 py-1 text-[11px] font-medium text-slate-300">
-              <Shield className="h-3.5 w-3.5 text-cyan-400" />
+            <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface/80 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+              <Shield className="h-3.5 w-3.5 text-primary" />
               <span>DhanHQ Colocation Feed Ready</span>
             </div>
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 text-xs">
-            <div className="rounded-lg bg-black/40 p-2.5 border border-white/5">
-              <p className="text-[10px] uppercase tracking-wider text-slate-400">CONTRACT</p>
-              <p className="mt-0.5 font-mono text-xs font-bold text-white truncate">
+            <div className="rounded-xl bg-background/50 p-2.5 border border-border shadow-sm">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">CONTRACT</p>
+              <p className="mt-0.5 font-mono text-xs font-bold text-foreground truncate">
                 {data?.contractName ?? `${instrument.replace(/[^A-Z0-9]/g, "")} 22850 PE`}
               </p>
             </div>
-            <div className="rounded-lg bg-black/40 p-2.5 border border-white/5">
-              <p className="text-[10px] uppercase tracking-wider text-slate-400">INDEX SPOT ENTRY</p>
-              <p className="mt-0.5 font-mono text-xs font-bold text-white">
+            <div className="rounded-xl bg-background/50 p-2.5 border border-border shadow-sm">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">INDEX SPOT ENTRY</p>
+              <p className="mt-0.5 font-mono text-xs font-bold text-foreground">
                 {(data?.spotEntry ?? 22862.9).toFixed(2)}
               </p>
             </div>
-            <div className="rounded-lg bg-black/40 p-2.5 border border-white/5">
-              <p className="text-[10px] uppercase tracking-wider text-slate-400">REC. OPTION PREMIUM</p>
+            <div className="rounded-xl bg-background/50 p-2.5 border border-border shadow-sm">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">REC. OPTION PREMIUM</p>
               <p className="mt-0.5 font-mono text-xs font-bold text-emerald-400">
                 {curSymbol}{(data?.recommendedPremium ?? 137.18).toFixed(2)}
               </p>
             </div>
-            <div className="rounded-lg bg-black/40 p-2.5 border border-white/5">
-              <p className="text-[10px] uppercase tracking-wider text-slate-400">OPTION TP1 (1.5R)</p>
+            <div className="rounded-xl bg-background/50 p-2.5 border border-border shadow-sm">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">OPTION TP1 (1.5R)</p>
               <p className="mt-0.5 font-mono text-xs font-bold text-emerald-400">
                 {curSymbol}{(data?.tp1 ?? 170.94).toFixed(2)}
               </p>
             </div>
-            <div className="rounded-lg bg-black/40 p-2.5 border border-white/5">
-              <p className="text-[10px] uppercase tracking-wider text-slate-400">OPTION TP2 (2.5R)</p>
+            <div className="rounded-xl bg-background/50 p-2.5 border border-border shadow-sm">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">OPTION TP2 (2.5R)</p>
               <p className="mt-0.5 font-mono text-xs font-bold text-emerald-400">
                 {curSymbol}{(data?.tp2 ?? 205.78).toFixed(2)}
               </p>
             </div>
-            <div className="rounded-lg bg-black/40 p-2.5 border border-white/5">
-              <p className="text-[10px] uppercase tracking-wider text-slate-400">OPTION STOP LOSS</p>
+            <div className="rounded-xl bg-background/50 p-2.5 border border-border shadow-sm">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">OPTION STOP LOSS</p>
               <p className="mt-0.5 font-mono text-xs font-bold text-rose-400">
                 {curSymbol}{(data?.stopLoss ?? 109.74).toFixed(2)}
               </p>
@@ -335,31 +346,31 @@ export default function OrderBlockEngine() {
           {/* Left Column: Live TradingView Graph & Toolbar (~62% / 7 cols) */}
           <div className="space-y-3 xl:col-span-7">
             {/* Chart Toolbar Card */}
-            <div className="rounded-xl border border-[#1e2430] bg-[#0c0e16] p-3 shadow-md">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1e2430] pb-2 text-xs">
+            <div className="rounded-2xl border border-border bg-surface/60 p-4 shadow-lg backdrop-blur">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-white">{cfg.name}</span>
-                  <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-300">
+                  <span className="font-bold text-foreground">{cfg.name}</span>
+                  <span className="rounded bg-surface px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground border border-border">
                     {cfg.tag}
                   </span>
                   <span className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold text-emerald-400">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     LIVE
                   </span>
-                  <span className="text-slate-400 text-[11px]">{tf} Candle</span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-400">
-                    <Clock className="h-3 w-3 text-slate-500" />
+                  <span className="text-muted-foreground text-[11px]">{tf} Candle</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-mono text-muted-foreground">
+                    <Clock className="h-3 w-3 text-muted-foreground" />
                     2:09
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-white">
+                  <span className="font-mono font-bold text-foreground">
                     {curSymbol}{(data?.spotPrice ?? 22862.9).toFixed(2)}
                   </span>
                   <span
                     className={`font-mono text-[11px] ${
-                      (data?.change ?? -2.05) >= 0 ? "text-emerald-400" : "text-rose-400"
+                      (data?.change ?? -2.05) >= 0 ? "text-success" : "text-destructive"
                     }`}
                   >
                     {(data?.change ?? -2.05) >= 0 ? "+" : ""}
@@ -369,42 +380,44 @@ export default function OrderBlockEngine() {
                   </span>
                   <button
                     onClick={() => loadData(instrument)}
-                    className="p-1 text-slate-400 hover:text-white"
+                    className="p-1 text-muted-foreground hover:text-foreground transition"
                     title="Refresh"
                   >
-                    <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin text-cyan-400" : ""}`} />
+                    <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin text-primary" : ""}`} />
                   </button>
                 </div>
               </div>
 
               {/* Timeframes & Indicators Bar */}
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                 {/* Timeframes */}
                 <div className="flex items-center gap-1">
                   {TIMEFRAMES.map((t) => (
                     <button
                       key={t}
                       onClick={() => setTf(t)}
-                      className={`rounded px-2 py-0.5 text-[11px] font-mono font-medium transition ${
-                        tf === t ? "bg-slate-200 text-slate-950 font-bold" : "text-slate-400 hover:bg-slate-800"
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-mono font-medium transition ${
+                        tf === t
+                          ? "bg-gradient-primary text-primary-foreground font-bold shadow-glow"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
                       }`}
                     >
                       {t}
                     </button>
                   ))}
-                  <div className="ml-2 flex rounded border border-slate-800 bg-slate-900/60 p-0.5">
+                  <div className="ml-2 flex rounded-lg border border-border bg-background/50 p-0.5">
                     <button
                       onClick={() => setChartType("CANDLES")}
-                      className={`px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                        chartType === "CANDLES" ? "bg-slate-800 text-white" : "text-slate-400"
+                      className={`rounded px-2 py-0.5 text-[10px] font-semibold uppercase transition ${
+                        chartType === "CANDLES" ? "bg-accent text-foreground shadow-sm" : "text-muted-foreground"
                       }`}
                     >
                       CANDLES
                     </button>
                     <button
                       onClick={() => setChartType("LINE")}
-                      className={`px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                        chartType === "LINE" ? "bg-slate-800 text-white" : "text-slate-400"
+                      className={`rounded px-2 py-0.5 text-[10px] font-semibold uppercase transition ${
+                        chartType === "LINE" ? "bg-accent text-foreground shadow-sm" : "text-muted-foreground"
                       }`}
                     >
                       LINE
@@ -414,11 +427,11 @@ export default function OrderBlockEngine() {
 
                 {/* Indicators (visual state retained for UI/UX matching screenshot) */}
                 <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                  <span className="font-mono text-[10px] text-slate-500">INDICATORS:</span>
+                  <span className="font-mono text-[10px] text-muted-foreground">INDICATORS:</span>
                   <button
                     onClick={() => setToggles((p) => ({ ...p, ema9: !p.ema9 }))}
                     className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold transition ${
-                      toggles.ema9 ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40" : "text-slate-500 border border-transparent"
+                      toggles.ema9 ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/40" : "text-muted-foreground border border-transparent"
                     }`}
                   >
                     EMA 9
@@ -426,7 +439,7 @@ export default function OrderBlockEngine() {
                   <button
                     onClick={() => setToggles((p) => ({ ...p, ema21: !p.ema21 }))}
                     className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold transition ${
-                      toggles.ema21 ? "bg-amber-500/20 text-amber-400 border border-amber-500/40" : "text-slate-500 border border-transparent"
+                      toggles.ema21 ? "bg-amber-500/15 text-amber-400 border border-amber-500/40" : "text-muted-foreground border border-transparent"
                     }`}
                   >
                     EMA 21
@@ -434,7 +447,7 @@ export default function OrderBlockEngine() {
                   <button
                     onClick={() => setToggles((p) => ({ ...p, vwap: !p.vwap }))}
                     className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold transition ${
-                      toggles.vwap ? "bg-yellow-500/20 text-yellow-300 border border-yellow-500/40" : "text-slate-500 border border-transparent"
+                      toggles.vwap ? "bg-yellow-500/15 text-yellow-300 border border-yellow-500/40" : "text-muted-foreground border border-transparent"
                     }`}
                   >
                     VWAP
@@ -442,7 +455,7 @@ export default function OrderBlockEngine() {
                   <button
                     onClick={() => setToggles((p) => ({ ...p, supertrend: !p.supertrend }))}
                     className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold transition ${
-                      toggles.supertrend ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "text-slate-500 border border-transparent"
+                      toggles.supertrend ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/40" : "text-muted-foreground border border-transparent"
                     }`}
                   >
                     SUPERTREND
@@ -450,7 +463,7 @@ export default function OrderBlockEngine() {
                   <button
                     onClick={() => setToggles((p) => ({ ...p, volume: !p.volume }))}
                     className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold transition ${
-                      toggles.volume ? "bg-purple-500/20 text-purple-400 border border-purple-500/40" : "text-slate-500 border border-transparent"
+                      toggles.volume ? "bg-purple-500/15 text-purple-400 border border-purple-500/40" : "text-muted-foreground border border-transparent"
                     }`}
                   >
                     Volume
@@ -459,36 +472,34 @@ export default function OrderBlockEngine() {
               </div>
 
               {/* Action Tools & OHLC Row */}
-              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-[#1e2430] pt-2 text-[11px]">
+              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2 text-[11px]">
                 <div className="flex items-center gap-2">
                   <span className="rounded bg-teal-500/15 border border-teal-500/40 px-2 py-0.5 font-mono font-bold text-teal-400 text-[10px]">
                     SETUP TOOL ACTIVE
                   </span>
-                  <button className="inline-flex items-center gap-1 rounded border border-slate-700/60 px-2 py-0.5 font-mono text-[10px] text-slate-300 hover:bg-slate-800">
-                    <Settings className="h-3 w-3 text-slate-400" />
+                  <button className="inline-flex items-center gap-1 rounded-lg border border-border bg-background/50 px-2 py-0.5 font-mono text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground transition">
+                    <Settings className="h-3 w-3 text-muted-foreground" />
                     ADJUST LEVELS ⚙
                   </button>
                 </div>
 
-                <div className="flex items-center gap-3 font-mono text-[10px] text-slate-400">
-                  <span>O: <strong className="text-slate-200">{ohlc.o}</strong></span>
-                  <span>H: <strong className="text-slate-200">{ohlc.h}</strong></span>
-                  <span>L: <strong className="text-slate-200">{ohlc.l}</strong></span>
-                  <span>C: <strong className="text-slate-200">{ohlc.c}</strong></span>
-                  <span>Vol: <strong className="text-slate-200">{ohlc.vol}</strong></span>
+                <div className="flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
+                  <span>O: <strong className="text-foreground">{ohlc.o}</strong></span>
+                  <span>H: <strong className="text-foreground">{ohlc.h}</strong></span>
+                  <span>L: <strong className="text-foreground">{ohlc.l}</strong></span>
+                  <span>C: <strong className="text-foreground">{ohlc.c}</strong></span>
+                  <span>Vol: <strong className="text-foreground">{ohlc.vol}</strong></span>
                 </div>
               </div>
 
               {/* Live TradingView Graph Area with Interactive Setup Overlay */}
-              <div className="relative mt-2 h-[480px] w-full overflow-hidden rounded-lg border border-[#1e2430] bg-[#07090e]">
+              <div className="relative mt-2 h-[480px] w-full overflow-hidden rounded-xl border border-border bg-[#0B1015] shadow-inner">
                 {/* Live TradingView Interactive Chart */}
                 <iframe
                   key={`tv-${tvSymbol}-${tvInterval}-${chartType}-${theme}`}
                   src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(
                     tvSymbol,
-                  )}&interval=${tvInterval}&hidesidetoolbar=0&symboledit=1&saveimage=0&toolbarbg=${
-                    isDark ? "07090e" : "f8fafc"
-                  }&theme=${theme}&style=${
+                  )}&interval=${tvInterval}&hidesidetoolbar=0&symboledit=1&saveimage=0&toolbarbg=0b1015&theme=dark&style=${
                     chartType === "LINE" ? "2" : "1"
                   }&timezone=Asia%2FKolkata&locale=in&utm_source=investiqq.me`}
                   className="h-full w-full border-0"
@@ -498,10 +509,10 @@ export default function OrderBlockEngine() {
                 />
 
                 {/* Interactive Setup Overlay (exact reproduction from screenshot) */}
-                <div className="pointer-events-none absolute top-3 right-3 z-10 rounded-lg border border-slate-800/80 bg-slate-950/85 p-3 text-[11px] font-mono shadow-2xl backdrop-blur">
-                  <div className="flex items-center justify-between gap-4 border-b border-slate-800 pb-1.5">
-                    <div className="flex items-center gap-1.5 text-cyan-400 font-bold">
-                      <span className="h-2 w-2 rounded-full bg-cyan-400" />
+                <div className="pointer-events-none absolute top-3 right-3 z-10 rounded-xl border border-border bg-background/90 p-3 text-[11px] font-mono shadow-elegant backdrop-blur">
+                  <div className="flex items-center justify-between gap-4 border-b border-border pb-1.5">
+                    <div className="flex items-center gap-1.5 text-primary font-bold">
+                      <span className="h-2 w-2 rounded-full bg-primary" />
                       LONG SETUP (1:1.50 R:R)
                     </div>
                     <div className="rounded bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-400">
@@ -509,7 +520,7 @@ export default function OrderBlockEngine() {
                     </div>
                   </div>
 
-                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-slate-300">
+                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
                     <div>Risk (-SL): <strong className="text-rose-400">-₹8,11,425</strong></div>
                     <div>Reward (+TP2): <strong className="text-emerald-400">+₹6,11,425</strong></div>
                     <div>Live Est. MTM: <strong className="text-rose-400">-₹5,11,625</strong></div>
@@ -523,14 +534,14 @@ export default function OrderBlockEngine() {
           {/* Right Column: Option Premium Calculator & Trailing SL Engine (~38% / 5 cols) */}
           <div className="space-y-3 xl:col-span-5">
             {/* Calculator Card */}
-            <div className="rounded-xl border border-[#1e2430] bg-[#0c0e16] p-4 shadow-md text-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-[#1e2430] pb-2.5">
+            <div className="rounded-2xl border border-border bg-surface/60 p-4 shadow-lg backdrop-blur text-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-border pb-2.5">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-mono text-sm font-bold uppercase tracking-wider text-white">
+                  <h3 className="font-mono text-sm font-bold uppercase tracking-wider text-foreground">
                     OPTION PREMIUM CALCULATOR
                   </h3>
                 </div>
-                <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-mono font-bold text-slate-300">
+                <span className="rounded-md border border-border bg-surface px-2 py-0.5 text-[10px] font-mono font-bold text-muted-foreground">
                   {instrument}
                 </span>
               </div>
@@ -538,19 +549,19 @@ export default function OrderBlockEngine() {
               {/* Inputs */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
+                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                     TRADING CAPITAL (₹):
                   </label>
                   <input
                     type="number"
                     value={tradingCapital}
                     onChange={(e) => setTradingCapital(Math.max(1000, Number(e.target.value) || 0))}
-                    className="mt-1 w-full rounded border border-slate-700/80 bg-slate-900/90 px-2.5 py-1.5 font-mono text-xs font-bold text-white focus:border-cyan-500 focus:outline-none"
+                    className="mt-1 w-full rounded-lg border border-border bg-background/60 px-2.5 py-1.5 font-mono text-xs font-bold text-foreground focus:border-primary focus:outline-none transition"
                   />
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
+                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                     MAX RISK / TRADE:
                   </label>
                   <div className="mt-1 flex gap-1">
@@ -558,10 +569,10 @@ export default function OrderBlockEngine() {
                       <button
                         key={r}
                         onClick={() => setRiskPct(r)}
-                        className={`flex-1 rounded py-1.5 font-mono text-xs font-bold transition ${
+                        className={`flex-1 rounded-lg py-1.5 font-mono text-xs font-bold transition ${
                           riskPct === r
-                            ? "bg-slate-200 text-slate-950"
-                            : "border border-slate-800 bg-slate-900/60 text-slate-400 hover:bg-slate-800"
+                            ? "bg-gradient-primary text-primary-foreground shadow-glow"
+                            : "border border-border bg-background/50 text-muted-foreground hover:bg-accent hover:text-foreground"
                         }`}
                       >
                         {r}%
@@ -572,14 +583,14 @@ export default function OrderBlockEngine() {
               </div>
 
               {/* Budget & Recommendation */}
-              <div className="flex items-center justify-between rounded-lg border border-slate-800/80 bg-slate-900/40 p-2.5 text-[11px] font-mono">
+              <div className="flex items-center justify-between rounded-xl border border-border bg-background/50 p-2.5 text-[11px] font-mono">
                 <div>
-                  <p className="text-slate-400">MAX BUDGET ({riskPct}% OF ₹{tradingCapital.toLocaleString("en-IN")}):</p>
-                  <p className="font-bold text-white">₹{maxBudget.toLocaleString("en-IN")}</p>
+                  <p className="text-muted-foreground">MAX BUDGET ({riskPct}% OF ₹{tradingCapital.toLocaleString("en-IN")}):</p>
+                  <p className="font-bold text-foreground">₹{maxBudget.toLocaleString("en-IN")}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] uppercase text-slate-500">RECOMMENDED:</p>
-                  <p className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+                  <p className="text-[10px] uppercase text-muted-foreground">RECOMMENDED:</p>
+                  <p className="rounded bg-surface px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-border">
                     USE 1 LOT(S) ({lotSize} QTY)
                   </p>
                 </div>
@@ -587,7 +598,7 @@ export default function OrderBlockEngine() {
 
               {/* Manual Lots Selector */}
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                   MANUAL LOTS SELECTOR:
                 </p>
                 <div className="mt-1.5 grid grid-cols-4 gap-2">
@@ -595,10 +606,10 @@ export default function OrderBlockEngine() {
                     <button
                       key={l}
                       onClick={() => setManualLots(l)}
-                      className={`rounded py-1.5 font-mono text-xs font-bold transition ${
+                      className={`rounded-lg py-1.5 font-mono text-xs font-bold transition ${
                         manualLots === l
-                          ? "bg-white text-slate-950 shadow"
-                          : "border border-slate-800 bg-slate-900/70 text-slate-400 hover:bg-slate-800"
+                          ? "bg-gradient-primary text-primary-foreground shadow-glow"
+                          : "border border-border bg-background/50 text-muted-foreground hover:bg-accent hover:text-foreground"
                       }`}
                     >
                       {l} Lot{l > 1 ? "s" : ""}
@@ -609,7 +620,7 @@ export default function OrderBlockEngine() {
 
               {/* Custom Option Premium Input */}
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                   CUSTOM OPTION PREMIUM (₹):
                 </label>
                 <input
@@ -617,46 +628,46 @@ export default function OrderBlockEngine() {
                   value={customPremium}
                   onChange={(e) => setCustomPremium(e.target.value)}
                   placeholder={`Current Est: ₹${(data?.recommendedPremium ?? 137.18).toFixed(2)}`}
-                  className="mt-1 w-full rounded border border-slate-700/80 bg-slate-900/90 px-2.5 py-1.5 font-mono text-xs font-bold text-white focus:border-cyan-500 focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-border bg-background/60 px-2.5 py-1.5 font-mono text-xs font-bold text-foreground focus:border-primary focus:outline-none transition"
                 />
               </div>
 
               {/* Calculated Outputs Table */}
-              <div className="space-y-1.5 rounded-lg border border-slate-800/80 bg-black/40 p-3 font-mono text-[11px]">
-                <div className="flex justify-between border-b border-slate-800/60 pb-1 text-slate-300">
-                  <span className="text-slate-400">SELECTED CONTRACT:</span>
-                  <span className="font-bold text-white">{selectedContract}</span>
+              <div className="space-y-1.5 rounded-xl border border-border bg-background/50 p-3 font-mono text-[11px]">
+                <div className="flex justify-between border-b border-border/60 pb-1 text-muted-foreground">
+                  <span className="text-muted-foreground">SELECTED CONTRACT:</span>
+                  <span className="font-bold text-foreground">{selectedContract}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-800/60 pb-1 text-slate-300">
-                  <span className="text-slate-400">TOTAL QUANTITY:</span>
-                  <span className="font-semibold text-white">
+                <div className="flex justify-between border-b border-border/60 pb-1 text-muted-foreground">
+                  <span className="text-muted-foreground">TOTAL QUANTITY:</span>
+                  <span className="font-semibold text-foreground">
                     {totalQty} Qty ({manualLots} &times; {lotSize})
                   </span>
                 </div>
-                <div className="flex justify-between border-b border-slate-800/60 pb-1 text-slate-300">
-                  <span className="text-slate-400">CAPITAL INVESTED:</span>
-                  <span className="font-bold text-white">₹{capitalInvested.toLocaleString("en-IN")}</span>
+                <div className="flex justify-between border-b border-border/60 pb-1 text-muted-foreground">
+                  <span className="text-muted-foreground">CAPITAL INVESTED:</span>
+                  <span className="font-bold text-foreground">₹{capitalInvested.toLocaleString("en-IN")}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-800/60 pb-1">
-                  <span className="text-slate-400">MAX DOWNSIDE LOSS (-20% SL):</span>
+                <div className="flex justify-between border-b border-border/60 pb-1">
+                  <span className="text-muted-foreground">MAX DOWNSIDE LOSS (-20% SL):</span>
                   <span className="font-bold text-rose-400">
                     -₹{maxLoss.toLocaleString("en-IN")} ({lossPct}% of Capital)
                   </span>
                 </div>
-                <div className="flex justify-between border-b border-slate-800/60 pb-1">
-                  <span className="text-slate-400">PROFIT LOCKED AT TP1 (+1.5R):</span>
+                <div className="flex justify-between border-b border-border/60 pb-1">
+                  <span className="text-muted-foreground">PROFIT LOCKED AT TP1 (+1.5R):</span>
                   <span className="font-bold text-emerald-400">
                     +₹{tp1Profit.toLocaleString("en-IN")} (50% Qty)
                   </span>
                 </div>
-                <div className="flex justify-between border-b border-slate-800/60 pb-1">
-                  <span className="text-slate-400">TARGET RETURN AT TP2 (+2.5R):</span>
+                <div className="flex justify-between border-b border-border/60 pb-1">
+                  <span className="text-muted-foreground">TARGET RETURN AT TP2 (+2.5R):</span>
                   <span className="font-bold text-emerald-400">
                     +₹{tp2Profit.toLocaleString("en-IN")} (75% Qty)
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">HERO RUNNER AT TP3 (&gt;3.5R):</span>
+                  <span className="text-muted-foreground">HERO RUNNER AT TP3 (&gt;3.5R):</span>
                   <span className="font-bold text-emerald-400">
                     +₹{tp3Profit.toLocaleString("en-IN")} (100% Qty)
                   </span>
@@ -664,59 +675,59 @@ export default function OrderBlockEngine() {
               </div>
 
               {/* Dynamic Trailing SL Engine Sub-Card */}
-              <div className="rounded-lg border border-slate-800 bg-[#0e111a] p-3 space-y-2">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-                  <div className="flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase text-slate-200">
-                    <span>⚡</span> DYNAMIC TRAILING SL ENGINE:
+              <div className="rounded-xl border border-border bg-surface/50 p-3 space-y-2">
+                <div className="flex items-center justify-between border-b border-border pb-1.5">
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase text-foreground">
+                    <span className="text-primary">⚡</span> DYNAMIC TRAILING SL ENGINE:
                   </div>
-                  <span className="rounded bg-rose-500/20 px-2 py-0.5 text-[10px] font-mono font-bold text-rose-400">
+                  <span className="rounded bg-rose-500/20 px-2 py-0.5 text-[10px] font-mono font-bold text-rose-400 border border-rose-500/30">
                     ■ STOPPED OUT: ₹{(data?.stopLoss ?? 109.74).toFixed(2)}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
                   <div>
-                    <p className="text-[10px] uppercase text-slate-500">ACTIVE TRAILING SL:</p>
+                    <p className="text-[10px] uppercase text-muted-foreground">ACTIVE TRAILING SL:</p>
                     <p className="font-bold text-rose-400">₹{(data?.stopLoss ?? 109.74).toFixed(2)}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] uppercase text-slate-500">PEAK WATERMARK LTP:</p>
+                    <p className="text-[10px] uppercase text-muted-foreground">PEAK WATERMARK LTP:</p>
                     <p className="font-bold text-amber-400">₹{premium.toFixed(2)}</p>
                   </div>
                 </div>
 
-                <div className="border-t border-slate-800/60 pt-1 text-[11px] font-mono text-slate-300">
-                  <span className="text-slate-500">EXECUTION STATE: </span>
+                <div className="border-t border-border/60 pt-1 text-[11px] font-mono text-muted-foreground">
+                  <span className="text-muted-foreground">EXECUTION STATE: </span>
                   <span className="text-rose-400 font-semibold">
                     🚨 Trailing SL hit at ₹{(data?.stopLoss ?? 109.74).toFixed(2)}
                   </span>
                 </div>
 
-                <div className="rounded bg-slate-900/60 p-2 text-[10px] text-slate-400 leading-relaxed border border-slate-800/40">
-                  <strong className="text-cyan-400">🛡️ REVERSAL PROTECTION ACTIVE:</strong> When price hits TP1 (+1.5R),
+                <div className="rounded-lg border border-border/60 bg-background/50 p-2 text-[10px] text-muted-foreground leading-relaxed">
+                  <strong className="text-primary">🛡️ REVERSAL PROTECTION ACTIVE:</strong> When price hits TP1 (+1.5R),
                   sell 50% lots and move SL to entry (breakeven). If market reverses, your loss is ₹0 and you keep the 50% profit.
                 </div>
               </div>
 
               {/* Execution Management Rules */}
-              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-[10px] text-slate-400 space-y-1.5 leading-relaxed">
-                <p className="font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1">
+              <div className="rounded-xl border border-border bg-background/40 p-3 text-[10px] text-muted-foreground space-y-1.5 leading-relaxed">
+                <p className="font-bold uppercase tracking-wider text-foreground flex items-center gap-1">
                   <span>📋</span> EXECUTION MANAGEMENT RULES
                 </p>
                 <p>
-                  • <strong className="text-slate-200">Max 20% Option SL Cap:</strong> Hard stop-loss on option premium
+                  • <strong className="text-foreground">Max 20% Option SL Cap:</strong> Hard stop-loss on option premium
                   (capped at max 20% loss) eliminates huge option decay drawdowns.
                 </p>
                 <p>
-                  • <strong className="text-slate-200">TP1 Target (1.5R):</strong> Lock 50% lot profit &amp;
+                  • <strong className="text-foreground">TP1 Target (1.5R):</strong> Lock 50% lot profit &amp;
                   automatically shift SL to breakeven.
                 </p>
                 <p>
-                  • <strong className="text-slate-200">TP2 Target (2.5R):</strong> Runner position target for maximum
+                  • <strong className="text-foreground">TP2 Target (2.5R):</strong> Runner position target for maximum
                   Risk:Reward.
                 </p>
                 <p>
-                  • <strong className="text-slate-200">Auto Square-off:</strong> Exit intraday positions before 03:15 PM IST.
+                  • <strong className="text-foreground">Auto Square-off:</strong> Exit intraday positions before 03:15 PM IST.
                 </p>
               </div>
             </div>
@@ -724,14 +735,14 @@ export default function OrderBlockEngine() {
         </div>
 
         {/* Full-Width Live Option Chain (Strikes & Premiums) */}
-        <section className="rounded-xl border border-[#1e2430] bg-[#0c0e16] p-4 shadow-md">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1e2430] pb-3 text-xs">
+        <section className="rounded-2xl border border-border bg-surface/60 p-4 shadow-lg backdrop-blur">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3 text-xs">
             <div className="flex items-center gap-2">
               <span className="text-sm">🔗</span>
-              <h3 className="font-mono text-sm font-bold uppercase tracking-wide text-white">
+              <h3 className="font-mono text-sm font-bold uppercase tracking-wide text-foreground">
                 LIVE OPTION CHAIN ({instrument} — STRIKES &amp; PREMIUMS)
               </h3>
-              <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-mono text-slate-400">
+              <span className="rounded bg-surface px-2 py-0.5 text-[10px] font-mono text-muted-foreground border border-border">
                 MODEL ESTIMATE
               </span>
             </div>
@@ -739,12 +750,12 @@ export default function OrderBlockEngine() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => loadData(instrument)}
-                className="inline-flex items-center gap-1.5 rounded border border-slate-700/80 bg-slate-900 px-2.5 py-1 text-[11px] font-mono font-medium text-slate-300 hover:bg-slate-800"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background/60 px-2.5 py-1 text-[11px] font-mono font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition"
               >
-                <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin text-primary" : ""}`} />
                 REFRESH QUOTES
               </button>
-              <span className="font-mono text-[11px] text-slate-400">
+              <span className="font-mono text-[11px] text-muted-foreground">
                 Step: {cfg.step} pts · Lot Size: {cfg.lotSize} Qty
               </span>
             </div>
@@ -753,64 +764,64 @@ export default function OrderBlockEngine() {
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-center font-mono text-xs">
               <thead>
-                <tr className="border-b border-[#1e2430] text-[10px] uppercase tracking-wider text-slate-400 bg-slate-950/40">
+                <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground bg-background/50">
                   <th className="py-2.5 px-3 text-left">CALL LTP (₹)</th>
                   <th className="py-2.5 px-3">CALL TYPE</th>
-                  <th className="py-2.5 px-3 font-bold text-white">STRIKE PRICE</th>
+                  <th className="py-2.5 px-3 font-bold text-foreground">STRIKE PRICE</th>
                   <th className="py-2.5 px-3">PUT TYPE</th>
                   <th className="py-2.5 px-3 text-right">PUT LTP (₹)</th>
                   <th className="py-2.5 px-3 text-right">ACTION</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#1e2430]/60">
+              <tbody className="divide-y divide-border/60">
                 {(data?.strikes ?? []).map((row) => (
-                  <tr key={row.strike} className="hover:bg-slate-900/40 transition">
-                    <td className="py-2 px-3 text-left font-bold text-emerald-400">
+                  <tr key={row.strike} className="hover:bg-accent/30 transition">
+                    <td className="py-2.5 px-3 text-left font-bold text-emerald-400">
                       ₹{row.callLtp.toFixed(2)}
                     </td>
-                    <td className="py-2 px-3">
+                    <td className="py-2.5 px-3">
                       <span
                         className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
                           row.callType === "ITM"
                             ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
                             : row.callType === "ATM"
-                            ? "bg-white text-slate-950"
-                            : "bg-slate-800 text-slate-400"
+                            ? "bg-primary text-primary-foreground shadow-glow"
+                            : "bg-surface text-muted-foreground border border-border"
                         }`}
                       >
                         {row.callType}
                       </span>
                     </td>
-                    <td className="py-2 px-3 font-bold text-white text-sm">
+                    <td className="py-2.5 px-3 font-bold text-foreground text-sm">
                       {row.strike} {row.callType === "ATM" || row.putType === "ATM" ? "(ATM)" : ""}
                     </td>
-                    <td className="py-2 px-3">
+                    <td className="py-2.5 px-3">
                       <span
                         className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
                           row.putType === "ITM"
                             ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
                             : row.putType === "ATM"
-                            ? "bg-white text-slate-950"
-                            : "bg-slate-800 text-slate-400"
+                            ? "bg-primary text-primary-foreground shadow-glow"
+                            : "bg-surface text-muted-foreground border border-border"
                         }`}
                       >
                         {row.putType}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-right font-bold text-rose-400">
+                    <td className="py-2.5 px-3 text-right font-bold text-rose-400">
                       ₹{row.putLtp.toFixed(2)}
                     </td>
-                    <td className="py-2 px-3 text-right">
+                    <td className="py-2.5 px-3 text-right">
                       <div className="inline-flex gap-1.5">
                         <button
                           onClick={() => handleSelectStrike(row.strike, "CE", row.callLtp)}
-                          className="rounded border border-slate-700/80 bg-slate-900 px-2 py-0.5 text-[10px] font-mono font-bold text-emerald-400 hover:bg-emerald-500/20"
+                          className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-mono font-bold text-emerald-400 hover:bg-emerald-500/20 transition"
                         >
                           CALC CE
                         </button>
                         <button
                           onClick={() => handleSelectStrike(row.strike, "PE", row.putLtp)}
-                          className="rounded border border-slate-700/80 bg-slate-900 px-2 py-0.5 text-[10px] font-mono font-bold text-rose-400 hover:bg-rose-500/20"
+                          className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-mono font-bold text-rose-400 hover:bg-rose-500/20 transition"
                         >
                           CALC PE
                         </button>
@@ -824,15 +835,15 @@ export default function OrderBlockEngine() {
         </section>
 
         {/* Recent Confluence Signals Grid */}
-        <section className="rounded-xl border border-[#1e2430] bg-[#0c0e16] p-4 shadow-md text-xs space-y-3">
-          <div className="flex items-center justify-between border-b border-[#1e2430] pb-2">
+        <section className="rounded-2xl border border-border bg-surface/60 p-4 shadow-lg backdrop-blur text-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-border pb-2">
             <div className="flex items-center gap-2">
-              <span>⚙</span>
-              <h3 className="font-mono text-sm font-bold uppercase tracking-wide text-white">
+              <span className="text-primary">⚙</span>
+              <h3 className="font-mono text-sm font-bold uppercase tracking-wide text-foreground">
                 RECENT CONFLUENCE SIGNALS
               </h3>
             </div>
-            <span className="font-mono text-[11px] text-slate-400">Showing last 6 setups</span>
+            <span className="font-mono text-[11px] text-muted-foreground">Showing last 6 setups</span>
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -841,27 +852,29 @@ export default function OrderBlockEngine() {
               return (
                 <div
                   key={sig.id}
-                  className="rounded-lg border border-[#1e2430] bg-[#080a10] p-3 font-mono space-y-2 hover:border-slate-700 transition"
+                  className="rounded-xl border border-border bg-background/50 p-3 font-mono space-y-2 hover:border-primary/50 transition shadow-sm"
                 >
                   <div className="flex items-center justify-between">
                     <span
                       className={`rounded px-2 py-0.5 text-[11px] font-extrabold ${
-                        isPe ? "bg-rose-500/20 text-rose-400 border border-rose-500/40" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+                        isPe
+                          ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
+                          : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
                       }`}
                     >
                       {sig.type} {isPe ? "▼" : "▲"}
                     </span>
-                    <span className="text-[10px] text-slate-500">{sig.timeStr}</span>
+                    <span className="text-[10px] text-muted-foreground">{sig.timeStr}</span>
                   </div>
 
                   <div>
-                    <p className="font-bold text-white text-sm">
+                    <p className="font-bold text-foreground text-sm">
                       Spot @ {sig.spot.toFixed(2)}
                     </p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">{sig.rationale}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{sig.rationale}</p>
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-slate-900 pt-2 text-[10px]">
+                  <div className="flex items-center justify-between border-t border-border/60 pt-2 text-[10px]">
                     <span className="text-emerald-400 font-semibold">TARGET: {sig.target.toFixed(2)}</span>
                     <span className="text-rose-400 font-semibold">STOP: {sig.stop.toFixed(2)}</span>
                   </div>
@@ -872,7 +885,7 @@ export default function OrderBlockEngine() {
         </section>
 
         {/* Workstation Footer Disclaimer */}
-        <footer className="border-t border-[#1e2430] pt-4 pb-8 text-center text-[10px] font-mono uppercase tracking-widest text-slate-500">
+        <footer className="border-t border-border pt-4 pb-8 text-center text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
           INSTITUTIONAL TRADING ENGINE LOGIC. EDUCATIONAL &amp; RESEARCH SIGNALS. TRADE RESPONSIBLY.
         </footer>
       </div>
