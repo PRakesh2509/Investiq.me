@@ -91,10 +91,6 @@ function DesktopLayout() {
     }
   };
 
-  if (loc.pathname === "/desktop/terminal" || loc.pathname === "/desktop/fno-india") {
-    return <Outlet />;
-  }
-
   return (
     <div className="min-h-screen bg-hero text-foreground">
       {/* Top header */}
