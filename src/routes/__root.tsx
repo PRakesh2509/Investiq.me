@@ -50,8 +50,8 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
     <div className="flex min-h-screen items-center justify-center bg-hero px-4">
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold">Something went wrong</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Try refreshing or return to the home screen.
+        <p className="mt-2 text-xs text-destructive font-mono bg-destructive/10 p-3 rounded-lg border border-destructive/20 text-left overflow-auto max-h-40 whitespace-pre-wrap">
+          {error instanceof Error ? error.message : String(error)}
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button

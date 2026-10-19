@@ -401,7 +401,7 @@ function IPOTracker() {
           onOpenTrack={handleOpenTrack}
           onOpenAnalysis={(symbol) => {
             const match = rawIpos.find(
-              (i) => i.symbol.toUpperCase() === symbol.toUpperCase(),
+              (i) => (i.symbol || "").toUpperCase() === (symbol || "").toUpperCase(),
             );
             if (match) handleOpenAnalysis(match);
           }}
@@ -465,20 +465,24 @@ function IPOTracker() {
       </div>
 
       {/* Full Deep-Dive Analysis Modal */}
-      <IpoAnalysisModal
-        ipo={selectedIpo}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onAppliedChange={refreshApplied}
-      />
+      {isModalOpen && selectedIpo && (
+        <IpoAnalysisModal
+          ipo={selectedIpo}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onAppliedChange={refreshApplied}
+        />
+      )}
 
       {/* Track Application & Lots Calculator Modal */}
-      <TrackApplicationModal
-        ipo={trackIpo}
-        isOpen={isTrackModalOpen}
-        onClose={() => setIsTrackModalOpen(false)}
-        onAppliedChange={refreshApplied}
-      />
+      {isTrackModalOpen && trackIpo && (
+        <TrackApplicationModal
+          ipo={trackIpo}
+          isOpen={isTrackModalOpen}
+          onClose={() => setIsTrackModalOpen(false)}
+          onAppliedChange={refreshApplied}
+        />
+      )}
     </div>
   );
 }

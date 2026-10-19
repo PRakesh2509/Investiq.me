@@ -30,6 +30,24 @@ export function TrackApplicationModal({
 }) {
   if (!isOpen || !ipo) return null;
 
+  return (
+    <TrackApplicationModalContent
+      ipo={ipo}
+      onClose={onClose}
+      onAppliedChange={onAppliedChange}
+    />
+  );
+}
+
+function TrackApplicationModalContent({
+  ipo,
+  onClose,
+  onAppliedChange,
+}: {
+  ipo: IPO;
+  onClose: () => void;
+  onAppliedChange?: () => void;
+}) {
   const appliedRecords = getAppliedIpos();
   const existing = appliedRecords.find((r) => r.ipoId === ipo.id);
   const isAlreadyApplied = Boolean(existing);
@@ -38,21 +56,32 @@ export function TrackApplicationModal({
 
   // Keep lots in sync when opening for different IPO or existing record
   useEffect(() => {
-    if (existing) {
-      setLots(existing.lotsApplied || 1);
+    if (existing?.lotsApplied) {
+      setLots(existing.lotsApplied);
     } else {
       setLots(1);
     }
-  }, [ipo.id, existing]);
+  }, [ipo.id, existing?.lotsApplied]);
 
   // Derived financial calculations
-  const totalShares = lots * ipo.lotSize;
-  const totalInvestment = totalShares * ipo.maxPrice;
+  const totalShares = lots * (ipo.lotSize || 1);
+  const totalInvestment = totalShares * (ipo.maxPrice || 0);
   const gmpPerShare = ipo.gmp ?? 0;
   const baseEstimatedProfit = Math.round(totalShares * gmpPerShare);
-  const upsideProfit = Math.round(lots * ipo.scenarios.upside.profitPerLot);
-  const downsideProfit = Math.round(lots * ipo.scenarios.downside.profitPerLot);
   const gainPct = ipo.gmpPct ?? 0;
+
+  const upsideProfit = ipo.scenarios?.upside?.profitPerLot
+    ? Math.round(lots * ipo.scenarios.upside.profitPerLot)
+    : Math.round(totalShares * (gmpPerShare > 0 ? gmpPerShare * 1.35 : ipo.maxPrice * 0.12));
+
+  const downsideProfit = ipo.scenarios?.downside?.profitPerLot
+    ? Math.round(lots * ipo.scenarios.downside.profitPerLot)
+    : Math.round(totalShares * (gmpPerShare > 0 ? gmpPerShare * 0.35 : -ipo.maxPrice * 0.06));
+
+  const upsideGainPct =
+    ipo.scenarios?.upside?.gainPct ?? (gainPct > 0 ? +(gainPct * 1.35).toFixed(1) : 12);
+  const downsideGainPct =
+    ipo.scenarios?.downside?.gainPct ?? (gainPct > 0 ? +(gainPct * 0.35).toFixed(1) : -6);
 
   // Preset lot options based on Category
   const presets = useMemo(() => {
@@ -64,8 +93,9 @@ export function TrackApplicationModal({
       ];
     }
     // Mainboard
-    const sNiiLots = Math.max(2, Math.ceil(200_000 / (ipo.lotSize * ipo.maxPrice)));
-    const bNiiLots = Math.max(sNiiLots + 1, Math.ceil(1_000_000 / (ipo.lotSize * ipo.maxPrice)));
+    const lotCost = (ipo.lotSize || 1) * (ipo.maxPrice || 1);
+    const sNiiLots = Math.max(2, Math.ceil(200_000 / lotCost));
+    const bNiiLots = Math.max(sNiiLots + 1, Math.ceil(1_000_000 / lotCost));
 
     return [
       { label: "1 Lot (Retail)", lots: 1 },
@@ -261,14 +291,14 @@ export function TrackApplicationModal({
                 +{formatINR(upsideProfit)}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                At +{ipo.scenarios.upside.gainPct}% gain
+                At +{upsideGainPct}% gain
               </p>
             </div>
           </div>
 
           {/* Downside Scenario Disclaimer */}
           <div className="flex items-center justify-between rounded-lg border border-border/80 bg-background/50 px-3 py-2 text-[11px] text-muted-foreground">
-            <span>Downside Buffer ({ipo.scenarios.downside.gainPct}%):</span>
+            <span>Downside Buffer ({downsideGainPct}%):</span>
             <span className={downsideProfit >= 0 ? "text-muted-foreground" : "text-destructive font-medium"}>
               {formatINR(downsideProfit)}
             </span>
@@ -299,7 +329,9 @@ export function TrackApplicationModal({
             className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-primary bg-primary px-5 py-2.5 text-xs font-bold text-black shadow-glow hover:opacity-90 transition"
           >
             <CheckCircle2 className="h-4 w-4" />
-            {isAlreadyApplied ? `Update to ${lots} Lot${lots > 1 ? "s" : ""}` : `Confirm & Track ${lots} Lot${lots > 1 ? "s" : ""}`}
+            {isAlreadyApplied
+              ? `Update to ${lots} Lot${lots > 1 ? "s" : ""}`
+              : `Confirm & Track ${lots} Lot${lots > 1 ? "s" : ""}`}
           </button>
         </div>
       </div>
