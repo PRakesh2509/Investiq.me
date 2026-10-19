@@ -39,10 +39,17 @@ export function IpoAnalysisModal({
 }) {
   if (!isOpen || !ipo) return null;
 
-  const [lots, setLots] = useState(1);
   const appliedRecords = getAppliedIpos();
-  const isApplied = appliedRecords.some((r) => r.ipoId === ipo.id);
   const existingRecord = appliedRecords.find((r) => r.ipoId === ipo.id);
+  const isApplied = Boolean(existingRecord);
+  const [lots, setLots] = useState<number>(existingRecord?.lotsApplied || 1);
+
+  // Sync lots when record exists
+  useEffect(() => {
+    if (existingRecord?.lotsApplied) {
+      setLots(existingRecord.lotsApplied);
+    }
+  }, [existingRecord?.lotsApplied, ipo.id]);
 
   // Lot Calculator calculations
   const totalShares = lots * ipo.lotSize;
@@ -52,7 +59,7 @@ export function IpoAnalysisModal({
   const downsideProfit = Math.round(lots * ipo.scenarios.downside.profitPerLot);
 
   const handleToggleApply = () => {
-    if (isApplied) {
+    if (isApplied && lots === existingRecord?.lotsApplied) {
       removeAppliedIpo(ipo.id);
       toast.info(`Removed ${ipo.company} from your Applied IPOs list.`);
     } else {
@@ -65,16 +72,21 @@ export function IpoAnalysisModal({
         lotSize: ipo.lotSize,
         lotsApplied: lots,
         totalInvestment,
-        appliedDate: new Date().toISOString().slice(0, 10),
+        estimatedProfit: baseProfit,
+        appliedDate: existingRecord?.appliedDate || new Date().toISOString().slice(0, 10),
         allotmentDate: ipo.allotmentDate,
         listingDate: ipo.listingDate,
-        status: "applied",
+        status: existingRecord?.status || "applied",
         registrar: ipo.registrar,
         allotmentUrl: ipo.allotmentUrl,
         gmp: ipo.gmp,
       };
       saveAppliedIpo(record);
-      toast.success(`Marked ${ipo.company} as Applied (${lots} lot${lots > 1 ? "s" : ""})!`);
+      toast.success(
+        isApplied
+          ? `Updated ${ipo.company} to ${lots} lot${lots > 1 ? "s" : ""} (Est. profit: ₹${baseProfit.toLocaleString("en-IN")})!`
+          : `Marked ${ipo.company} as Applied (${lots} lot${lots > 1 ? "s" : ""} · Est. profit: ₹${baseProfit.toLocaleString("en-IN")})!`,
+      );
     }
     if (onAppliedChange) onAppliedChange();
   };
@@ -139,12 +151,18 @@ export function IpoAnalysisModal({
               onClick={handleToggleApply}
               className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition ${
                 isApplied
-                  ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400 hover:bg-destructive/20 hover:text-destructive hover:border-destructive/40"
+                  ? lots !== existingRecord?.lotsApplied
+                    ? "border-primary bg-primary text-black font-bold shadow-glow"
+                    : "border-emerald-500/50 bg-emerald-500/20 text-emerald-400 hover:bg-destructive/20 hover:text-destructive hover:border-destructive/40"
                   : "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20"
               }`}
             >
               <CheckCircle2 className="h-4 w-4" />
-              {isApplied ? "Applied ✓" : "Mark as Applied"}
+              {isApplied
+                ? lots !== existingRecord?.lotsApplied
+                  ? `Update to ${lots} Lot${lots > 1 ? "s" : ""}`
+                  : `Applied (${existingRecord?.lotsApplied || lots} Lot${(existingRecord?.lotsApplied || lots) > 1 ? "s" : ""}) ✓`
+                : `Apply (${lots} Lot${lots > 1 ? "s" : ""})`}
             </button>
           </div>
         </div>

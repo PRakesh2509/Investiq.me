@@ -43,6 +43,7 @@ import {
   type AppliedIpoRecord,
 } from "@/lib/applied-ipos";
 import { IpoAnalysisModal } from "@/components/IpoAnalysisModal";
+import { TrackApplicationModal } from "@/components/TrackApplicationModal";
 import { formatINR } from "@/lib/market-data";
 import { toast } from "sonner";
 
@@ -108,7 +109,14 @@ function IPOTracker() {
   const [sortBy, setSortBy] = useState<SortOption>("score");
   const [selectedIpo, setSelectedIpo] = useState<IPO | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [trackIpo, setTrackIpo] = useState<IPO | null>(null);
+  const [isTrackModalOpen, setIsTrackModalOpen] = useState(false);
   const [appliedList, setAppliedList] = useState<AppliedIpoRecord[]>([]);
+
+  const handleOpenTrack = (ipo: IPO) => {
+    setTrackIpo(ipo);
+    setIsTrackModalOpen(true);
+  };
 
   // Reload applied IPOs on mount and when changed
   const refreshApplied = () => {
@@ -390,6 +398,7 @@ function IPOTracker() {
           appliedList={activeApplied}
           allIpos={rawIpos}
           onAppliedChange={refreshApplied}
+          onOpenTrack={handleOpenTrack}
           onOpenAnalysis={(symbol) => {
             const match = rawIpos.find(
               (i) => i.symbol.toUpperCase() === symbol.toUpperCase(),
@@ -428,8 +437,9 @@ function IPOTracker() {
             <IpoCard
               key={ipo.id}
               ipo={ipo}
-              isApplied={appliedList.some((r) => r.ipoId === ipo.id)}
+              appliedRecord={appliedList.find((r) => r.ipoId === ipo.id)}
               onOpenAnalysis={() => handleOpenAnalysis(ipo)}
+              onOpenTrack={() => handleOpenTrack(ipo)}
               onAppliedChange={refreshApplied}
             />
           ))}
@@ -461,6 +471,14 @@ function IPOTracker() {
         onClose={() => setIsModalOpen(false)}
         onAppliedChange={refreshApplied}
       />
+
+      {/* Track Application & Lots Calculator Modal */}
+      <TrackApplicationModal
+        ipo={trackIpo}
+        isOpen={isTrackModalOpen}
+        onClose={() => setIsTrackModalOpen(false)}
+        onAppliedChange={refreshApplied}
+      />
     </div>
   );
 }
@@ -470,15 +488,20 @@ function IPOTracker() {
 // -----------------------------------------------------------------------------
 function IpoCard({
   ipo,
-  isApplied,
+  appliedRecord,
   onOpenAnalysis,
+  onOpenTrack,
   onAppliedChange,
 }: {
   ipo: IPO;
-  isApplied: boolean;
+  appliedRecord?: AppliedIpoRecord;
   onOpenAnalysis: () => void;
+  onOpenTrack: () => void;
   onAppliedChange: () => void;
 }) {
+  const isApplied = Boolean(appliedRecord);
+  const lotsApplied = appliedRecord?.lotsApplied || 1;
+
   const recBadgeClass =
     ipo.recommendation === "APPLY"
       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
@@ -494,35 +517,6 @@ function IpoCard({
       : ipo.status === "allotted"
       ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
       : "border-blue-500/30 bg-blue-500/10 text-blue-400";
-
-  const handleToggleApply = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isApplied) {
-      removeAppliedIpo(ipo.id);
-      toast.info(`Removed ${ipo.company} from Applied list`);
-    } else {
-      const record: AppliedIpoRecord = {
-        ipoId: ipo.id,
-        company: ipo.company,
-        symbol: ipo.symbol,
-        category: ipo.category,
-        price: ipo.maxPrice,
-        lotSize: ipo.lotSize,
-        lotsApplied: 1,
-        totalInvestment: ipo.minInvestment,
-        appliedDate: new Date().toISOString().slice(0, 10),
-        allotmentDate: ipo.allotmentDate,
-        listingDate: ipo.listingDate,
-        status: "applied",
-        registrar: ipo.registrar,
-        allotmentUrl: ipo.allotmentUrl,
-        gmp: ipo.gmp,
-      };
-      saveAppliedIpo(record);
-      toast.success(`Marked ${ipo.company} as Applied! (1 lot)`);
-    }
-    onAppliedChange();
-  };
 
   return (
     <article
@@ -693,15 +687,18 @@ function IpoCard({
       {/* Bottom Action Buttons */}
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40">
         <button
-          onClick={handleToggleApply}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenTrack();
+          }}
           className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
             isApplied
-              ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-400 hover:bg-destructive/20 hover:text-destructive hover:border-destructive/40"
+              ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25"
               : "border-border bg-background/80 text-muted-foreground hover:text-foreground hover:bg-surface"
           }`}
         >
           <CheckCircle2 className="h-3.5 w-3.5" />
-          {isApplied ? "Applied ✓" : "Track Application"}
+          {isApplied ? `Applied (${lotsApplied} Lot${lotsApplied > 1 ? "s" : ""}) ✓` : "Track Application"}
         </button>
 
         <div className="flex items-center gap-2">
@@ -736,12 +733,14 @@ function AppliedIposPanel({
   appliedList,
   allIpos,
   onAppliedChange,
+  onOpenTrack,
   onOpenAnalysis,
   onGoToOpen,
 }: {
   appliedList: AppliedIpoRecord[];
   allIpos: IPO[];
   onAppliedChange: () => void;
+  onOpenTrack: (ipo: IPO) => void;
   onOpenAnalysis: (symbol: string) => void;
   onGoToOpen: () => void;
 }) {
@@ -836,6 +835,11 @@ function AppliedIposPanel({
                 ? "bg-red-500/15 text-red-400 border-red-500/30"
                 : "bg-blue-500/15 text-blue-400 border-blue-500/30";
 
+            const ipoMatch = allIpos.find(
+              (i) => i.id === record.ipoId || i.symbol.toUpperCase() === record.symbol.toUpperCase(),
+            );
+            const estProfit = Math.round((record.gmp ?? 0) * record.lotSize * record.lotsApplied);
+
             return (
               <div
                 key={record.ipoId}
@@ -860,12 +864,24 @@ function AppliedIposPanel({
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                    <span>
+                    <span className="flex items-center gap-1">
                       Lots: <strong className="text-foreground">{record.lotsApplied}</strong> ({record.lotsApplied * record.lotSize} Shares)
+                      {ipoMatch && (
+                        <button
+                          onClick={() => onOpenTrack(ipoMatch)}
+                          className="ml-1 rounded bg-primary/10 border border-primary/30 px-1.5 py-0.5 text-[10px] font-bold text-primary hover:bg-primary/20 transition"
+                        >
+                          Change Lots
+                        </button>
+                      )}
                     </span>
                     <span>•</span>
                     <span>
                       Capital: <strong className="text-foreground">{formatINR(record.totalInvestment)}</strong>
+                    </span>
+                    <span>•</span>
+                    <span>
+                      Est. Profit (GMP): <strong className="text-emerald-400 font-bold">+{formatINR(estProfit)}</strong>
                     </span>
                     <span>•</span>
                     <span>
@@ -897,6 +913,17 @@ function AppliedIposPanel({
                       <option value="not_allotted" className="bg-hero text-red-400">Not Allotted</option>
                     </select>
                   </div>
+
+                  {ipoMatch && (
+                    <button
+                      onClick={() => onOpenTrack(ipoMatch)}
+                      className="inline-flex items-center gap-1 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition"
+                      title="Adjust lots and see updated profit"
+                    >
+                      <Calculator className="h-3.5 w-3.5" />
+                      Lots
+                    </button>
+                  )}
 
                   <a
                     href={record.allotmentUrl}

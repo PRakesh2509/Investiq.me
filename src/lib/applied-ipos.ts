@@ -7,6 +7,7 @@ export interface AppliedIpoRecord {
   lotSize: number;
   lotsApplied: number;
   totalInvestment: number;
+  estimatedProfit?: number;
   appliedDate: string; // ISO
   allotmentDate: string;
   listingDate: string;
