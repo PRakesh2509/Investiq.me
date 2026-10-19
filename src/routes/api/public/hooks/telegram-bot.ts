@@ -244,7 +244,7 @@ export const Route = createFileRoute("/api/public/hooks/telegram-bot")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const token = process.env.TELEGRAM_BOT_TOKEN;
+        const token = process.env.TELEGRAM_BOT_TOKEN || "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc";
         if (!token) return Response.json({ ok: false, error: "TELEGRAM_BOT_TOKEN not configured" }, { status: 500 });
 
         let update: any;
@@ -252,6 +252,29 @@ export const Route = createFileRoute("/api/public/hooks/telegram-bot")({
           update = await request.json();
         } catch {
           return Response.json({ ok: false, error: "invalid json" }, { status: 400 });
+        }
+
+        // Direct trade signal action dispatched from Trading Terminal Workstation
+        if (update?.action === "trade_signal") {
+          const targetChatId = process.env.TELEGRAM_CHAT_ID || "7350570004";
+          const isCall = update.direction === "BUY_CALL" || update.contract?.includes("CE");
+          const msg = [
+            `⚡ <b>INVESTIQ TRADING TERMINAL SIGNAL</b>`,
+            ``,
+            `🎯 <b>Contract:</b> <code>${update.contract || update.instrument}</code>`,
+            `📊 <b>Direction:</b> ${isCall ? "🟢 BUY CALL" : "🔴 BUY PUT"}`,
+            `📍 <b>Spot Entry:</b> ${update.entry}`,
+            `🎯 <b>Target 1 (TP1):</b> ${update.tp1}`,
+            `🎯 <b>Target 2 (TP2):</b> ${update.tp2}`,
+            `🛑 <b>Stop Loss (SL):</b> ${update.sl}`,
+            `⏱ <b>Source:</b> TradingView Confluence Engine`,
+            ``,
+            `🔗 <a href="https://www.investiqq.me/desktop/terminal">Open Live Terminal</a>`,
+            `⚠️ <i>Institutional education & research setup. Trade responsibly.</i>`,
+          ].join("\n");
+
+          await sendMessage(token, targetChatId, msg);
+          return Response.json({ ok: true, sentTo: targetChatId });
         }
 
         const message = update?.message ?? update?.edited_message;
