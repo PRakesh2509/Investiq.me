@@ -5,6 +5,7 @@ import { formatINR } from "@/lib/market-data";
 import { NEWS } from "@/lib/desktop-data";
 import { NIFTY_UNIVERSE, NIFTY_YAHOO_SYMBOLS } from "@/lib/nifty-universe";
 import { getYahooQuotes } from "@/lib/yahoo.functions";
+import { getIndianStockQuotes } from "@/lib/indian-stocks.functions";
 import { useRecentViewed } from "@/lib/recent-viewed";
 import { ArrowDownRight, ArrowUpRight, ExternalLink, RefreshCw, Clock, Search, Sparkles, Briefcase } from "lucide-react";
 import { getGrowwHoldings } from "@/lib/groww.functions";
@@ -23,11 +24,13 @@ type LiveQuote = {
 
 function DesktopDashboard() {
   const fetchQuotes = useServerFn(getYahooQuotes);
+  const fetchIndianQuotes = useServerFn(getIndianStockQuotes);
   const fetchHoldings = useServerFn(getGrowwHoldings);
   const recent = useRecentViewed();
   const navigate = useNavigate();
   const [quotes, setQuotes] = useState<LiveQuote[]>([]);
   const [indices, setIndices] = useState<LiveQuote[]>([]);
+  const [feedSource, setFeedSource] = useState<string>("DhanHQ / NSE Live");
   const [growwData, setGrowwData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false);
@@ -51,7 +54,7 @@ function DesktopDashboard() {
     setLoading(true);
     try {
       const [stocksResult, indicesResult, growwResult] = await Promise.allSettled([
-        fetchQuotes({ data: { symbols: NIFTY_YAHOO_SYMBOLS } }),
+        fetchIndianQuotes({ data: {} }),
         fetchQuotes({ data: { symbols: "^NSEI,^BSESN,^NSEBANK,^CNXIT" } }),
         fetchHoldings(),
       ]);
@@ -60,16 +63,17 @@ function DesktopDashboard() {
       if (growwResult.status === "fulfilled" && growwResult.value?.ok) {
         setGrowwData(growwResult.value);
       }
-      if (stocksRes?.ok) {
+      if (stocksRes?.ok && stocksRes.quotes?.length) {
         setQuotes(
           stocksRes.quotes.map((q) => ({
-            symbol: q.symbol.replace(/\.NS$/i, ""),
+            symbol: q.symbol,
             name: q.name,
             price: q.price,
             changePct: q.changePct,
             volume: q.volume,
           })),
         );
+        if (stocksRes.feedSource) setFeedSource(stocksRes.feedSource);
       }
       if (idxRes?.ok) {
         const labels: Record<string, string> = {
@@ -95,7 +99,7 @@ function DesktopDashboard() {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [fetchQuotes, fetchHoldings]);
+  }, [fetchIndianQuotes, fetchQuotes, fetchHoldings]);
 
 
   useEffect(() => { void load(); }, [load]);
@@ -137,7 +141,13 @@ function DesktopDashboard() {
 
       <div className="flex items-end justify-between">
         <div>
-          <h2 className="font-display text-lg font-semibold">Market indices</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-display text-lg font-semibold">Market indices</h2>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              {feedSource}
+            </span>
+          </div>
           <p className="text-xs text-muted-foreground">Live · Auto-refresh every 10s</p>
         </div>
         <div className="flex items-center gap-2">

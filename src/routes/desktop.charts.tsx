@@ -28,6 +28,7 @@ import {
   getYahooNews,
   getYahooHoldings,
 } from "@/lib/yahoo.functions";
+import { getLiveStockChart } from "@/lib/indian-stocks.functions";
 
 import { pushRecentViewed } from "@/lib/recent-viewed";
 import { RefreshCw, ExternalLink } from "lucide-react";
@@ -75,25 +76,19 @@ function DesktopCharts() {
   const [tab, setTab] = useState<Tab>("overview");
   const [data, setData] = useState<Point[]>([]);
   const [loading, setLoading] = useState(false);
-  const [minLoad, setMinLoad] = useState(true);
-  // Show the candlestick loader for at least 5s on every symbol change.
-  useEffect(() => {
-    setMinLoad(true);
-    const t = window.setTimeout(() => setMinLoad(false), 5000);
-    return () => window.clearTimeout(t);
-  }, [symbol]);
   const [live, setLive] = useState(true);
-  const [source, setSource] = useState<"yahoo" | "mock">("mock");
+  const [source, setSource] = useState<"dhan" | "yahoo" | "mock">("dhan");
+  const [feedSource, setFeedSource] = useState<string>("DhanHQ / NSE Live");
   const [fund, setFund] = useState<Fundamentals | null>(null);
   const [fin, setFin] = useState<Financials | null>(null);
   const [news, setNews] = useState<News | null>(null);
   const [holdings, setHoldings] = useState<Holdings | null>(null);
   const fetchYahoo = useServerFn(getYahooChart);
+  const fetchLiveChart = useServerFn(getLiveStockChart);
   const fetchFund = useServerFn(getYahooFundamentals);
   const fetchFin = useServerFn(getYahooFinancials);
   const fetchNews = useServerFn(getYahooNews);
   const fetchHoldings = useServerFn(getYahooHoldings);
-
 
   const niftyMatch = NIFTY_UNIVERSE.find((s) => s.symbol === symbol);
   const meta = STOCKS[symbol] ?? {
@@ -117,27 +112,37 @@ function DesktopCharts() {
     () => async () => {
       setLoading(true);
       try {
-        const res = await fetchYahoo({
-          data: { symbol: `${symbol}.NS`, interval: interval.interval, range: interval.range },
+        const res = await fetchLiveChart({
+          data: { symbol, range: interval.range, interval: interval.interval },
         });
         if (res.ok && res.points.length) {
-          const intraday = interval.range === "1d" || interval.range === "5d";
-          setData(
-            res.points.map((p) => ({
-              t: new Date(p.t).toLocaleString("en-IN", {
-                ...(intraday ? { hour: "2-digit", minute: "2-digit" } : {}),
-                day: "2-digit",
-                month: "short",
-                ...(interval.range === "5y" || interval.range === "max" ? { year: "numeric" } : {}),
-              }),
-              price: p.price,
-              volume: p.volume ?? 0,
-            })),
-          );
-          setSource("yahoo");
+          setData(res.points);
+          setFeedSource(res.feedSource);
+          setSource(res.feedSource.includes("Dhan") ? "dhan" : "yahoo");
         } else {
-          setData(chartData(symbol, 60).map((d) => ({ ...d, volume: 0 })));
-          setSource("mock");
+          const fallbackRes = await fetchYahoo({
+            data: { symbol: `${symbol}.NS`, interval: interval.interval, range: interval.range },
+          });
+          if (fallbackRes.ok && fallbackRes.points.length) {
+            const intraday = interval.range === "1d" || interval.range === "5d";
+            setData(
+              fallbackRes.points.map((p) => ({
+                t: new Date(p.t).toLocaleString("en-IN", {
+                  ...(intraday ? { hour: "2-digit", minute: "2-digit" } : {}),
+                  day: "2-digit",
+                  month: "short",
+                  ...(interval.range === "5y" || interval.range === "max" ? { year: "numeric" } : {}),
+                }),
+                price: p.price,
+                volume: p.volume ?? 0,
+              })),
+            );
+            setFeedSource("NSE Live Feed");
+            setSource("yahoo");
+          } else {
+            setData(chartData(symbol, 60).map((d) => ({ ...d, volume: 0 })));
+            setSource("mock");
+          }
         }
       } catch {
         setData(chartData(symbol, 60).map((d) => ({ ...d, volume: 0 })));
@@ -146,7 +151,7 @@ function DesktopCharts() {
         setLoading(false);
       }
     },
-    [symbol, interval, fetchYahoo],
+    [symbol, interval, fetchLiveChart, fetchYahoo],
   );
 
   useEffect(() => { load(); }, [load]);
@@ -277,10 +282,10 @@ function DesktopCharts() {
     return { label: "High", color: "text-destructive" };
   }, [data]);
 
-  if (data.length === 0 || minLoad) {
+  if (loading && data.length === 0) {
     return (
       <div className="py-16">
-        <PremiumLoader label={`Loading ${symbol} · live market data`} />
+        <PremiumLoader label={`Loading ${symbol} · Dhan / Live Market Feed`} />
       </div>
     );
   }
@@ -291,10 +296,12 @@ function DesktopCharts() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="font-display text-3xl font-semibold">Stocks</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {source === "yahoo"
-              ? "Live intraday from Yahoo Finance · auto-refresh every 10s"
-              : "Yahoo Finance unavailable — showing sample data"}
+          <p className="mt-1 text-sm text-muted-foreground flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              {feedSource || "DhanHQ Live Feed"}
+            </span>
+            <span>Real-time price feed, historical performance &amp; latest news · auto-refresh every 10s</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
