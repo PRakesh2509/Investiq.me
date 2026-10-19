@@ -30,7 +30,10 @@ export function DhanConnectModal({
   const refreshStatus = async () => {
     try {
       const res = await fetchStatus();
-      setStatus(res);
+      setStatus(res as any);
+      if ((res as any).configuredClientId) {
+        setClientId((prev) => prev || (res as any).configuredClientId);
+      }
       if (onStatusChange) onStatusChange(res.feedSource);
     } catch {}
   };

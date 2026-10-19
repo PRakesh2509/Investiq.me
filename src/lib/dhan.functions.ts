@@ -10,11 +10,13 @@ import fs from "fs";
 import path from "path";
 
 export const getDhanStatus = createServerFn({ method: "GET" }).handler(async () => {
+  const envClientId = process.env.DHAN_CLIENT_ID?.trim() || "1114340693";
   const creds = getDhanCredentials();
   if (!creds) {
     return {
       connected: false,
       clientId: null,
+      configuredClientId: envClientId,
       feedSource: "NSE Real-time Feed (Fallback Active)",
     };
   }
@@ -25,6 +27,7 @@ export const getDhanStatus = createServerFn({ method: "GET" }).handler(async () 
   return {
     connected: true,
     clientId: masked,
+    configuredClientId: cid,
     feedSource: "DhanHQ Live Direct Feed",
   };
 });
