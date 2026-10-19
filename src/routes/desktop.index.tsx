@@ -5,10 +5,12 @@ import { formatINR } from "@/lib/market-data";
 import { NEWS } from "@/lib/desktop-data";
 import { NIFTY_UNIVERSE, NIFTY_YAHOO_SYMBOLS } from "@/lib/nifty-universe";
 import { getYahooQuotes } from "@/lib/yahoo.functions";
-import { getIndianStockQuotes } from "@/lib/indian-stocks.functions";
+import { getIndianStockQuotes, LiveStockQuote } from "@/lib/indian-stocks.functions";
 import { useRecentViewed } from "@/lib/recent-viewed";
-import { ArrowDownRight, ArrowUpRight, ExternalLink, RefreshCw, Clock, Search, Sparkles, Briefcase } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ExternalLink, RefreshCw, Clock, Search, Sparkles, Briefcase, Zap } from "lucide-react";
 import { getGrowwHoldings } from "@/lib/groww.functions";
+import { IndianStocksLiveWatch } from "@/components/IndianStocksLiveWatch";
+import { DhanConnectModal } from "@/components/DhanConnectModal";
 
 export const Route = createFileRoute("/desktop/")({
   component: DesktopDashboard,
@@ -29,10 +31,12 @@ function DesktopDashboard() {
   const recent = useRecentViewed();
   const navigate = useNavigate();
   const [quotes, setQuotes] = useState<LiveQuote[]>([]);
+  const [fullQuotes, setFullQuotes] = useState<LiveStockQuote[]>([]);
   const [indices, setIndices] = useState<LiveQuote[]>([]);
   const [feedSource, setFeedSource] = useState<string>("DhanHQ / NSE Live");
   const [growwData, setGrowwData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [dhanModalOpen, setDhanModalOpen] = useState(false);
   const loadingRef = useRef(false);
   const [live, setLive] = useState(true);
   const [heroQuery, setHeroQuery] = useState("");
@@ -64,6 +68,7 @@ function DesktopDashboard() {
         setGrowwData(growwResult.value);
       }
       if (stocksRes?.ok && stocksRes.quotes?.length) {
+        setFullQuotes(stocksRes.quotes);
         setQuotes(
           stocksRes.quotes.map((q) => ({
             symbol: q.symbol,
@@ -143,10 +148,14 @@ function DesktopDashboard() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="font-display text-lg font-semibold">Market indices</h2>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              {feedSource}
-            </span>
+            <button
+              onClick={() => setDhanModalOpen(true)}
+              title="Click to connect or manage DhanHQ API feed"
+              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-400 hover:bg-emerald-500/20 transition cursor-pointer"
+            >
+              <Zap className="h-3 w-3" />
+              <span>{feedSource}</span>
+            </button>
           </div>
           <p className="text-xs text-muted-foreground">Live · Auto-refresh every 10s</p>
         </div>
@@ -343,6 +352,20 @@ function DesktopDashboard() {
         <MoverCard title="Top gainers (live)" quotes={gainers} up />
         <MoverCard title="Top losers (live)" quotes={losers} />
       </div>
+
+      {/* Indian Stocks Live Screener */}
+      <IndianStocksLiveWatch
+        quotes={fullQuotes}
+        loading={loading}
+        feedSource={feedSource}
+        onOpenDhanModal={() => setDhanModalOpen(true)}
+      />
+
+      <DhanConnectModal
+        isOpen={dhanModalOpen}
+        onClose={() => setDhanModalOpen(false)}
+        onStatusChange={(src) => setFeedSource(src)}
+      />
 
       {/* Sector heatmap */}
       <div className="rounded-2xl border border-border bg-surface/60 p-5">

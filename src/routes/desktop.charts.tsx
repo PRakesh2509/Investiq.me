@@ -28,14 +28,15 @@ import {
   getYahooNews,
   getYahooHoldings,
 } from "@/lib/yahoo.functions";
-import { getLiveStockChart } from "@/lib/indian-stocks.functions";
-
+import { getLiveStockChart, getIndianStockQuotes, LiveStockQuote } from "@/lib/indian-stocks.functions";
 import { pushRecentViewed } from "@/lib/recent-viewed";
-import { RefreshCw, ExternalLink } from "lucide-react";
+import { RefreshCw, ExternalLink, Zap, Search, ChevronDown, Check, Sparkles } from "lucide-react";
+import { DhanConnectModal } from "@/components/DhanConnectModal";
 
 export const Route = createFileRoute("/desktop/charts")({
   validateSearch: (s: Record<string, unknown>) => ({
     symbol: typeof s.symbol === "string" ? s.symbol.toUpperCase() : undefined,
+    tab: typeof s.tab === "string" ? (s.tab as "overview" | "financials" | "news") : undefined,
   }),
   component: DesktopCharts,
 });
@@ -66,14 +67,34 @@ const SECTOR_PALETTE = [
 const titleize = (s: string) =>
   s.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
+const SECTOR_CATEGORIES: Record<string, string[]> = {
+  "Top 10": ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN", "BHARTIARTL", "ITC", "LTIM", "TATAMOTORS"],
+  "Banking & Fin": ["HDFCBANK", "ICICIBANK", "SBIN", "AXISBANK", "KOTAKBANK", "BAJFINANCE", "BAJAJFINSV", "PNB", "BANKBARODA"],
+  "IT Services": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "LTIM", "PERSISTENT", "MPHASIS"],
+  "Auto": ["TATAMOTORS", "MARUTI", "M&M", "BAJAJ-AUTO", "EICHERMOT", "TVSMOTOR", "HEROMOTOCO"],
+  "Energy": ["RELIANCE", "ONGC", "IOC", "BPCL", "HINDPETRO", "GAIL", "NTPC", "POWERGRID", "TATAPOWER"],
+  "Pharma": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "TORNTPHARM", "LUPIN", "APOLLOHOSP"],
+  "FMCG": ["ITC", "HINDUNILVR", "NESTLEIND", "BRITANNIA", "GODREJCP", "DABUR", "VBL", "TATACONSUM"],
+  "Metals": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "COALINDIA", "VEDL"],
+};
 
 function DesktopCharts() {
   const search = Route.useSearch();
   const [symbol, setSymbol] = useState(search.symbol || "RELIANCE");
-  useEffect(() => { if (search.symbol) setSymbol(search.symbol); }, [search.symbol]);
-  useEffect(() => { if (symbol) pushRecentViewed(symbol); }, [symbol]);
   const [interval, setInterval] = useState(INTERVALS[1]);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>(search.tab || "overview");
+  useEffect(() => {
+    if (search.symbol) setSymbol(search.symbol);
+    if (search.tab) setTab(search.tab as Tab);
+  }, [search.symbol, search.tab]);
+  useEffect(() => { if (symbol) pushRecentViewed(symbol); }, [symbol]);
+
+  const [dhanModalOpen, setDhanModalOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState("Top 10");
+  const [stockSearchQuery, setStockSearchQuery] = useState("");
+  const [showStockDropdown, setShowStockDropdown] = useState(false);
+  const [quickQuotes, setQuickQuotes] = useState<Record<string, { price: number; changePct: number }>>({});
+
   const [data, setData] = useState<Point[]>([]);
   const [loading, setLoading] = useState(false);
   const [live, setLive] = useState(true);
@@ -85,10 +106,32 @@ function DesktopCharts() {
   const [holdings, setHoldings] = useState<Holdings | null>(null);
   const fetchYahoo = useServerFn(getYahooChart);
   const fetchLiveChart = useServerFn(getLiveStockChart);
+  const fetchIndianQuotes = useServerFn(getIndianStockQuotes);
   const fetchFund = useServerFn(getYahooFundamentals);
   const fetchFin = useServerFn(getYahooFinancials);
   const fetchNews = useServerFn(getYahooNews);
   const fetchHoldings = useServerFn(getYahooHoldings);
+
+  // Quick live quotes for the active category pills
+  useEffect(() => {
+    let cancelled = false;
+    const symbols = SECTOR_CATEGORIES[activeCategory] || [];
+    if (!symbols.length) return;
+    (async () => {
+      try {
+        const res = await fetchIndianQuotes({ data: { symbols: symbols.join(",") } });
+        if (cancelled || !res.ok) return;
+        const qMap: Record<string, { price: number; changePct: number }> = {};
+        for (const q of res.quotes) {
+          qMap[q.symbol] = { price: q.price, changePct: q.changePct };
+        }
+        setQuickQuotes((prev) => ({ ...prev, ...qMap }));
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCategory, fetchIndianQuotes]);
 
   const niftyMatch = NIFTY_UNIVERSE.find((s) => s.symbol === symbol);
   const meta = STOCKS[symbol] ?? {
@@ -297,10 +340,14 @@ function DesktopCharts() {
         <div>
           <h1 className="font-display text-3xl font-semibold">Stocks</h1>
           <p className="mt-1 text-sm text-muted-foreground flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              {feedSource || "DhanHQ Live Feed"}
-            </span>
+            <button
+              onClick={() => setDhanModalOpen(true)}
+              title="Click to connect or manage DhanHQ API feed"
+              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20 transition cursor-pointer"
+            >
+              <Zap className="h-3 w-3" />
+              <span>{feedSource || "DhanHQ Live Feed"}</span>
+            </button>
             <span>Real-time price feed, historical performance &amp; latest news · auto-refresh every 10s</span>
           </p>
         </div>
@@ -320,20 +367,110 @@ function DesktopCharts() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {DESKTOP_SYMBOLS.map((s) => (
-          <button
-            key={s}
-            onClick={() => setSymbol(s)}
-            className={`rounded-lg border px-3 py-1.5 text-xs transition ${
-              symbol === s
-                ? "border-transparent bg-gradient-primary text-primary-foreground shadow-glow"
-                : "border-border bg-surface/60 text-muted-foreground hover:bg-accent hover:text-foreground"
-            }`}
-          >
-            {s}.NS
-          </button>
-        ))}
+      {/* Interactive Indian Stocks Selector & Live Search */}
+      <div className="rounded-2xl border border-border bg-surface/60 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Sector category buttons */}
+          <div className="flex flex-wrap gap-1.5 overflow-x-auto pb-1">
+            {Object.keys(SECTOR_CATEGORIES).map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                  activeCategory === cat
+                    ? "bg-primary text-primary-foreground shadow-glow"
+                    : "border border-border/70 bg-background/40 text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Quick search input */}
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={stockSearchQuery}
+              onChange={(e) => {
+                setStockSearchQuery(e.target.value);
+                setShowStockDropdown(true);
+              }}
+              onFocus={() => setShowStockDropdown(true)}
+              onBlur={() => setTimeout(() => setShowStockDropdown(false), 200)}
+              placeholder="Search Indian stocks (e.g. RELIANCE, TCS)..."
+              className="h-8 w-full rounded-lg border border-border bg-background/50 pl-8 pr-3 text-xs outline-none focus:border-primary placeholder:text-muted-foreground"
+            />
+            {showStockDropdown && stockSearchQuery.trim() && (
+              <div className="absolute left-0 right-0 top-10 z-40 max-h-56 overflow-y-auto rounded-lg border border-border bg-background shadow-2xl">
+                {NIFTY_UNIVERSE.filter(
+                  (s) =>
+                    s.symbol.includes(stockSearchQuery.trim().toUpperCase()) ||
+                    s.name.toUpperCase().includes(stockSearchQuery.trim().toUpperCase()),
+                )
+                  .slice(0, 8)
+                  .map((s) => (
+                    <button
+                      key={s.symbol}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setSymbol(s.symbol);
+                        setStockSearchQuery("");
+                        setShowStockDropdown(false);
+                      }}
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-accent"
+                    >
+                      <div>
+                        <span className="font-semibold text-foreground">{s.symbol}</span>
+                        <span className="ml-2 text-muted-foreground">{s.name}</span>
+                      </div>
+                      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                        {s.sector}
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Stock chips for active sector with live price and % change */}
+        <div className="flex flex-wrap gap-2 pt-1 border-t border-border/50">
+          {(SECTOR_CATEGORIES[activeCategory] || []).map((s) => {
+            const q = quickQuotes[s];
+            const isSelected = symbol === s;
+            const pos = (q?.changePct ?? 0) >= 0;
+            return (
+              <button
+                key={s}
+                onClick={() => setSymbol(s)}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                  isSelected
+                    ? "border-transparent bg-gradient-primary text-primary-foreground shadow-glow"
+                    : "border-border bg-background/50 text-muted-foreground hover:border-primary/50 hover:bg-accent hover:text-foreground"
+                }`}
+              >
+                <span>{s}</span>
+                {q && (
+                  <span
+                    className={`text-[10px] tabular-nums font-semibold ${
+                      isSelected
+                        ? "text-primary-foreground/90"
+                        : pos
+                        ? "text-success"
+                        : "text-destructive"
+                    }`}
+                  >
+                    {formatINR(q.price)} ({pos ? "+" : ""}
+                    {q.changePct.toFixed(1)}%)
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Header card */}
@@ -653,6 +790,12 @@ function DesktopCharts() {
           </div>
         </div>
       </div>
+
+      <DhanConnectModal
+        isOpen={dhanModalOpen}
+        onClose={() => setDhanModalOpen(false)}
+        onStatusChange={(src) => setFeedSource(src)}
+      />
     </div>
   );
 }

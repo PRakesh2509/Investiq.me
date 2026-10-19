@@ -3,6 +3,8 @@
  * Docs: https://dhanhq.co/docs/v2/
  */
 import dhanScripMap from "./dhan-scrip-map.json" with { type: "json" };
+import fs from "fs";
+import path from "path";
 
 const DHAN_BASE = "https://api.dhan.co";
 
@@ -11,13 +13,83 @@ export interface DhanCredentials {
   accessToken: string;
 }
 
+let runtimeCreds: DhanCredentials | null = null;
+
+export function setDhanRuntimeCredentials(creds: DhanCredentials | null) {
+  runtimeCreds = creds;
+}
+
 export function getDhanCredentials(): DhanCredentials | null {
+  if (runtimeCreds?.clientId && runtimeCreds?.accessToken) {
+    return runtimeCreds;
+  }
   const clientId = process.env.DHAN_CLIENT_ID?.trim();
   const accessToken = process.env.DHAN_ACCESS_TOKEN?.trim();
   if (clientId && accessToken) {
     return { clientId, accessToken };
   }
   return null;
+}
+
+export async function testDhanConnection(
+  creds: DhanCredentials,
+): Promise<{ ok: boolean; message?: string }> {
+  try {
+    const res = await fetch(`${DHAN_BASE}/v2/marketfeed/ltp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "client-id": creds.clientId,
+        "access-token": creds.accessToken,
+      },
+      body: JSON.stringify({
+        NSE_EQ: [2885], // RELIANCE
+      }),
+    });
+
+    if (res.status === 200) {
+      const json = (await res.json()) as any;
+      if (json?.status === "success" || json?.data) {
+        return { ok: true, message: "DhanHQ API authenticated successfully" };
+      }
+    }
+
+    const errText = await res.text().catch(() => "");
+    return {
+      ok: false,
+      message: `DhanHQ returned status ${res.status}: ${errText.slice(0, 100) || "Invalid credentials or expired token"}`,
+    };
+  } catch (err: any) {
+    return { ok: false, message: err?.message || "Failed to reach DhanHQ servers" };
+  }
+}
+
+export function persistDhanCredentials(creds: DhanCredentials): boolean {
+  try {
+    setDhanRuntimeCredentials(creds);
+    process.env.DHAN_CLIENT_ID = creds.clientId;
+    process.env.DHAN_ACCESS_TOKEN = creds.accessToken;
+
+    const envPath = path.resolve(process.cwd(), ".env");
+    if (fs.existsSync(envPath)) {
+      let content = fs.readFileSync(envPath, "utf8");
+      if (content.includes("DHAN_CLIENT_ID=")) {
+        content = content.replace(/DHAN_CLIENT_ID=.*/g, `DHAN_CLIENT_ID="${creds.clientId}"`);
+      } else {
+        content += `\nDHAN_CLIENT_ID="${creds.clientId}"`;
+      }
+      if (content.includes("DHAN_ACCESS_TOKEN=")) {
+        content = content.replace(/DHAN_ACCESS_TOKEN=.*/g, `DHAN_ACCESS_TOKEN="${creds.accessToken}"`);
+      } else {
+        content += `\nDHAN_ACCESS_TOKEN="${creds.accessToken}"`;
+      }
+      fs.writeFileSync(envPath, content, "utf8");
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getDhanSecurityId(symbol: string): number | null {
