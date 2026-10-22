@@ -45,6 +45,10 @@ import { Route as ApiPublicHooksPostmarketAlertRouteImport } from './routes/api/
 import { Route as ApiPublicHooksPremarketAlertRouteImport } from './routes/api/public/hooks/premarket-alert'
 import { Route as ApiPublicHooksRsiAlertRouteImport } from './routes/api/public/hooks/rsi-alert'
 import { Route as ApiPublicHooksTelegramBotRouteImport } from './routes/api/public/hooks/telegram-bot'
+import { Route as ApiV1AuthVerifyRouteImport } from './routes/api/v1/auth/verify'
+import { Route as ApiV1FnoSignalsRouteImport } from './routes/api/v1/fno/signals'
+import { Route as ApiV1GlobalSignalsRouteImport } from './routes/api/v1/global/signals'
+import { Route as ApiV1TradesOrderRouteImport } from './routes/api/v1/trades/order'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -231,6 +235,26 @@ const ApiPublicHooksTelegramBotRoute =
     path: '/api/public/hooks/telegram-bot',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1AuthVerifyRoute = ApiV1AuthVerifyRouteImport.update({
+  id: '/api/v1/auth/verify',
+  path: '/api/v1/auth/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1FnoSignalsRoute = ApiV1FnoSignalsRouteImport.update({
+  id: '/api/v1/fno/signals',
+  path: '/api/v1/fno/signals',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1GlobalSignalsRoute = ApiV1GlobalSignalsRouteImport.update({
+  id: '/api/v1/global/signals',
+  path: '/api/v1/global/signals',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1TradesOrderRoute = ApiV1TradesOrderRouteImport.update({
+  id: '/api/v1/trades/order',
+  path: '/api/v1/trades/order',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -269,6 +293,10 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/premarket-alert': typeof ApiPublicHooksPremarketAlertRoute
   '/api/public/hooks/rsi-alert': typeof ApiPublicHooksRsiAlertRoute
   '/api/public/hooks/telegram-bot': typeof ApiPublicHooksTelegramBotRoute
+  '/api/v1/auth/verify': typeof ApiV1AuthVerifyRoute
+  '/api/v1/fno/signals': typeof ApiV1FnoSignalsRoute
+  '/api/v1/global/signals': typeof ApiV1GlobalSignalsRoute
+  '/api/v1/trades/order': typeof ApiV1TradesOrderRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -306,6 +334,10 @@ export interface FileRoutesByTo {
   '/api/public/hooks/premarket-alert': typeof ApiPublicHooksPremarketAlertRoute
   '/api/public/hooks/rsi-alert': typeof ApiPublicHooksRsiAlertRoute
   '/api/public/hooks/telegram-bot': typeof ApiPublicHooksTelegramBotRoute
+  '/api/v1/auth/verify': typeof ApiV1AuthVerifyRoute
+  '/api/v1/fno/signals': typeof ApiV1FnoSignalsRoute
+  '/api/v1/global/signals': typeof ApiV1GlobalSignalsRoute
+  '/api/v1/trades/order': typeof ApiV1TradesOrderRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -345,6 +377,10 @@ export interface FileRoutesById {
   '/api/public/hooks/premarket-alert': typeof ApiPublicHooksPremarketAlertRoute
   '/api/public/hooks/rsi-alert': typeof ApiPublicHooksRsiAlertRoute
   '/api/public/hooks/telegram-bot': typeof ApiPublicHooksTelegramBotRoute
+  '/api/v1/auth/verify': typeof ApiV1AuthVerifyRoute
+  '/api/v1/fno/signals': typeof ApiV1FnoSignalsRoute
+  '/api/v1/global/signals': typeof ApiV1GlobalSignalsRoute
+  '/api/v1/trades/order': typeof ApiV1TradesOrderRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -385,6 +421,10 @@ export interface FileRouteTypes {
     | '/api/public/hooks/premarket-alert'
     | '/api/public/hooks/rsi-alert'
     | '/api/public/hooks/telegram-bot'
+    | '/api/v1/auth/verify'
+    | '/api/v1/fno/signals'
+    | '/api/v1/global/signals'
+    | '/api/v1/trades/order'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -422,6 +462,10 @@ export interface FileRouteTypes {
     | '/api/public/hooks/premarket-alert'
     | '/api/public/hooks/rsi-alert'
     | '/api/public/hooks/telegram-bot'
+    | '/api/v1/auth/verify'
+    | '/api/v1/fno/signals'
+    | '/api/v1/global/signals'
+    | '/api/v1/trades/order'
   id:
     | '__root__'
     | '/'
@@ -460,6 +504,10 @@ export interface FileRouteTypes {
     | '/api/public/hooks/premarket-alert'
     | '/api/public/hooks/rsi-alert'
     | '/api/public/hooks/telegram-bot'
+    | '/api/v1/auth/verify'
+    | '/api/v1/fno/signals'
+    | '/api/v1/global/signals'
+    | '/api/v1/trades/order'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -488,6 +536,10 @@ export interface RootRouteChildren {
   ApiPublicHooksPremarketAlertRoute: typeof ApiPublicHooksPremarketAlertRoute
   ApiPublicHooksRsiAlertRoute: typeof ApiPublicHooksRsiAlertRoute
   ApiPublicHooksTelegramBotRoute: typeof ApiPublicHooksTelegramBotRoute
+  ApiV1AuthVerifyRoute: typeof ApiV1AuthVerifyRoute
+  ApiV1FnoSignalsRoute: typeof ApiV1FnoSignalsRoute
+  ApiV1GlobalSignalsRoute: typeof ApiV1GlobalSignalsRoute
+  ApiV1TradesOrderRoute: typeof ApiV1TradesOrderRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -744,6 +796,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksTelegramBotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/auth/verify': {
+      id: '/api/v1/auth/verify'
+      path: '/api/v1/auth/verify'
+      fullPath: '/api/v1/auth/verify'
+      preLoaderRoute: typeof ApiV1AuthVerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/fno/signals': {
+      id: '/api/v1/fno/signals'
+      path: '/api/v1/fno/signals'
+      fullPath: '/api/v1/fno/signals'
+      preLoaderRoute: typeof ApiV1FnoSignalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/global/signals': {
+      id: '/api/v1/global/signals'
+      path: '/api/v1/global/signals'
+      fullPath: '/api/v1/global/signals'
+      preLoaderRoute: typeof ApiV1GlobalSignalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/trades/order': {
+      id: '/api/v1/trades/order'
+      path: '/api/v1/trades/order'
+      fullPath: '/api/v1/trades/order'
+      preLoaderRoute: typeof ApiV1TradesOrderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -804,6 +884,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksPremarketAlertRoute: ApiPublicHooksPremarketAlertRoute,
   ApiPublicHooksRsiAlertRoute: ApiPublicHooksRsiAlertRoute,
   ApiPublicHooksTelegramBotRoute: ApiPublicHooksTelegramBotRoute,
+  ApiV1AuthVerifyRoute: ApiV1AuthVerifyRoute,
+  ApiV1FnoSignalsRoute: ApiV1FnoSignalsRoute,
+  ApiV1GlobalSignalsRoute: ApiV1GlobalSignalsRoute,
+  ApiV1TradesOrderRoute: ApiV1TradesOrderRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

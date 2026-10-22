@@ -35,21 +35,26 @@ interface AdminSettings {
   colRSI: string;
   colPrice: string;
 
-  // 1. Webpage API Key
+  // Dedicated API Keys for External Paper Trading
+  // 1. NSE F&O API Key
+  nseFnoApiKey: string;
+  nseFnoApiKeyCreated: string;
+  nseFnoApiKeyLastUsed: string;
+
+  // 2. GLOBAL API Key
+  globalApiKey: string;
+  globalApiKeyCreated: string;
+  globalApiKeyLastUsed: string;
+
+  // Legacy fields preserved for backward compatibility
   apiKey: string;
   apiKeyCreated: string;
   apiKeyLastUsed: string;
-
-  // 2. F&O Trading Engine Key
   fnoEngineApiKey: string;
   fnoEngineApiKeyCreated: string;
-
-  // 3. Groww Trading API Credentials
   growwApiKey: string;
   growwApiSecret: string;
   growwSession: string;
-
-  // 4. Option Chain API Key
   ocApiKey: string;
   ocApiKeyStatus: string;
   ocApiKeyCreated: string;
@@ -107,6 +112,9 @@ export function maskApiKey(key: string): string {
 // Permanent Telegram chat IDs — do not remove. Always included in outbound alerts.
 export const PERMANENT_CHAT_IDS = ["7350570004", "5589831995", "1840901163", "1360613728", "8155139346", "6799336293", "7280324188", "6698697147"] as const;
 
+export const DEFAULT_NSE_FNO_KEY = "iq_nse_fno_live_8f3a9e2c4b71d605a982e3f4";
+export const DEFAULT_GLOBAL_KEY = "iq_global_live_6b2d1c9e4a80f735d194c7b2";
+
 const defaultSettings: AdminSettings = {
   masterEnabled: true,
   telegramBotToken: "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc",
@@ -126,18 +134,26 @@ const defaultSettings: AdminSettings = {
   colName: "C",
   colRSI: "B",
   colPrice: "A",
-  // 1. Webpage API Key (HARD DELETED / EMPTY)
+  // Dedicated API Keys for External Paper Trading
+  // 1. NSE F&O API Key (Active & Ready)
+  nseFnoApiKey: DEFAULT_NSE_FNO_KEY,
+  nseFnoApiKeyCreated: "2026-10-22",
+  nseFnoApiKeyLastUsed: "Active (Ready)",
+
+  // 2. GLOBAL API Key (Active & Ready)
+  globalApiKey: DEFAULT_GLOBAL_KEY,
+  globalApiKeyCreated: "2026-10-22",
+  globalApiKeyLastUsed: "Active (Ready)",
+
+  // Legacy fields
   apiKey: "",
   apiKeyCreated: "",
   apiKeyLastUsed: "",
-  // 2. F&O Trading Engine Key (HARD DELETED / EMPTY)
   fnoEngineApiKey: "",
   fnoEngineApiKeyCreated: "",
-  // 3. Groww Trading API (HARD DELETED / EMPTY)
   growwApiKey: "",
   growwApiSecret: "",
   growwSession: "",
-  // 4. Option Chain API Key (HARD DELETED / EMPTY)
   ocApiKey: "",
   ocApiKeyStatus: "",
   ocApiKeyCreated: "",
@@ -147,6 +163,7 @@ const defaultSettings: AdminSettings = {
   ocAudit: [
     { at: "2026-08-05 12:00", event: "Option Chain API key registered (active)" },
     { at: "2026-10-22 12:30", event: "All API keys permanently deleted" },
+    { at: "2026-10-22 16:45", event: "NSE F&O and GLOBAL dedicated API keys created" },
   ],
   notifyOptionChain: true,
   ocFrequency: "15-min",
@@ -172,16 +189,18 @@ interface AdminCtx {
   settings: AdminSettings;
   updateSettings: (patch: Partial<AdminSettings>) => void;
   deleteAllApiKeys: () => void;
-  // Section 1: Webpage API Key
+  // Dedicated API Keys for External Paper Trading
+  rotateNseFnoApiKey: () => string;
+  setNseFnoApiKey: (key: string) => void;
+  rotateGlobalApiKey: () => string;
+  setGlobalApiKey: (key: string) => void;
+  // Legacy handlers preserved
   setWebpageApiKey: (key: string) => void;
   deleteWebpageApiKey: () => void;
-  // Section 2: F&O Trading Engine Key
   setFnoEngineApiKey: (key: string) => void;
   deleteFnoEngineApiKey: () => void;
-  // Section 3: Groww Trading API
   setGrowwCredentials: (apiKey: string, secret: string) => void;
   deleteGrowwCredentials: () => void;
-  // Section 4: Option Chain API Key
   setOcApiKey: (key: string, expires?: string) => void;
   deleteOcApiKey: () => void;
   setOcUserLevel: (id: string, level: OcAccessLevel) => void;
@@ -203,7 +222,7 @@ interface AdminCtx {
 
 const Ctx = createContext<AdminCtx | null>(null);
 const KEY = "investiq_admin_v1";
-const SETTINGS_KEY = "investiq_admin_settings_v3";
+const SETTINGS_KEY = "investiq_admin_settings_v5";
 
 export function AdminProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -215,6 +234,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       // Permanently remove legacy settings and cached broker/token keys
       localStorage.removeItem("investiq_admin_settings_v1");
       localStorage.removeItem("investiq_admin_settings_v2");
+      localStorage.removeItem("investiq_admin_settings_v3");
       localStorage.removeItem("groww_session");
       localStorage.removeItem("groww_holdings");
       localStorage.removeItem("groww_token");
@@ -223,12 +243,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       const raw = localStorage.getItem(SETTINGS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        // Ensure no legacy revoked or demo keys exist
-        if (Array.isArray(parsed.apiKeys)) {
-          parsed.apiKeys = parsed.apiKeys.filter(
-            (k: any) => k && k.status !== "revoked" && !k.key?.includes("demo")
-          );
-        } else {
+        // Ensure dedicated keys are present and active
+        parsed.nseFnoApiKey = parsed.nseFnoApiKey || defaultSettings.nseFnoApiKey;
+        parsed.globalApiKey = parsed.globalApiKey || defaultSettings.globalApiKey;
+        if (!Array.isArray(parsed.apiKeys)) {
           parsed.apiKeys = [];
         }
         if (!Array.isArray(parsed.ocUsers)) {
@@ -243,7 +261,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         }
         setSettings(merged);
       } else {
-        // First load with v3: initialize with completely empty keys
+        // First load with v5: initialize with active dedicated keys
         setSettings(defaultSettings);
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(defaultSettings));
       }
@@ -342,6 +360,51 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem("groww_token");
       sessionStorage.clear();
     } catch {}
+  };
+
+  // Dedicated API Keys for External Paper Trading
+  const rotateNseFnoApiKey = (): string => {
+    const newKey = generateCleanToken("iq_nse_fno");
+    const now = new Date().toISOString().split("T")[0];
+    persist({
+      ...settings,
+      nseFnoApiKey: newKey,
+      nseFnoApiKeyCreated: now,
+      nseFnoApiKeyLastUsed: "Active (Rotated)",
+    });
+    return newKey;
+  };
+
+  const setNseFnoApiKey = (key: string) => {
+    const now = new Date().toISOString().split("T")[0];
+    persist({
+      ...settings,
+      nseFnoApiKey: key.trim(),
+      nseFnoApiKeyCreated: now,
+      nseFnoApiKeyLastUsed: "Active",
+    });
+  };
+
+  const rotateGlobalApiKey = (): string => {
+    const newKey = generateCleanToken("iq_global");
+    const now = new Date().toISOString().split("T")[0];
+    persist({
+      ...settings,
+      globalApiKey: newKey,
+      globalApiKeyCreated: now,
+      globalApiKeyLastUsed: "Active (Rotated)",
+    });
+    return newKey;
+  };
+
+  const setGlobalApiKey = (key: string) => {
+    const now = new Date().toISOString().split("T")[0];
+    persist({
+      ...settings,
+      globalApiKey: key.trim(),
+      globalApiKeyCreated: now,
+      globalApiKeyLastUsed: "Active",
+    });
   };
 
   // Section 1: Webpage API Key
@@ -482,6 +545,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         settings,
         updateSettings: (patch) => persist({ ...settings, ...patch }),
         deleteAllApiKeys,
+        rotateNseFnoApiKey,
+        setNseFnoApiKey,
+        rotateGlobalApiKey,
+        setGlobalApiKey,
         setWebpageApiKey,
         deleteWebpageApiKey,
         setFnoEngineApiKey,
