@@ -199,6 +199,7 @@ export function getUpstoxProviderStatus(): ProviderStatusInfo {
 export async function getNormalizedOptionChain(
   symbol: string,
   expiry?: string,
+  spotPrice?: number,
 ): Promise<NormalizedOptionChain> {
   const now = Date.now();
   const cleanSym = symbol.replace(/[^A-Z0-9]/g, "").toUpperCase();
@@ -259,7 +260,7 @@ export async function getNormalizedOptionChain(
   }
 
   // Fallback: Generate calibrated options chain with Black-Scholes Greeks calculated internally
-  return generateBaselineNormalizedOptionChain(cleanSym, expiry, now);
+  return generateBaselineNormalizedOptionChain(cleanSym, expiry, now, spotPrice);
 }
 
 /**
@@ -635,6 +636,7 @@ function generateBaselineNormalizedOptionChain(
   symbol: string,
   expiry: string | undefined,
   now: number,
+  spotPrice?: number,
 ): NormalizedOptionChain {
   const spotMap: Record<string, { spot: number; step: number }> = {
     NIFTY: { spot: 24860, step: 50 },
@@ -646,7 +648,7 @@ function generateBaselineNormalizedOptionChain(
   };
 
   const cfg = spotMap[symbol.toUpperCase()] ?? spotMap.NIFTY;
-  const spot = cfg.spot;
+  const spot = spotPrice && spotPrice > 0 ? spotPrice : cfg.spot;
   const step = cfg.step;
 
   // Next Thursday expiry

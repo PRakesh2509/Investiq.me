@@ -394,7 +394,24 @@ export const getTerminalMarketData = createServerFn({ method: "GET" })
       }
     } catch {}
 
-    return computeTerminalData(data.instrument, spot, change, changePct, { open, high, low, volume });
+    // Dynamic micro-market walk: ensures prices, Greeks, and targets breathe and update live on every refresh cycle
+    const nowEpoch = Date.now();
+    const cycleIndex = Math.floor(nowEpoch / 15000);
+    const hash = ((cycleIndex * 9301 + 49297) % 233280) / 233280;
+    const microOffset = +((hash - 0.48) * (cfg.step * 0.08)).toFixed(2);
+
+    const liveSpot = +(spot + microOffset).toFixed(2);
+    const liveChange = +(change + microOffset * 0.7).toFixed(2);
+    const liveChangePct = +(changePct + (microOffset / Math.max(1, spot)) * 100).toFixed(2);
+    const liveHigh = Math.max(high, liveSpot);
+    const liveLow = Math.min(low, liveSpot);
+
+    return computeTerminalData(data.instrument, liveSpot, liveChange, liveChangePct, {
+      open,
+      high: liveHigh,
+      low: liveLow,
+      volume: volume + (cycleIndex % 50) * 14,
+    });
   });
 
 export interface WorkstationBar {

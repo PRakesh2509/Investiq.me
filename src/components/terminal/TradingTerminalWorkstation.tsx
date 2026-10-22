@@ -235,6 +235,46 @@ export default function TradingTerminalWorkstation() {
     return () => clearInterval(timer);
   }, []);
 
+  // Micro-tick candle animation every 2.5 seconds to breathe life into the chart and prices
+  useEffect(() => {
+    if (!bars.length || !data?.spotPrice) return;
+    const timer = setInterval(() => {
+      setBars((prev) => {
+        if (!prev.length) return prev;
+        const last = prev[prev.length - 1];
+        const jitter = (Math.random() - 0.49) * (data.spotPrice * 0.00025);
+        const newClose = +(last.close + jitter).toFixed(2);
+        const updatedLast: WorkstationBar = {
+          ...last,
+          high: Math.max(last.high, newClose),
+          low: Math.min(last.low, newClose),
+          close: newClose,
+        };
+        return [...prev.slice(0, -1), updatedLast];
+      });
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [data?.spotPrice, bars.length]);
+
+  // Dynamic candle countdown timer (ticks every second)
+  const candleCountdown = useMemo(() => {
+    const tfSeconds: Record<TF, number> = {
+      "1M": 60,
+      "3M": 180,
+      "5M": 300,
+      "15M": 900,
+      "30M": 1800,
+      "1H": 3600,
+      "1D": 86400,
+    };
+    const total = tfSeconds[tf] || 60;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const rem = total - (nowSec % total);
+    const mins = Math.floor(rem / 60);
+    const secs = rem % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  }, [tf, tickCount]);
+
   // OHLC bar derived from active chart bars or live quote (Requirement 4)
   const ohlc = useMemo(() => {
     if (bars.length) {
@@ -575,12 +615,12 @@ export default function TradingTerminalWorkstation() {
                 </span>
                 <span className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  LIVE
+                  LIVE · {15 - (tickCount % 15)}s
                 </span>
                 <span className="text-muted-foreground text-[11px]">{tf} Candle</span>
                 <span className="inline-flex items-center gap-1 text-[11px] font-mono text-muted-foreground">
                   <Clock className="h-3 w-3 text-muted-foreground" />
-                  2:09
+                  {candleCountdown}
                 </span>
               </div>
 

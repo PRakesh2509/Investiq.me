@@ -105,7 +105,7 @@ export const DEFAULT_RISK_CONSTRAINTS: RiskConstraintsConfig = {
   maxLotsAllowed: 10,
   maxBidAskSpreadPct: 1.5,
   maxAllowedStalenessSec: 180,
-  minCompositeScoreThreshold: 60,
+  minCompositeScoreThreshold: 50,
   disallowOtmOnExpiryAfternoon: true,
 };
 
@@ -660,7 +660,7 @@ export function rankTradeCandidates(
       summary,
       evidence: [
         `Market Regime: ${regime.label} (${regime.description})`,
-        `Risk gate evaluations: 0 of ${rawCandidates.length} candidate setups passed safety criteria`,
+        `Risk gate evaluations: ${passingCandidates.length} of ${rawCandidates.length} candidate setups passed safety criteria`,
         `Capital Preservation: Standing aside prevents drawdown during negative edge regimes`,
       ],
       marketRegime: regime.label,

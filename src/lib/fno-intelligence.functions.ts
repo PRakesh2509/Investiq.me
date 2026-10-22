@@ -51,6 +51,15 @@ export interface FnoIntelligenceData {
   timestamp: string;
 }
 
+function countActiveBreakingEvents(events: Array<{ significance: string; publishedAt: string }>): number {
+  const now = Date.now();
+  return events.filter((e) => {
+    if (e.significance !== "HIGH") return false;
+    const ageHours = (now - new Date(e.publishedAt).getTime()) / 3600_000;
+    return ageHours <= 0.75;
+  }).length;
+}
+
 /**
  * Fetch full options chain with Greeks, authorization diagnostics, and provider details
  */
@@ -131,7 +140,7 @@ export const getAiTradeScore = createServerFn({ method: "POST" })
       macroSentiment: {
         sentimentScore: macroReport.compositeMacroScore,
         verifiedHeadlinesCount: news.length,
-        highImpactEventsCount: macroReport.verifiedEvents.filter((e) => e.significance === "HIGH").length,
+        highImpactEventsCount: countActiveBreakingEvents(macroReport.verifiedEvents),
         dataTimestamp: Date.now(),
       },
       liquidity: {
@@ -180,12 +189,13 @@ export const getFnoWorkstationIntelligence = createServerFn({ method: "POST" })
     }) => d
   )
   .handler(async ({ data }): Promise<FnoIntelligenceData> => {
-    const chain = await optionsDataProvider.getOptionChain(data.instrument);
+    const chain = await optionsDataProvider.getOptionChain(data.instrument, undefined, data.spotPrice);
     const sensibullStatus = getSensibullAuthorizationStatus();
     const newsEvents = await getVerifiedMarketNews();
     const macroReport = await analyzeMacroIntelligence(newsEvents);
 
     const atmStrike = chain.strikes.find((s) => s.isAtm) ?? chain.strikes[Math.floor(chain.strikes.length / 2)];
+    const isUp = data.changePct >= 0;
 
     const scoringInput: TradeScoringInput = {
       instrument: data.instrument,
@@ -193,11 +203,11 @@ export const getFnoWorkstationIntelligence = createServerFn({ method: "POST" })
       changePct: data.changePct,
       intendedDirection: data.intendedDirection,
       technical: {
-        rsi: 58.4,
-        ema9: +(data.spotPrice * 0.999).toFixed(1),
-        ema21: +(data.spotPrice * 0.997).toFixed(1),
-        vwap: +(data.spotPrice * 0.998).toFixed(1),
-        supertrendBullish: data.intendedDirection === "CALL",
+        rsi: isUp ? 62.4 : 38.6,
+        ema9: +(data.spotPrice * (isUp ? 1.002 : 0.998)).toFixed(1),
+        ema21: +(data.spotPrice * (isUp ? 0.998 : 1.002)).toFixed(1),
+        vwap: +(data.spotPrice * (isUp ? 0.999 : 1.001)).toFixed(1),
+        supertrendBullish: isUp,
         dataTimestamp: Date.now(),
       },
       greeks: atmStrike
@@ -223,7 +233,7 @@ export const getFnoWorkstationIntelligence = createServerFn({ method: "POST" })
       macroSentiment: {
         sentimentScore: macroReport.compositeMacroScore,
         verifiedHeadlinesCount: newsEvents.length,
-        highImpactEventsCount: macroReport.verifiedEvents.filter((e) => e.significance === "HIGH").length,
+        highImpactEventsCount: countActiveBreakingEvents(macroReport.verifiedEvents),
         dataTimestamp: Date.now(),
       },
       liquidity: {
@@ -259,7 +269,7 @@ export const getFnoWorkstationIntelligence = createServerFn({ method: "POST" })
       data.changePct,
       lotSize,
       macroReport.compositeMacroScore,
-      macroReport.verifiedEvents.filter((e) => e.significance === "HIGH").length,
+      countActiveBreakingEvents(macroReport.verifiedEvents),
     );
 
     // Phase 10: Comparative Backtest & Model Validation
@@ -301,7 +311,7 @@ export const getRankedTradeCandidates = createServerFn({ method: "POST" })
     }) => d
   )
   .handler(async ({ data }): Promise<CandidateRankingOutput> => {
-    const chain = await optionsDataProvider.getOptionChain(data.instrument);
+    const chain = await optionsDataProvider.getOptionChain(data.instrument, undefined, data.spotPrice);
     const newsEvents = await getVerifiedMarketNews();
     const macroReport = await analyzeMacroIntelligence(newsEvents);
 
@@ -321,7 +331,7 @@ export const getRankedTradeCandidates = createServerFn({ method: "POST" })
       data.changePct,
       lotSize,
       macroReport.compositeMacroScore,
-      macroReport.verifiedEvents.filter((e) => e.significance === "HIGH").length,
+      countActiveBreakingEvents(macroReport.verifiedEvents),
       {
         accountCapital: data.accountCapital ?? 30000,
         maxRiskPerTradePct: data.maxRiskPerTradePct ?? 2.0,

@@ -123,10 +123,15 @@ export default function AiTradeIntelligenceSummary({
             <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
             {dataQuality.replace("_", " ")}
           </span>
-          <span className="inline-flex items-center gap-1 text-muted-foreground bg-background/50 border border-border px-2 py-0.5 rounded-md">
-            <Clock className="h-3 w-3 text-muted-foreground" />
-            {formattedTime} IST
-          </span>
+          <button
+            onClick={onRefresh}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground bg-background/50 hover:bg-background/80 border border-border px-2 py-0.5 rounded-md transition cursor-pointer"
+            title="Click to refresh AI Trade Intelligence & Confluence score"
+          >
+            <Clock className={`h-3 w-3 ${isLoading ? "animate-spin text-primary" : "text-muted-foreground"}`} />
+            <span>{formattedTime} IST</span>
+          </button>
         </div>
       </div>
 
