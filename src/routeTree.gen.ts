@@ -49,6 +49,7 @@ import { Route as ApiV1AuthVerifyRouteImport } from './routes/api/v1/auth/verify
 import { Route as ApiV1FnoSignalsRouteImport } from './routes/api/v1/fno/signals'
 import { Route as ApiV1GlobalSignalsRouteImport } from './routes/api/v1/global/signals'
 import { Route as ApiV1TradesAutoRouteImport } from './routes/api/v1/trades/auto'
+import { Route as ApiV1TradesDispatchExternalRouteImport } from './routes/api/v1/trades/dispatch-external'
 import { Route as ApiV1TradesOrderRouteImport } from './routes/api/v1/trades/order'
 
 const IndexRoute = IndexRouteImport.update({
@@ -256,6 +257,12 @@ const ApiV1TradesAutoRoute = ApiV1TradesAutoRouteImport.update({
   path: '/api/v1/trades/auto',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1TradesDispatchExternalRoute =
+  ApiV1TradesDispatchExternalRouteImport.update({
+    id: '/api/v1/trades/dispatch-external',
+    path: '/api/v1/trades/dispatch-external',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1TradesOrderRoute = ApiV1TradesOrderRouteImport.update({
   id: '/api/v1/trades/order',
   path: '/api/v1/trades/order',
@@ -303,6 +310,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/fno/signals': typeof ApiV1FnoSignalsRoute
   '/api/v1/global/signals': typeof ApiV1GlobalSignalsRoute
   '/api/v1/trades/auto': typeof ApiV1TradesAutoRoute
+  '/api/v1/trades/dispatch-external': typeof ApiV1TradesDispatchExternalRoute
   '/api/v1/trades/order': typeof ApiV1TradesOrderRoute
 }
 export interface FileRoutesByTo {
@@ -345,6 +353,7 @@ export interface FileRoutesByTo {
   '/api/v1/fno/signals': typeof ApiV1FnoSignalsRoute
   '/api/v1/global/signals': typeof ApiV1GlobalSignalsRoute
   '/api/v1/trades/auto': typeof ApiV1TradesAutoRoute
+  '/api/v1/trades/dispatch-external': typeof ApiV1TradesDispatchExternalRoute
   '/api/v1/trades/order': typeof ApiV1TradesOrderRoute
 }
 export interface FileRoutesById {
@@ -389,6 +398,7 @@ export interface FileRoutesById {
   '/api/v1/fno/signals': typeof ApiV1FnoSignalsRoute
   '/api/v1/global/signals': typeof ApiV1GlobalSignalsRoute
   '/api/v1/trades/auto': typeof ApiV1TradesAutoRoute
+  '/api/v1/trades/dispatch-external': typeof ApiV1TradesDispatchExternalRoute
   '/api/v1/trades/order': typeof ApiV1TradesOrderRoute
 }
 export interface FileRouteTypes {
@@ -434,6 +444,7 @@ export interface FileRouteTypes {
     | '/api/v1/fno/signals'
     | '/api/v1/global/signals'
     | '/api/v1/trades/auto'
+    | '/api/v1/trades/dispatch-external'
     | '/api/v1/trades/order'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -476,6 +487,7 @@ export interface FileRouteTypes {
     | '/api/v1/fno/signals'
     | '/api/v1/global/signals'
     | '/api/v1/trades/auto'
+    | '/api/v1/trades/dispatch-external'
     | '/api/v1/trades/order'
   id:
     | '__root__'
@@ -519,6 +531,7 @@ export interface FileRouteTypes {
     | '/api/v1/fno/signals'
     | '/api/v1/global/signals'
     | '/api/v1/trades/auto'
+    | '/api/v1/trades/dispatch-external'
     | '/api/v1/trades/order'
   fileRoutesById: FileRoutesById
 }
@@ -552,6 +565,7 @@ export interface RootRouteChildren {
   ApiV1FnoSignalsRoute: typeof ApiV1FnoSignalsRoute
   ApiV1GlobalSignalsRoute: typeof ApiV1GlobalSignalsRoute
   ApiV1TradesAutoRoute: typeof ApiV1TradesAutoRoute
+  ApiV1TradesDispatchExternalRoute: typeof ApiV1TradesDispatchExternalRoute
   ApiV1TradesOrderRoute: typeof ApiV1TradesOrderRoute
 }
 
@@ -837,6 +851,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1TradesAutoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/trades/dispatch-external': {
+      id: '/api/v1/trades/dispatch-external'
+      path: '/api/v1/trades/dispatch-external'
+      fullPath: '/api/v1/trades/dispatch-external'
+      preLoaderRoute: typeof ApiV1TradesDispatchExternalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/trades/order': {
       id: '/api/v1/trades/order'
       path: '/api/v1/trades/order'
@@ -908,6 +929,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1FnoSignalsRoute: ApiV1FnoSignalsRoute,
   ApiV1GlobalSignalsRoute: ApiV1GlobalSignalsRoute,
   ApiV1TradesAutoRoute: ApiV1TradesAutoRoute,
+  ApiV1TradesDispatchExternalRoute: ApiV1TradesDispatchExternalRoute,
   ApiV1TradesOrderRoute: ApiV1TradesOrderRoute,
 }
 export const routeTree = rootRouteImport

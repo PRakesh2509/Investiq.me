@@ -46,6 +46,11 @@ interface AdminSettings {
   globalApiKeyCreated: string;
   globalApiKeyLastUsed: string;
 
+  // External Paper Trading Auto-Push Webhook Configuration
+  externalTradingEndpoint: string;
+  autoPushTradesEnabled: boolean;
+  autoPushIntervalSeconds: number;
+
   // Legacy fields preserved for backward compatibility
   apiKey: string;
   apiKeyCreated: string;
@@ -114,6 +119,7 @@ export const PERMANENT_CHAT_IDS = ["7350570004", "5589831995", "1840901163", "13
 
 export const DEFAULT_NSE_FNO_KEY = "iq_nse_fno_live_8f3a9e2c4b71d605a982e3f4";
 export const DEFAULT_GLOBAL_KEY = "iq_global_live_6b2d1c9e4a80f735d194c7b2";
+export const DEFAULT_LOVABLE_ENDPOINT = "https://637793ac-c049-46b9-aed4-edaff2e3ea91.lovableproject.com/api/public/investiq/trades";
 
 const defaultSettings: AdminSettings = {
   masterEnabled: true,
@@ -144,6 +150,11 @@ const defaultSettings: AdminSettings = {
   globalApiKey: DEFAULT_GLOBAL_KEY,
   globalApiKeyCreated: "2026-10-22",
   globalApiKeyLastUsed: "Active (Ready)",
+
+  // External Paper Trading Auto-Push Webhook Configuration
+  externalTradingEndpoint: DEFAULT_LOVABLE_ENDPOINT,
+  autoPushTradesEnabled: true,
+  autoPushIntervalSeconds: 30,
 
   // Legacy fields
   apiKey: "",
@@ -246,6 +257,13 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         // Ensure dedicated keys are present and active
         parsed.nseFnoApiKey = parsed.nseFnoApiKey || defaultSettings.nseFnoApiKey;
         parsed.globalApiKey = parsed.globalApiKey || defaultSettings.globalApiKey;
+        parsed.externalTradingEndpoint = parsed.externalTradingEndpoint || defaultSettings.externalTradingEndpoint;
+        if (typeof parsed.autoPushTradesEnabled !== "boolean") {
+          parsed.autoPushTradesEnabled = true;
+        }
+        if (!parsed.autoPushIntervalSeconds) {
+          parsed.autoPushIntervalSeconds = 30;
+        }
         if (!Array.isArray(parsed.apiKeys)) {
           parsed.apiKeys = [];
         }

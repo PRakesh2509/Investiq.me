@@ -1,8 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { useAdmin, PERMANENT_CHAT_IDS, DEFAULT_NSE_FNO_KEY, DEFAULT_GLOBAL_KEY, type CustomApiKey } from "@/context/AdminContext";
+import {
+  useAdmin,
+  PERMANENT_CHAT_IDS,
+  DEFAULT_NSE_FNO_KEY,
+  DEFAULT_GLOBAL_KEY,
+  DEFAULT_LOVABLE_ENDPOINT,
+  type CustomApiKey,
+} from "@/context/AdminContext";
 import { DESKTOP_SYMBOLS, NOTIFICATIONS_LOG, USERS_MOCK } from "@/lib/desktop-data";
 import { STOCKS } from "@/lib/market-data";
 import { readPublicSheet } from "@/lib/sheets.functions";
@@ -43,6 +50,9 @@ import {
   Clock,
   Layers,
   Zap,
+  Radio,
+  Server,
+  ArrowUpRight,
 } from "lucide-react";
 
 export const Route = createFileRoute("/desktop/admin")({
@@ -808,6 +818,7 @@ function SheetsTab() {
 function ApiKeysTab() {
   const {
     settings,
+    updateSettings,
     rotateNseFnoApiKey,
     rotateGlobalApiKey,
   } = useAdmin();
@@ -819,6 +830,128 @@ function ApiKeysTab() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [testingEndpoint, setTestingEndpoint] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<any>(null);
+
+  // Auto-Webhook External Paper Trading State
+  const [externalUrl, setExternalUrl] = useState(
+    settings.externalTradingEndpoint || DEFAULT_LOVABLE_ENDPOINT
+  );
+  const [urlInput, setUrlInput] = useState(
+    settings.externalTradingEndpoint || DEFAULT_LOVABLE_ENDPOINT
+  );
+  const [autoPushEnabled, setAutoPushEnabled] = useState(
+    settings.autoPushTradesEnabled ?? true
+  );
+  const [autoPushInterval, setAutoPushInterval] = useState(
+    settings.autoPushIntervalSeconds || 30
+  );
+  const [countdown, setCountdown] = useState(30);
+  const [isPushingNow, setIsPushingNow] = useState(false);
+  const [recentDispatches, setRecentDispatches] = useState<any[]>([]);
+  const [lastPushStatus, setLastPushStatus] = useState<any>(null);
+
+  // Sync with settings changes
+  useEffect(() => {
+    if (settings.externalTradingEndpoint) {
+      setExternalUrl(settings.externalTradingEndpoint);
+      setUrlInput(settings.externalTradingEndpoint);
+    }
+    if (typeof settings.autoPushTradesEnabled === "boolean") {
+      setAutoPushEnabled(settings.autoPushTradesEnabled);
+    }
+  }, [settings.externalTradingEndpoint, settings.autoPushTradesEnabled]);
+
+  // Initial fetch of recorded dispatches
+  useEffect(() => {
+    fetch("/api/v1/trades/dispatch-external?limit=15")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok && Array.isArray(data.recentDispatches)) {
+          setRecentDispatches(data.recentDispatches);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Periodic Auto-Push Countdown & Execution
+  useEffect(() => {
+    if (!autoPushEnabled) return;
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          triggerExternalPush(true);
+          return autoPushInterval;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [autoPushEnabled, autoPushInterval, externalUrl]);
+
+  const triggerExternalPush = async (isBackground = false) => {
+    if (isPushingNow) return;
+    setIsPushingNow(true);
+    try {
+      const activeUrl = externalUrl.trim() || DEFAULT_LOVABLE_ENDPOINT;
+      const res = await fetch("/api/v1/trades/dispatch-external", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUrl: activeUrl,
+          market: "AUTO",
+        }),
+      });
+      const json = await res.json();
+      const resData = json.result || json;
+      setLastPushStatus(resData);
+      if (resData) {
+        setRecentDispatches((prev) => [
+          {
+            id: resData.logId || `disp_${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            targetUrl: activeUrl,
+            market: resData.market,
+            contract: resData.dispatchedContract,
+            keyUsedMasked: resData.keyUsed,
+            httpStatus: resData.httpStatus,
+            statusText: resData.statusText,
+            responseSnippet: resData.responseSnippet,
+            success: resData.ok,
+            notes: resData.notes,
+          },
+          ...prev.slice(0, 24),
+        ]);
+      }
+      if (!isBackground) {
+        if (json.ok) {
+          toast.success(`Dispatched ${resData?.dispatchedContract} to paper trading endpoint!`);
+        } else {
+          toast.info(`Sent trade to Lovable endpoint (${resData?.httpStatus || resData?.statusText})`);
+        }
+      }
+    } catch (e: any) {
+      if (!isBackground) toast.error(`Auto-push failed: ${e?.message}`);
+    } finally {
+      setIsPushingNow(false);
+    }
+  };
+
+  const handleSaveEndpoint = () => {
+    const trimmed = urlInput.trim();
+    if (!trimmed) {
+      toast.error("Please enter a valid webhook URL");
+      return;
+    }
+    setExternalUrl(trimmed);
+    updateSettings({ externalTradingEndpoint: trimmed });
+    toast.success("Updated external trading endpoint");
+  };
+
+  const handleResetToLovable = () => {
+    setUrlInput(DEFAULT_LOVABLE_ENDPOINT);
+    setExternalUrl(DEFAULT_LOVABLE_ENDPOINT);
+    updateSettings({ externalTradingEndpoint: DEFAULT_LOVABLE_ENDPOINT });
+    toast.info("Reset to Lovable default endpoint");
+  };
 
   const indianTrades = getIndianHighProfitTrades();
   const globalTrades = getGlobalHighProfitTrades();
@@ -1383,6 +1516,284 @@ function ApiKeysTab() {
           <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-[11px] font-semibold text-emerald-300">
             CORS: Allowed (*)
           </span>
+        </div>
+
+        {/* LOVABLE EXTERNAL PAPER TRADING AUTO-WEBHOOK ENGINE */}
+        <div className="rounded-2xl border border-cyan-500/40 bg-gradient-to-br from-surface/90 via-surface/70 to-cyan-950/20 p-6 shadow-2xl backdrop-blur relative overflow-hidden space-y-5">
+          <div className="absolute top-0 right-0 h-48 w-48 bg-cyan-500/10 blur-3xl pointer-events-none rounded-full" />
+
+          {/* Header Row */}
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-1.5 max-w-2xl">
+              <div className="flex items-center gap-2.5">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/50 bg-cyan-500/15 px-3 py-1 text-xs font-bold uppercase tracking-wider text-cyan-300 shadow-sm">
+                  <Radio className="h-3.5 w-3.5 text-cyan-400 animate-pulse" /> Auto-Webhook Engine • Lovable Paper Trading
+                </span>
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  {autoPushEnabled ? `Live Auto-Push (Next: ${countdown}s)` : "Paused"}
+                </span>
+              </div>
+              <h3 className="font-display text-xl font-bold text-foreground">
+                Automatic Outbound Trades to Lovable Paper Trading
+              </h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                InvestIQ automatically pushes analyzed high-profit trades directly to your designated Lovable paper trading endpoint using our authorized API keys.
+                Automatically routes between <strong className="text-foreground">NSE F&amp;O</strong> (09:15–15:30 IST) and <strong className="text-foreground">US Session</strong> (19:00–01:30 IST) without requiring manual clicks.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => triggerExternalPush(false)}
+                disabled={isPushingNow}
+                className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/50 bg-cyan-500/20 px-4 py-2 text-xs font-bold text-cyan-200 hover:bg-cyan-500/30 transition shadow-md disabled:opacity-50"
+              >
+                {isPushingNow ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                )}
+                {isPushingNow ? "Pushing Trade…" : "Auto-Push Live Trade Now"}
+              </button>
+            </div>
+          </div>
+
+          {/* Config Bar: Target Endpoint */}
+          <div className="rounded-xl border border-border/80 bg-background/80 p-4 shadow-inner space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Server className="h-3.5 w-3.5 text-cyan-400" /> Active Destination Webhook URL
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Interval:</span>
+                <select
+                  value={autoPushInterval}
+                  onChange={(e) => {
+                    const sec = parseInt(e.target.value, 10);
+                    setAutoPushInterval(sec);
+                    setCountdown(sec);
+                    updateSettings({ autoPushIntervalSeconds: sec });
+                  }}
+                  className="rounded-md border border-border bg-surface px-2 py-0.5 text-xs text-foreground font-medium"
+                >
+                  <option value={15}>Every 15s</option>
+                  <option value={30}>Every 30s</option>
+                  <option value={60}>Every 60s</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !autoPushEnabled;
+                    setAutoPushEnabled(next);
+                    updateSettings({ autoPushTradesEnabled: next });
+                    toast.info(next ? "Automatic trade push enabled" : "Automatic trade push paused");
+                  }}
+                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition ${
+                    autoPushEnabled
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                      : "bg-surface text-muted-foreground border border-border"
+                  }`}
+                >
+                  {autoPushEnabled ? "Auto-Push: ON" : "Auto-Push: OFF"}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="text"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                placeholder="https://637793ac-c049-46b9-aed4-edaff2e3ea91.lovableproject.com/api/public/investiq/trades"
+                className="flex-1 min-w-[280px] rounded-lg border border-border bg-background px-3 py-2 text-xs font-mono text-foreground focus:border-cyan-500 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleSaveEndpoint}
+                className="rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition shrink-0"
+              >
+                Save Destination
+              </button>
+              <button
+                type="button"
+                onClick={handleResetToLovable}
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition shrink-0"
+                title="Reset to default Lovable project endpoint"
+              >
+                Reset Default
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-muted-foreground border-t border-border/50 pt-2.5">
+              <div className="flex items-center gap-3">
+                <span>Active Routing: <strong className="text-foreground">{globalTiming.isRegularMarketOpen ? "US Session Live" : "Indian NSE F&O"}</strong></span>
+                <span>Active Key: <code className="text-cyan-300 font-mono">{globalTiming.isRegularMarketOpen ? "2nd KEY (GLOBAL)" : "1st KEY (NSE F&O)"}</code></span>
+              </div>
+              <span className="text-cyan-400 font-medium">Automatic countdown active</span>
+            </div>
+          </div>
+
+          {/* Recent Dispatches Live Table */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Activity className="h-3.5 w-3.5 text-primary" /> Live Dispatch Activity Log (Last {recentDispatches.length})
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  fetch("/api/v1/trades/dispatch-external?limit=15")
+                    .then((r) => r.json())
+                    .then((data) => {
+                      if (data.ok && Array.isArray(data.recentDispatches)) {
+                        setRecentDispatches(data.recentDispatches);
+                        toast.success("Dispatch log refreshed");
+                      }
+                    });
+                }}
+                className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                <RefreshCw className="h-3 w-3" /> Refresh Logs
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-background/50 overflow-hidden shadow-inner">
+              <div className="max-h-60 overflow-y-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-surface/80 text-[11px] uppercase tracking-wider text-muted-foreground sticky top-0 border-b border-border/60">
+                    <tr>
+                      <th className="px-3.5 py-2 font-medium">Timestamp</th>
+                      <th className="px-3.5 py-2 font-medium">Market</th>
+                      <th className="px-3.5 py-2 font-medium">Contract Dispatched</th>
+                      <th className="px-3.5 py-2 font-medium">API Key Used</th>
+                      <th className="px-3.5 py-2 font-medium">HTTP Status</th>
+                      <th className="px-3.5 py-2 font-medium">Response Snippet</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40 font-mono text-[11px]">
+                    {recentDispatches.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-3.5 py-4 text-center font-sans text-muted-foreground">
+                          No dispatches recorded yet. Timer will push automatically in {countdown}s or click "Auto-Push Live Trade Now".
+                        </td>
+                      </tr>
+                    ) : (
+                      recentDispatches.map((d) => (
+                        <tr key={d.id} className="hover:bg-surface/40 transition">
+                          <td className="px-3.5 py-2 text-muted-foreground whitespace-nowrap">
+                            {new Date(d.timestamp).toLocaleTimeString()}
+                          </td>
+                          <td className="px-3.5 py-2">
+                            <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                              d.market === "GLOBAL_US" ? "bg-cyan-500/15 text-cyan-300" : "bg-emerald-500/15 text-emerald-300"
+                            }`}>
+                              {d.market}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-2 font-bold text-foreground">
+                            {d.contract}
+                          </td>
+                          <td className="px-3.5 py-2 text-muted-foreground">
+                            {d.keyUsedMasked}
+                          </td>
+                          <td className="px-3.5 py-2 whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              d.httpStatus && d.httpStatus >= 200 && d.httpStatus < 300
+                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                                : d.httpStatus === 401
+                                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                : "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                            }`}>
+                              {d.httpStatus ? `${d.httpStatus} ${d.statusText}` : d.statusText}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-2 text-muted-foreground max-w-xs truncate" title={d.responseSnippet}>
+                            {d.responseSnippet || (d.notes ? d.notes : "Sent")}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Lovable Sandbox Authentication Notice & Direct Pull Option */}
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2 text-xs text-amber-200">
+            <div className="flex items-center gap-2 font-bold text-amber-300">
+              <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+              <span>Lovable Sandbox Webhook vs Direct Pull Integration</span>
+            </div>
+            <p className="text-muted-foreground leading-relaxed">
+              When sending outbound webhooks to a Lovable sandbox (<code className="font-mono text-foreground">*.lovableproject.com</code>), Lovable Cloudflare may return <strong className="text-amber-300">401 Unauthorized</strong> if preview privacy is restricted to logged-in users. You have two 100% working options:
+            </p>
+            <div className="grid gap-3 pt-1 md:grid-cols-2">
+              <div className="rounded-lg border border-amber-500/20 bg-background/50 p-3 space-y-1">
+                <strong className="text-foreground flex items-center gap-1.5">
+                  <ArrowRight className="h-3.5 w-3.5 text-cyan-400" /> Option 1: Publish on Lovable (Push)
+                </strong>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  In your Lovable project dashboard, click <strong>"Publish"</strong> in the top right to generate a public domain (e.g. <code className="text-cyan-300">https://your-app.lovable.app</code>) and paste the webhook URL above.
+                </p>
+              </div>
+              <div className="rounded-lg border border-amber-500/20 bg-background/50 p-3 space-y-1">
+                <strong className="text-foreground flex items-center gap-1.5">
+                  <ArrowRight className="h-3.5 w-3.5 text-emerald-400" /> Option 2: Direct Pull in Lovable (CORS Ready)
+                </strong>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Inside your Lovable project, fetch trades from InvestIQ directly using the snippet below. InvestIQ has CORS enabled (<code className="text-emerald-300">*</code>) so it works instantly without any firewall issues.
+                </p>
+              </div>
+            </div>
+
+            {/* Pull snippet code box */}
+            <div className="pt-2">
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground font-mono pb-1">
+                <span>Direct code to paste in your Lovable app (Auto-trades polling):</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const snippet = `// In your Lovable paper trading app:
+export async function autoTakeInvestIQTrade() {
+  const res = await fetch("https://www.investiqq.me/api/v1/trades/auto", {
+    headers: { "x-api-key": "${settings.nseFnoApiKey || DEFAULT_NSE_FNO_KEY}" }
+  });
+  const data = await res.json();
+  if (data.ok && data.autoOrder) {
+    console.log("Auto-Filled Trade:", data.autoOrder.contract, "@", data.autoOrder.fillPrice);
+    return data.autoOrder;
+  }
+}`;
+                    navigator.clipboard.writeText(snippet);
+                    toast.success("Snippet copied to clipboard");
+                  }}
+                  className="text-cyan-300 hover:text-cyan-200 underline font-sans"
+                >
+                  Copy Snippet
+                </button>
+              </div>
+              <pre className="rounded-lg border border-border/80 bg-background/90 p-2.5 font-mono text-[11px] text-cyan-300 overflow-x-auto select-all">
+{`// Lovable paper trading integration snippet
+setInterval(async () => {
+  const res = await fetch("https://www.investiqq.me/api/v1/trades/auto", {
+    headers: { "x-api-key": "${settings.nseFnoApiKey || DEFAULT_NSE_FNO_KEY}" }
+  });
+  const data = await res.json();
+  if (data.ok && data.autoOrder) {
+    // Automatically executes in your paper trading state:
+    window.dispatchEvent(new CustomEvent("investiq-auto-order", { detail: data.autoOrder }));
+  }
+}, 30000);`}
+              </pre>
+            </div>
+          </div>
         </div>
 
         {/* 1. Indian NSE F&O High-Profit Trades */}
