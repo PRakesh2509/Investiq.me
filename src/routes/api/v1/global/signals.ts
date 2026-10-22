@@ -9,6 +9,10 @@ import {
   computeTerminalData,
   WORKSTATION_INSTRUMENTS,
 } from "@/lib/terminal-workstation.functions";
+import {
+  getGlobalHighProfitTrades,
+  getMarketTiming,
+} from "@/lib/trade-analysis";
 
 const GLOBAL_INSTRUMENTS = ["S&P 500", "NASDAQ 100", "DOW JONES"];
 
@@ -51,6 +55,9 @@ export const Route = createFileRoute("/api/v1/global/signals")({
 
         const data = computeTerminalData(instrument);
         const cfg = WORKSTATION_INSTRUMENTS[instrument] ?? WORKSTATION_INSTRUMENTS["S&P 500"];
+        const marketTiming = getMarketTiming("GLOBAL_US");
+        const highProfitTrades = getGlobalHighProfitTrades();
+        const activeTrade = highProfitTrades.find((t) => t.symbol === instrument) || highProfitTrades[0];
 
         return jsonResponse({
           ok: true,
@@ -61,26 +68,66 @@ export const Route = createFileRoute("/api/v1/global/signals")({
           spotPrice: data.spotPrice,
           change: data.change,
           changePct: data.changePct,
-          marketSession: {
-            isOpen: true,
-            statusText: "GLOBAL SESSION LIVE",
+          marketTiming,
+          // 1. In-depth F&O / Index Chart Analysis
+          fnoChartAnalysis: {
+            timeframe: "Hourly & 4-Hour Trend Confluence",
+            trend: activeTrade.chartTechnicals.trend,
+            ema20: activeTrade.chartTechnicals.ema20,
+            ema50: activeTrade.chartTechnicals.ema50,
+            ema200: activeTrade.chartTechnicals.ema200,
+            vwap: activeTrade.chartTechnicals.vwap,
+            supertrend: activeTrade.chartTechnicals.supertrend,
+            rsi14: activeTrade.chartTechnicals.rsi14,
+            supportLevels: [activeTrade.chartTechnicals.support1, activeTrade.chartTechnicals.support2],
+            resistanceLevels: [activeTrade.chartTechnicals.resistance1, activeTrade.chartTechnicals.resistance2],
+            chartPattern: activeTrade.chartTechnicals.chartPattern,
+            keyObservation: activeTrade.chartTechnicals.keyObservation,
           },
-          signal: {
-            action: data.actionText,
-            direction: data.direction,
-            grade: data.grade,
-            confidenceScore: data.confidenceScore,
-            rationale: data.rationale,
-            recommendedContract: data.contractName,
-            recommendedPremium: data.recommendedPremium,
-            entrySpot: data.spotEntry,
-            target1: data.tp1,
-            target2: data.tp2,
-            stopLoss: data.stopLoss,
-            riskRewardRatio: "1 : 2.5",
+          // 2. Option Greeks View & Volatility
+          greeksView: {
+            atmStrike: activeTrade.greeks.atmStrike,
+            callDelta: activeTrade.greeks.callDelta,
+            putDelta: activeTrade.greeks.putDelta,
+            gamma: activeTrade.greeks.gamma,
+            thetaPerDay: activeTrade.greeks.thetaPerDay,
+            vega: activeTrade.greeks.vega,
+            ivPercentile: activeTrade.greeks.ivPercentile,
+            pcrVolume: activeTrade.greeks.pcrVolume,
+            pcrOpenInterest: activeTrade.greeks.pcrOpenInterest,
+            maxPainStrike: activeTrade.greeks.maxPainStrike,
+            oiBuildUpSummary: activeTrade.greeks.oiBuildUpSummary,
+            greeksRecommendation: activeTrade.greeks.greeksRecommendation,
+          },
+          // 3. Geopolitical & Global Macro Backdrop
+          geopoliticalAnalysis: {
+            crudeOilImpact: activeTrade.geopolitics.crudeOilImpact,
+            bondYieldAndDollarImpact: activeTrade.geopolitics.bondYieldAndDollarImpact,
+            centralBankPolicyStance: activeTrade.geopolitics.centralBankPolicyStance,
+            geopoliticalCatalyst: activeTrade.geopolitics.geopoliticalCatalyst,
+            overallMacroSentiment: activeTrade.geopolitics.overallMacroSentiment,
+            riskFactorScore: activeTrade.geopolitics.riskFactorScore,
+          },
+          // 4. Primary High-Profit Trade Recommendation
+          bestProfitTradeSetup: {
+            tradeId: activeTrade.tradeId,
+            action: activeTrade.action,
+            optionType: activeTrade.optionType,
+            recommendedContract: activeTrade.contract,
+            strategy: activeTrade.strategy,
+            spotEntryTrigger: activeTrade.spotEntryTrigger,
+            premiumEntryRange: activeTrade.premiumEntryRange,
+            entryPrice: activeTrade.entryPrice,
+            stopLossPrice: activeTrade.stopLossPrice,
+            target1: activeTrade.target1,
+            target2: activeTrade.target2,
+            target3: activeTrade.target3,
+            riskRewardRatio: activeTrade.riskRewardRatio,
+            expectedProfitPctT2: activeTrade.expectedProfitPctT2,
+            rationale: activeTrade.bestProfitRationale,
           },
           timestamp: new Date().toISOString(),
-          paperTradingNote: "Use recommendedContract, action, and recommendedPremium to execute global paper orders on your trading webpage.",
+          paperTradingNote: "Send orders directly to POST /api/v1/trades/order with this API key to execute simulated paper trades.",
         });
       },
     },

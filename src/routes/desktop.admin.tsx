@@ -7,6 +7,11 @@ import { DESKTOP_SYMBOLS, NOTIFICATIONS_LOG, USERS_MOCK } from "@/lib/desktop-da
 import { STOCKS } from "@/lib/market-data";
 import { readPublicSheet } from "@/lib/sheets.functions";
 import {
+  getIndianHighProfitTrades,
+  getGlobalHighProfitTrades,
+  getMarketTiming,
+} from "@/lib/trade-analysis";
+import {
   Send,
   RefreshCw,
   Trash2,
@@ -33,6 +38,11 @@ import {
   Play,
   CheckCircle2,
   Code2,
+  TrendingUp,
+  TrendingDown,
+  Clock,
+  Layers,
+  Zap,
 } from "lucide-react";
 
 export const Route = createFileRoute("/desktop/admin")({
@@ -810,6 +820,11 @@ function ApiKeysTab() {
   const [testingEndpoint, setTestingEndpoint] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<any>(null);
 
+  const indianTrades = getIndianHighProfitTrades();
+  const globalTrades = getGlobalHighProfitTrades();
+  const indianTiming = getMarketTiming("NSE_FNO");
+  const globalTiming = getMarketTiming("GLOBAL_US");
+
   const handleCopy = (text: string, id: string) => {
     if (!text) return;
     navigator.clipboard.writeText(text).catch(() => {});
@@ -825,7 +840,17 @@ function ApiKeysTab() {
     return `${str.slice(0, 8)}${"•".repeat(Math.max(12, str.length - 12))}${str.slice(-4)}`;
   };
 
-  const runLiveTest = async (type: "NSE_FNO" | "GLOBAL" | "TRADE_ORDER") => {
+  type LiveActionType =
+    | "NSE_FNO"
+    | "GLOBAL"
+    | "TRADE_ORDER"
+    | "DISPATCH_NIFTY"
+    | "DISPATCH_BANKNIFTY"
+    | "DISPATCH_SPX"
+    | "DISPATCH_NAS100"
+    | "FETCH_ALL_TRADES";
+
+  const runLiveTest = async (type: LiveActionType) => {
     setTestingEndpoint(type);
     setTestResult(null);
     const activeNseKey = settings.nseFnoApiKey || DEFAULT_NSE_FNO_KEY;
@@ -843,7 +868,7 @@ function ApiKeysTab() {
           keyUsed: maskKeyStr(activeNseKey),
           data,
         });
-        if (res.ok) toast.success("NSE F&O API Key authenticated successfully!");
+        if (res.ok) toast.success("NSE F&O API Key & Market Analysis fetched!");
         else toast.error("NSE F&O API Key test failed");
       } else if (type === "GLOBAL") {
         const res = await fetch("/api/v1/global/signals?instrument=S%26P%20500", {
@@ -857,9 +882,9 @@ function ApiKeysTab() {
           keyUsed: maskKeyStr(activeGlobalKey),
           data,
         });
-        if (res.ok) toast.success("GLOBAL API Key authenticated successfully!");
+        if (res.ok) toast.success("GLOBAL API Key & US Market Analysis fetched!");
         else toast.error("GLOBAL API Key test failed");
-      } else if (type === "TRADE_ORDER") {
+      } else if (type === "TRADE_ORDER" || type === "DISPATCH_NIFTY") {
         const res = await fetch("/api/v1/trades/order", {
           method: "POST",
           headers: {
@@ -871,19 +896,120 @@ function ApiKeysTab() {
             contract: "NIFTY50 22850 PE",
             action: "BUY",
             lots: 2,
-            price: 137.5,
+            price: 138.0,
+            target1: 195.0,
+            target2: 245.0,
+            stopLoss: 98.0,
           }),
         });
         const data = await res.json();
         setTestResult({
           status: res.status,
           ok: res.ok,
-          endpoint: "POST /api/v1/trades/order",
+          endpoint: "POST /api/v1/trades/order (NIFTY 50 - 1st Key)",
           keyUsed: maskKeyStr(activeNseKey),
           data,
         });
-        if (res.ok) toast.success("Paper trade order simulation filled!");
-        else toast.error("Paper trade order failed");
+        if (res.ok) toast.success("Dispatched Indian Trade: NIFTY 50 22850 PE to API Key!");
+        else toast.error("Trade dispatch failed");
+      } else if (type === "DISPATCH_BANKNIFTY") {
+        const res = await fetch("/api/v1/trades/order", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": activeNseKey,
+          },
+          body: JSON.stringify({
+            symbol: "BANK NIFTY",
+            contract: "BANKNIFTY 51200 CE",
+            action: "BUY",
+            lots: 2,
+            price: 315.0,
+            target1: 450.0,
+            target2: 560.0,
+            stopLoss: 220.0,
+          }),
+        });
+        const data = await res.json();
+        setTestResult({
+          status: res.status,
+          ok: res.ok,
+          endpoint: "POST /api/v1/trades/order (BANK NIFTY - 1st Key)",
+          keyUsed: maskKeyStr(activeNseKey),
+          data,
+        });
+        if (res.ok) toast.success("Dispatched Indian Trade: BANKNIFTY 51200 CE to API Key!");
+        else toast.error("Trade dispatch failed");
+      } else if (type === "DISPATCH_SPX") {
+        const res = await fetch("/api/v1/trades/order", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": activeGlobalKey,
+          },
+          body: JSON.stringify({
+            symbol: "S&P 500",
+            contract: "SPX 5870 CALL",
+            action: "BUY",
+            lots: 2,
+            price: 28.5,
+            target1: 45.0,
+            target2: 62.0,
+            stopLoss: 18.5,
+          }),
+        });
+        const data = await res.json();
+        setTestResult({
+          status: res.status,
+          ok: res.ok,
+          endpoint: "POST /api/v1/trades/order (S&P 500 - 2nd Key • US Live)",
+          keyUsed: maskKeyStr(activeGlobalKey),
+          data,
+        });
+        if (res.ok) toast.success("Dispatched US Trade: SPX 5870 CALL to API Key (US Session Live)!");
+        else toast.error("Trade dispatch failed");
+      } else if (type === "DISPATCH_NAS100") {
+        const res = await fetch("/api/v1/trades/order", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": activeGlobalKey,
+          },
+          body: JSON.stringify({
+            symbol: "NASDAQ 100",
+            contract: "NAS100 20450 CALL",
+            action: "BUY",
+            lots: 2,
+            price: 50.0,
+            target1: 78.0,
+            target2: 105.0,
+            stopLoss: 32.0,
+          }),
+        });
+        const data = await res.json();
+        setTestResult({
+          status: res.status,
+          ok: res.ok,
+          endpoint: "POST /api/v1/trades/order (NASDAQ 100 - 2nd Key • US Live)",
+          keyUsed: maskKeyStr(activeGlobalKey),
+          data,
+        });
+        if (res.ok) toast.success("Dispatched US Trade: NAS100 20450 CALL to API Key (US Session Live)!");
+        else toast.error("Trade dispatch failed");
+      } else if (type === "FETCH_ALL_TRADES") {
+        const res = await fetch("/api/v1/trades/order", {
+          headers: { "x-api-key": activeNseKey },
+        });
+        const data = await res.json();
+        setTestResult({
+          status: res.status,
+          ok: res.ok,
+          endpoint: "GET /api/v1/trades/order (All Active Setups & Orders)",
+          keyUsed: maskKeyStr(activeNseKey),
+          data,
+        });
+        if (res.ok) toast.success("Fetched all active trades & market timing statuses!");
+        else toast.error("Fetch trades failed");
       }
     } catch (e: any) {
       setTestResult({ status: 500, ok: false, error: e?.message || "Network Error" });
@@ -1154,6 +1280,255 @@ function ApiKeysTab() {
           <div className="overflow-x-auto text-muted-foreground select-all py-1">
             <span className="text-amber-400">curl</span> -H <span className="text-cyan-300">"x-api-key: {settings.globalApiKey || DEFAULT_GLOBAL_KEY}"</span> \<br/>
             &nbsp;&nbsp;https://www.investiqq.me/api/v1/global/signals?instrument=S%26P%20500
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION: High-Profit Analyzed Trades (Dispatched by Market Timings) */}
+      <div className="space-y-4 rounded-2xl border border-primary/30 bg-gradient-to-br from-surface/90 via-surface/70 to-primary/5 p-6 shadow-2xl backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-5">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/15 px-3 py-1 text-xs font-bold uppercase tracking-wider text-primary">
+                <Zap className="h-3.5 w-3.5" /> High-Profit Analyzed Trades Engine
+              </span>
+              <span className="rounded-full border border-border bg-background/60 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                Technical Charts • Option Greeks • Geopolitics
+              </span>
+            </div>
+            <h3 className="font-display text-xl font-bold text-foreground">
+              Analyzed High-Profit Trades (Indian &amp; US Markets)
+            </h3>
+            <p className="text-xs text-muted-foreground max-w-3xl leading-relaxed">
+              Every trade is thoroughly calculated with <strong>F&amp;O Chart technicals</strong> (EMAs, VWAP, Support/Resistance), <strong>Option Greeks</strong> (Delta, Gamma, Theta decay, PCR, Max Pain), and <strong>Geo-political macro drivers</strong> (Crude oil, US 10Y Yields, DXY, Central Bank rate paths). Sent to your 2 API keys according to local market trading hours.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => runLiveTest("FETCH_ALL_TRADES")}
+              disabled={testingEndpoint === "FETCH_ALL_TRADES"}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background/80 px-3.5 py-2 text-xs font-semibold hover:bg-accent transition"
+            >
+              {testingEndpoint === "FETCH_ALL_TRADES" ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              Fetch Active Trade Setups (API)
+            </button>
+          </div>
+        </div>
+
+        {/* 1. Indian NSE F&O High-Profit Trades */}
+        <div className="space-y-3 pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-400">
+                <Activity className="h-3.5 w-3.5" /> Indian Market Setups (1st Key • NSE F&amp;O)
+              </span>
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" /> {indianTiming.regularHoursIST}
+              </span>
+            </div>
+            <span className="rounded-full border border-border bg-background/50 px-2.5 py-0.5 text-[11px] font-medium text-amber-400">
+              {indianTiming.statusText}
+            </span>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {indianTrades.map((t) => (
+              <div
+                key={t.tradeId}
+                className="rounded-xl border border-border/80 bg-background/60 p-5 shadow-md hover:border-emerald-500/40 transition space-y-3.5"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-display text-base font-bold text-foreground">{t.symbol}</span>
+                      <span className={`rounded px-2 py-0.5 text-xs font-extrabold ${t.optionType === "PE" ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"}`}>
+                        {t.contract}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground font-medium">{t.strategy}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[11px] font-bold text-emerald-400">
+                      R:R {t.riskRewardRatio}
+                    </span>
+                    <p className="mt-1 text-[11px] text-emerald-400 font-semibold">{t.expectedProfitPctT2} Expected Profit</p>
+                  </div>
+                </div>
+
+                {/* Price targets grid */}
+                <div className="grid grid-cols-4 gap-2 rounded-lg border border-border/60 bg-background/80 p-2.5 text-center text-xs">
+                  <div>
+                    <span className="text-[10px] uppercase text-muted-foreground block">Entry Prem.</span>
+                    <strong className="text-foreground">{t.currency}{t.entryPrice}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase text-rose-400 block">Stop Loss</span>
+                    <strong className="text-rose-400">{t.currency}{t.stopLossPrice}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase text-emerald-400 block">Target 1</span>
+                    <strong className="text-emerald-400">{t.currency}{t.target1}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase text-emerald-300 block">Target 2</span>
+                    <strong className="text-emerald-300">{t.currency}{t.target2}</strong>
+                  </div>
+                </div>
+
+                {/* Analysis Pills */}
+                <div className="space-y-2 text-xs">
+                  <div className="rounded-lg border border-border/40 bg-surface/50 p-2.5 space-y-1">
+                    <span className="font-semibold text-foreground flex items-center gap-1.5 text-[11px]">
+                      <Layers className="h-3 w-3 text-primary" /> F&amp;O Chart Technicals:
+                    </span>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      {t.chartTechnicals.keyObservation} (Pattern: {t.chartTechnicals.chartPattern})
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="rounded-lg border border-border/40 bg-surface/40 p-2 space-y-0.5">
+                      <span className="font-medium text-muted-foreground block">Option Greeks:</span>
+                      <p className="text-foreground">Delta: <strong>{t.greeks.putDelta || t.greeks.callDelta}</strong> · Gamma: <strong>{t.greeks.gamma}</strong></p>
+                      <p className="text-muted-foreground">Theta: <strong>{t.greeks.thetaPerDay}/day</strong> · PCR: <strong className="text-emerald-400">{t.greeks.pcrVolume}</strong></p>
+                    </div>
+
+                    <div className="rounded-lg border border-border/40 bg-surface/40 p-2 space-y-0.5">
+                      <span className="font-medium text-muted-foreground block">Geopolitical / Macro:</span>
+                      <p className="text-muted-foreground line-clamp-2">
+                        {t.geopolitics.crudeOilImpact.slice(0, 75)}...
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between border-t border-border/50 pt-3">
+                  <span className="text-[11px] text-muted-foreground">
+                    Timing: <strong>{t.timing.executionWindow}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => runLiveTest(t.symbol === "NIFTY 50" ? "DISPATCH_NIFTY" : "DISPATCH_BANKNIFTY")}
+                    disabled={testingEndpoint?.includes("DISPATCH")}
+                    className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 transition shadow-sm"
+                  >
+                    <Send className="h-3 w-3" /> Send to 1st Key
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 2. US Market High-Profit Trades */}
+        <div className="space-y-3 pt-4 border-t border-border/60">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-xs font-bold text-cyan-400">
+                <Globe className="h-3.5 w-3.5" /> US &amp; Global Market Setups (2nd Key • GLOBAL)
+              </span>
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" /> {globalTiming.regularHoursIST} ({globalTiming.regularHoursLocal})
+              </span>
+            </div>
+            <span className="rounded-full border border-cyan-500/30 bg-cyan-500/15 px-2.5 py-0.5 text-[11px] font-bold text-cyan-300 flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
+              {globalTiming.statusText}
+            </span>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {globalTrades.map((t) => (
+              <div
+                key={t.tradeId}
+                className="rounded-xl border border-cyan-500/30 bg-background/60 p-5 shadow-md hover:border-cyan-500/50 transition space-y-3.5"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-display text-base font-bold text-foreground">{t.symbol}</span>
+                      <span className="rounded px-2 py-0.5 text-xs font-extrabold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                        {t.contract}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground font-medium">{t.strategy}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="rounded-full bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[11px] font-bold text-cyan-400">
+                      R:R {t.riskRewardRatio}
+                    </span>
+                    <p className="mt-1 text-[11px] text-cyan-400 font-semibold">{t.expectedProfitPctT2} Expected Profit</p>
+                  </div>
+                </div>
+
+                {/* Price targets grid */}
+                <div className="grid grid-cols-4 gap-2 rounded-lg border border-border/60 bg-background/80 p-2.5 text-center text-xs">
+                  <div>
+                    <span className="text-[10px] uppercase text-muted-foreground block">Entry Prem.</span>
+                    <strong className="text-foreground">{t.currency}{t.entryPrice}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase text-rose-400 block">Stop Loss</span>
+                    <strong className="text-rose-400">{t.currency}{t.stopLossPrice}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase text-cyan-400 block">Target 1</span>
+                    <strong className="text-cyan-400">{t.currency}{t.target1}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase text-cyan-300 block">Target 2</span>
+                    <strong className="text-cyan-300">{t.currency}{t.target2}</strong>
+                  </div>
+                </div>
+
+                {/* Analysis Pills */}
+                <div className="space-y-2 text-xs">
+                  <div className="rounded-lg border border-border/40 bg-surface/50 p-2.5 space-y-1">
+                    <span className="font-semibold text-foreground flex items-center gap-1.5 text-[11px]">
+                      <Layers className="h-3 w-3 text-cyan-400" /> Chart Technicals:
+                    </span>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      {t.chartTechnicals.keyObservation} (Pattern: {t.chartTechnicals.chartPattern})
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="rounded-lg border border-border/40 bg-surface/40 p-2 space-y-0.5">
+                      <span className="font-medium text-muted-foreground block">Option Greeks:</span>
+                      <p className="text-foreground">Delta: <strong>{t.greeks.callDelta}</strong> · Gamma: <strong>{t.greeks.gamma}</strong></p>
+                      <p className="text-muted-foreground">Theta: <strong>{t.greeks.thetaPerDay}/day</strong> · VIX: <strong className="text-cyan-400">14.8</strong></p>
+                    </div>
+
+                    <div className="rounded-lg border border-border/40 bg-surface/40 p-2 space-y-0.5">
+                      <span className="font-medium text-muted-foreground block">Geopolitical / Macro:</span>
+                      <p className="text-muted-foreground line-clamp-2">
+                        {t.geopolitics.centralBankPolicyStance.slice(0, 75)}...
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between border-t border-border/50 pt-3">
+                  <span className="text-[11px] text-cyan-400 font-medium flex items-center gap-1">
+                    <Zap className="h-3 w-3" /> US Session Live Timing
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => runLiveTest(t.symbol === "S&P 500" ? "DISPATCH_SPX" : "DISPATCH_NAS100")}
+                    disabled={testingEndpoint?.includes("DISPATCH")}
+                    className="inline-flex items-center gap-1 rounded-lg border border-cyan-500/40 bg-cyan-500/15 px-3 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/25 transition shadow-sm"
+                  >
+                    <Send className="h-3 w-3" /> Send to 2nd Key (Live)
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
