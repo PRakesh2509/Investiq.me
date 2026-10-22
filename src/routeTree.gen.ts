@@ -28,6 +28,12 @@ import { Route as DesktopFundsRouteImport } from './routes/desktop.funds'
 import { Route as DesktopIposRouteImport } from './routes/desktop.ipos'
 import { Route as DesktopOptionChainRouteImport } from './routes/desktop.option-chain'
 import { Route as DesktopTerminalRouteImport } from './routes/desktop.terminal'
+import { Route as ApiFnoAnalysisRouteImport } from './routes/api/fno/analysis'
+import { Route as ApiFnoCandidateHistoryRouteImport } from './routes/api/fno/candidate-history'
+import { Route as ApiFnoDataStatusRouteImport } from './routes/api/fno/data-status'
+import { Route as ApiFnoGreeksRouteImport } from './routes/api/fno/greeks'
+import { Route as ApiFnoMarketSnapshotRouteImport } from './routes/api/fno/market-snapshot'
+import { Route as ApiFnoTradeCandidatesRouteImport } from './routes/api/fno/trade-candidates'
 import { Route as ApiPublicOptionChainRouteImport } from './routes/api/public/option-chain'
 import { Route as DesktopFundCodeRouteImport } from './routes/desktop.fund.$code'
 import { Route as DesktopSectorNameRouteImport } from './routes/desktop.sector.$name'
@@ -135,6 +141,36 @@ const DesktopTerminalRoute = DesktopTerminalRouteImport.update({
   path: '/terminal',
   getParentRoute: () => DesktopRoute,
 } as any)
+const ApiFnoAnalysisRoute = ApiFnoAnalysisRouteImport.update({
+  id: '/api/fno/analysis',
+  path: '/api/fno/analysis',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFnoCandidateHistoryRoute = ApiFnoCandidateHistoryRouteImport.update({
+  id: '/api/fno/candidate-history',
+  path: '/api/fno/candidate-history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFnoDataStatusRoute = ApiFnoDataStatusRouteImport.update({
+  id: '/api/fno/data-status',
+  path: '/api/fno/data-status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFnoGreeksRoute = ApiFnoGreeksRouteImport.update({
+  id: '/api/fno/greeks',
+  path: '/api/fno/greeks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFnoMarketSnapshotRoute = ApiFnoMarketSnapshotRouteImport.update({
+  id: '/api/fno/market-snapshot',
+  path: '/api/fno/market-snapshot',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFnoTradeCandidatesRoute = ApiFnoTradeCandidatesRouteImport.update({
+  id: '/api/fno/trade-candidates',
+  path: '/api/fno/trade-candidates',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicOptionChainRoute = ApiPublicOptionChainRouteImport.update({
   id: '/api/public/option-chain',
   path: '/api/public/option-chain',
@@ -216,6 +252,12 @@ export interface FileRoutesByFullPath {
   '/desktop/option-chain': typeof DesktopOptionChainRoute
   '/desktop/terminal': typeof DesktopTerminalRoute
   '/desktop/': typeof DesktopIndexRoute
+  '/api/fno/analysis': typeof ApiFnoAnalysisRoute
+  '/api/fno/candidate-history': typeof ApiFnoCandidateHistoryRoute
+  '/api/fno/data-status': typeof ApiFnoDataStatusRoute
+  '/api/fno/greeks': typeof ApiFnoGreeksRoute
+  '/api/fno/market-snapshot': typeof ApiFnoMarketSnapshotRoute
+  '/api/fno/trade-candidates': typeof ApiFnoTradeCandidatesRoute
   '/api/public/option-chain': typeof ApiPublicOptionChainRoute
   '/desktop/fund/$code': typeof DesktopFundCodeRoute
   '/desktop/sector/$name': typeof DesktopSectorNameRoute
@@ -247,6 +289,12 @@ export interface FileRoutesByTo {
   '/desktop/option-chain': typeof DesktopOptionChainRoute
   '/desktop/terminal': typeof DesktopTerminalRoute
   '/desktop': typeof DesktopIndexRoute
+  '/api/fno/analysis': typeof ApiFnoAnalysisRoute
+  '/api/fno/candidate-history': typeof ApiFnoCandidateHistoryRoute
+  '/api/fno/data-status': typeof ApiFnoDataStatusRoute
+  '/api/fno/greeks': typeof ApiFnoGreeksRoute
+  '/api/fno/market-snapshot': typeof ApiFnoMarketSnapshotRoute
+  '/api/fno/trade-candidates': typeof ApiFnoTradeCandidatesRoute
   '/api/public/option-chain': typeof ApiPublicOptionChainRoute
   '/desktop/fund/$code': typeof DesktopFundCodeRoute
   '/desktop/sector/$name': typeof DesktopSectorNameRoute
@@ -280,6 +328,12 @@ export interface FileRoutesById {
   '/desktop/option-chain': typeof DesktopOptionChainRoute
   '/desktop/terminal': typeof DesktopTerminalRoute
   '/desktop/': typeof DesktopIndexRoute
+  '/api/fno/analysis': typeof ApiFnoAnalysisRoute
+  '/api/fno/candidate-history': typeof ApiFnoCandidateHistoryRoute
+  '/api/fno/data-status': typeof ApiFnoDataStatusRoute
+  '/api/fno/greeks': typeof ApiFnoGreeksRoute
+  '/api/fno/market-snapshot': typeof ApiFnoMarketSnapshotRoute
+  '/api/fno/trade-candidates': typeof ApiFnoTradeCandidatesRoute
   '/api/public/option-chain': typeof ApiPublicOptionChainRoute
   '/desktop/fund/$code': typeof DesktopFundCodeRoute
   '/desktop/sector/$name': typeof DesktopSectorNameRoute
@@ -314,6 +368,12 @@ export interface FileRouteTypes {
     | '/desktop/option-chain'
     | '/desktop/terminal'
     | '/desktop/'
+    | '/api/fno/analysis'
+    | '/api/fno/candidate-history'
+    | '/api/fno/data-status'
+    | '/api/fno/greeks'
+    | '/api/fno/market-snapshot'
+    | '/api/fno/trade-candidates'
     | '/api/public/option-chain'
     | '/desktop/fund/$code'
     | '/desktop/sector/$name'
@@ -345,6 +405,12 @@ export interface FileRouteTypes {
     | '/desktop/option-chain'
     | '/desktop/terminal'
     | '/desktop'
+    | '/api/fno/analysis'
+    | '/api/fno/candidate-history'
+    | '/api/fno/data-status'
+    | '/api/fno/greeks'
+    | '/api/fno/market-snapshot'
+    | '/api/fno/trade-candidates'
     | '/api/public/option-chain'
     | '/desktop/fund/$code'
     | '/desktop/sector/$name'
@@ -377,6 +443,12 @@ export interface FileRouteTypes {
     | '/desktop/option-chain'
     | '/desktop/terminal'
     | '/desktop/'
+    | '/api/fno/analysis'
+    | '/api/fno/candidate-history'
+    | '/api/fno/data-status'
+    | '/api/fno/greeks'
+    | '/api/fno/market-snapshot'
+    | '/api/fno/trade-candidates'
     | '/api/public/option-chain'
     | '/desktop/fund/$code'
     | '/desktop/sector/$name'
@@ -401,6 +473,12 @@ export interface RootRouteChildren {
   ApiOptionChainRoute: typeof ApiOptionChainRoute
   ApiSearchRoute: typeof ApiSearchRoute
   ApiTestTradeRoute: typeof ApiTestTradeRoute
+  ApiFnoAnalysisRoute: typeof ApiFnoAnalysisRoute
+  ApiFnoCandidateHistoryRoute: typeof ApiFnoCandidateHistoryRoute
+  ApiFnoDataStatusRoute: typeof ApiFnoDataStatusRoute
+  ApiFnoGreeksRoute: typeof ApiFnoGreeksRoute
+  ApiFnoMarketSnapshotRoute: typeof ApiFnoMarketSnapshotRoute
+  ApiFnoTradeCandidatesRoute: typeof ApiFnoTradeCandidatesRoute
   ApiPublicOptionChainRoute: typeof ApiPublicOptionChainRoute
   ApiPublicHooksAiTradeAlertRoute: typeof ApiPublicHooksAiTradeAlertRoute
   ApiPublicHooksFundsAlertRoute: typeof ApiPublicHooksFundsAlertRoute
@@ -547,6 +625,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesktopTerminalRouteImport
       parentRoute: typeof DesktopRoute
     }
+    '/api/fno/analysis': {
+      id: '/api/fno/analysis'
+      path: '/api/fno/analysis'
+      fullPath: '/api/fno/analysis'
+      preLoaderRoute: typeof ApiFnoAnalysisRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/fno/candidate-history': {
+      id: '/api/fno/candidate-history'
+      path: '/api/fno/candidate-history'
+      fullPath: '/api/fno/candidate-history'
+      preLoaderRoute: typeof ApiFnoCandidateHistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/fno/data-status': {
+      id: '/api/fno/data-status'
+      path: '/api/fno/data-status'
+      fullPath: '/api/fno/data-status'
+      preLoaderRoute: typeof ApiFnoDataStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/fno/greeks': {
+      id: '/api/fno/greeks'
+      path: '/api/fno/greeks'
+      fullPath: '/api/fno/greeks'
+      preLoaderRoute: typeof ApiFnoGreeksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/fno/market-snapshot': {
+      id: '/api/fno/market-snapshot'
+      path: '/api/fno/market-snapshot'
+      fullPath: '/api/fno/market-snapshot'
+      preLoaderRoute: typeof ApiFnoMarketSnapshotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/fno/trade-candidates': {
+      id: '/api/fno/trade-candidates'
+      path: '/api/fno/trade-candidates'
+      fullPath: '/api/fno/trade-candidates'
+      preLoaderRoute: typeof ApiFnoTradeCandidatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/option-chain': {
       id: '/api/public/option-chain'
       path: '/api/public/option-chain'
@@ -669,6 +789,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOptionChainRoute: ApiOptionChainRoute,
   ApiSearchRoute: ApiSearchRoute,
   ApiTestTradeRoute: ApiTestTradeRoute,
+  ApiFnoAnalysisRoute: ApiFnoAnalysisRoute,
+  ApiFnoCandidateHistoryRoute: ApiFnoCandidateHistoryRoute,
+  ApiFnoDataStatusRoute: ApiFnoDataStatusRoute,
+  ApiFnoGreeksRoute: ApiFnoGreeksRoute,
+  ApiFnoMarketSnapshotRoute: ApiFnoMarketSnapshotRoute,
+  ApiFnoTradeCandidatesRoute: ApiFnoTradeCandidatesRoute,
   ApiPublicOptionChainRoute: ApiPublicOptionChainRoute,
   ApiPublicHooksAiTradeAlertRoute: ApiPublicHooksAiTradeAlertRoute,
   ApiPublicHooksFundsAlertRoute: ApiPublicHooksFundsAlertRoute,

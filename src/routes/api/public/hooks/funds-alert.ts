@@ -76,17 +76,21 @@ export const Route = createFileRoute("/api/public/hooks/funds-alert")({
       POST: async ({ request }) => {
         try {
           const token = process.env.TELEGRAM_BOT_TOKEN || "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc";
-          const envIds = (process.env.TELEGRAM_CHAT_ID ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-          const chatIds = Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
-
           const url = new URL(request.url);
           const qParam = url.searchParams.get("category") as FundCategory | null;
           let bodyCat: FundCategory | null = null;
+          let bodyChatIds: string[] | undefined = undefined;
           try {
-            const body = (await request.clone().json()) as { category?: FundCategory };
+            const body = (await request.clone().json()) as { category?: FundCategory; chatIds?: string[] };
             bodyCat = body?.category ?? null;
+            bodyChatIds = body?.chatIds;
           } catch { /* body optional */ }
           const only = qParam ?? bodyCat;
+
+          const envIds = (process.env.TELEGRAM_CHAT_ID ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+          const chatIds = bodyChatIds?.length
+            ? Array.from(new Set(bodyChatIds.map((s) => String(s).trim()).filter(Boolean)))
+            : Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
 
           const cats: FundCategory[] = only
             ? [only]

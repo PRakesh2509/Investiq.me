@@ -33,8 +33,13 @@ import { pushRecentViewed } from "@/lib/recent-viewed";
 import { RefreshCw, ExternalLink, Zap, Search, ChevronDown, Check, Sparkles } from "lucide-react";
 import { DhanConnectModal } from "@/components/DhanConnectModal";
 
+export interface DesktopChartsSearch {
+  symbol?: string;
+  tab?: "overview" | "financials" | "news";
+}
+
 export const Route = createFileRoute("/desktop/charts")({
-  validateSearch: (s: Record<string, unknown>) => ({
+  validateSearch: (s: Record<string, unknown>): DesktopChartsSearch => ({
     symbol: typeof s.symbol === "string" ? s.symbol.toUpperCase() : undefined,
     tab: typeof s.tab === "string" ? (s.tab as "overview" | "financials" | "news") : undefined,
   }),

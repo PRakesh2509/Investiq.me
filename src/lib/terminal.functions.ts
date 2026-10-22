@@ -31,39 +31,32 @@ export const getBars = createServerFn({ method: "GET" })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    // Try Groww historical candles first if it's an Indian instrument
-    const isIndian = data.symbol.startsWith("^NSE") || data.symbol.includes("NIFTY") || data.symbol.includes("SENSEX");
+    // Try DhanHQ historical candles first if it's an Indian instrument
+    const isIndian = data.symbol.startsWith("^NSE") || data.symbol.includes("NIFTY") || data.symbol.includes("SENSEX") || data.symbol.endsWith(".NS");
     if (isIndian) {
       try {
-        const { growwCandles } = await import("@/lib/groww.server");
-        const growwSym = data.symbol.replace(/\^/g, "").replace(/\.NS/g, "").replace(/I$/, "");
+        const { getDhanChartCandles } = await import("@/lib/dhan.server");
+        const cleanSym = data.symbol.replace(/\^/g, "").replace(/\.NS$/i, "").replace(/I$/, "");
         const minutes =
           data.timeframe === "1M" ? 1 :
-          data.timeframe === "3M" ? 3 :
+          data.timeframe === "3M" ? 5 :
           data.timeframe === "5M" ? 5 :
           data.timeframe === "15M" ? 15 :
-          data.timeframe === "30M" ? 30 :
+          data.timeframe === "30M" ? 25 :
           data.timeframe === "1H" ? 60 : 1440;
-        const end = Date.now();
-        const start = end - (data.timeframe === "1D" ? 60 * 86400_000 : 4 * 86400_000);
-        const gCandles = await growwCandles({
-          tradingSymbol: growwSym,
-          start,
-          end,
-          intervalMinutes: minutes,
-        });
-        if (gCandles && gCandles.length > 0) {
-          const bars: Bar[] = gCandles.map((c) => ({
-            time: c.time,
+        const dCandles = await getDhanChartCandles(cleanSym, data.timeframe === "1D" ? "1y" : "5d", minutes);
+        if (dCandles && dCandles.length > 0) {
+          const bars: Bar[] = dCandles.map((c) => ({
+            time: Math.floor(c.t / 1000),
             open: c.open,
             high: c.high,
             low: c.low,
-            close: c.close,
+            close: c.price,
             volume: c.volume,
           }));
           const price = bars[bars.length - 1]?.close ?? 0;
           const prevClose = bars[0]?.close ?? price;
-          return { ok: true as const, bars, price, prevClose, currency: "INR", source: "groww" as const };
+          return { ok: true as const, bars, price, prevClose, currency: "INR", source: "dhan" as const };
         }
       } catch {
         // Fall back to Yahoo Finance

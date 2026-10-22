@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { getLiveChart } from "@/lib/groww.functions";
+import { getDhanLiveChart } from "@/lib/dhan.functions";
 
 type Point = { t: number; price: number; volume: number };
 
@@ -23,13 +23,14 @@ function fmtTime(t: number, intraday: boolean) {
 const MINUTES: Record<string, number> = { "5m": 5, "15m": 15, "60m": 60, "1h": 60, "1d": 1440 };
 const DAYS: Record<string, number> = { "1d": 1, "5d": 5, "1mo": 30, "3mo": 90 };
 
-/** Live index chart — data comes from the Groww Trading API only. Refreshes every 10s. */
+/** Live index chart — data powered by DhanHQ API v2. Refreshes every 10s. */
 export default function LiveIndexChart({
   symbol,
   label,
   interval,
   range,
   height = 520,
+  dhanSymbol,
   growwSymbol,
   exchange = "NSE",
 }: {
@@ -38,18 +39,21 @@ export default function LiveIndexChart({
   interval: string; // e.g. 5m
   range: string; // e.g. 1d
   height?: number;
-  growwSymbol?: string; // Groww trading symbol e.g. NIFTY
+  dhanSymbol?: string; // Dhan trading symbol e.g. NIFTY
+  growwSymbol?: string; // legacy alias
   exchange?: "NSE" | "BSE";
 }) {
   const intraday = interval !== "1d";
+  const activeSymbol = dhanSymbol ?? growwSymbol ?? symbol;
+
   const q = useQuery({
-    queryKey: ["live-index-chart", symbol, growwSymbol, interval, range],
+    queryKey: ["live-index-chart", symbol, activeSymbol, interval, range],
     queryFn: () =>
-      getLiveChart({
+      getDhanLiveChart({
         data: {
-          growwSymbol: growwSymbol ?? symbol,
+          symbol,
+          dhanSymbol: activeSymbol,
           exchange,
-          segment: "CASH",
           intervalMinutes: MINUTES[interval] ?? 5,
           days: DAYS[range] ?? 1,
         },
@@ -67,7 +71,6 @@ export default function LiveIndexChart({
   const prevClose = q.data?.ok ? q.data.previousClose : 0;
   const change = last - prevClose;
   const changePct = prevClose ? (change / prevClose) * 100 : 0;
-
 
   const up = change >= 0;
   const stroke = up ? "#22c55e" : "#ef4444";
@@ -88,18 +91,17 @@ export default function LiveIndexChart({
             </span>
           </div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Live · Groww API · refreshes every 10s · H{" "}
+            Live · DhanHQ Direct Feed · refreshes every 10s · H{" "}
             {hi ? hi.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"} · L{" "}
             {Number.isFinite(lo) ? lo.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"} · Prev {prevClose ? prevClose.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}
           </p>
-
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
           </span>
-          Live
+          DhanHQ Live
         </span>
       </div>
 
@@ -107,10 +109,9 @@ export default function LiveIndexChart({
         {points.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center text-sm text-muted-foreground">
             {q.isLoading
-              ? "Loading live Groww chart…"
-              : (q.data && !q.data.ok ? q.data.error : "No Groww data for this interval right now.")}
+              ? "Loading live DhanHQ chart…"
+              : (q.data && !q.data.ok ? q.data.error : "No DhanHQ data for this interval right now.")}
           </div>
-
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={points} margin={{ top: 16, right: 16, bottom: 8, left: 8 }}>

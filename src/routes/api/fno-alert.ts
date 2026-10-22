@@ -19,7 +19,7 @@ export const Route = createFileRoute("/api/fno-alert")({
     handlers: {
       POST: async ({ request }) => {
         try {
-          const body = (await request.json().catch(() => ({}))) as { symbol?: string };
+          const body = (await request.json().catch(() => ({}))) as { symbol?: string; chatIds?: string[] };
           const raw = String(body.symbol ?? "NIFTY").toUpperCase().replace(/[\s_-]/g, "");
           const instrumentKey = ALLOWED[raw];
           if (!instrumentKey) {
@@ -64,7 +64,10 @@ export const Route = createFileRoute("/api/fno-alert")({
             simulated = true;
           }
 
-          const notified = await sendFnoAlerts(plan);
+          const targetChatIds = Array.isArray(body?.chatIds) && body.chatIds.length > 0
+            ? Array.from(new Set(body.chatIds.map((s) => String(s).trim()).filter(Boolean)))
+            : undefined;
+          const notified = await sendFnoAlerts(plan, targetChatIds);
 
           console.log(
             `[fno-alert] ${label} ${expiry} simulated=${simulated} cards=${notified.cards} sent=${notified.sent}/${notified.total}`,

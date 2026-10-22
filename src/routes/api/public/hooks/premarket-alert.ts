@@ -95,11 +95,14 @@ function fmtVol(n: number): string {
 export const Route = createFileRoute("/api/public/hooks/premarket-alert")({
   server: {
     handlers: {
-      POST: async () => {
+      POST: async ({ request }) => {
         const token = process.env.TELEGRAM_BOT_TOKEN || "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc";
+        const body = (await request?.json().catch(() => ({}))) as { chatIds?: string[] } | undefined;
         const envIds = (process.env.TELEGRAM_CHAT_ID ?? "")
           .split(",").map((s) => s.trim()).filter(Boolean);
-        const chatIds = Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
+        const chatIds = body?.chatIds?.length
+          ? Array.from(new Set(body.chatIds.map((s) => String(s).trim()).filter(Boolean)))
+          : Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
 
         const quotes = await fetchAll();
         if (quotes.length === 0) {

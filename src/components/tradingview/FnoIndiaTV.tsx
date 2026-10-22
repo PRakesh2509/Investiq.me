@@ -3,9 +3,9 @@ import TVWidget from "./TVWidget";
 import LiveIndexChart from "./LiveIndexChart";
 
 const INSTRUMENTS = [
-  { key: "NIFTY", label: "NIFTY 50", tv: "NSE:NIFTY", groww: "NIFTY", exchange: "NSE" },
-  { key: "BANKNIFTY", label: "BANK NIFTY", tv: "NSE:BANKNIFTY", groww: "BANKNIFTY", exchange: "NSE" },
-  { key: "SENSEX", label: "SENSEX", tv: "BSE:SENSEX", groww: "SENSEX", exchange: "BSE" },
+  { key: "NIFTY", label: "NIFTY 50", tv: "NSE:NIFTY", dhan: "NIFTY", exchange: "NSE" },
+  { key: "BANKNIFTY", label: "BANK NIFTY", tv: "NSE:BANKNIFTY", dhan: "BANKNIFTY", exchange: "NSE" },
+  { key: "SENSEX", label: "SENSEX", tv: "BSE:SENSEX", dhan: "SENSEX", exchange: "BSE" },
 ] as const;
 
 
@@ -59,8 +59,8 @@ export default function FnoIndiaTV() {
 
       <LiveIndexChart
         key={`chart-${sym.key}-${interval.value}`}
-        symbol={sym.groww}
-        growwSymbol={sym.groww}
+        symbol={sym.dhan}
+        dhanSymbol={sym.dhan}
         exchange={sym.exchange}
         label={sym.label}
         interval={interval.yahoo.interval}

@@ -184,10 +184,13 @@ function pickSlice(): Entry[] {
 export const Route = createFileRoute("/api/public/hooks/news-alert")({
   server: {
     handlers: {
-      POST: async () => {
+      POST: async ({ request }) => {
         const token = process.env.TELEGRAM_BOT_TOKEN || "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc";
+        const body = (await request?.json().catch(() => ({}))) as { chatIds?: string[] } | undefined;
         const envIds = (process.env.TELEGRAM_CHAT_ID ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-        const chatIds = Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
+        const chatIds = body?.chatIds?.length
+          ? Array.from(new Set(body.chatIds.map((s) => String(s).trim()).filter(Boolean)))
+          : Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -204,7 +207,7 @@ export const Route = createFileRoute("/api/public/hooks/news-alert")({
           .from("news_sent")
           .select("guid")
           .in("guid", allGuids);
-        const seenSet = new Set((seen ?? []).map((r) => r.guid));
+        const seenSet = new Set((seen ?? []).map((r: any) => r.guid));
 
         const fresh: { entry: Entry; item: NewsItem }[] = [];
         for (const c of perEntry) {

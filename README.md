@@ -29,7 +29,7 @@ Copy `.env.example` to `.env` (already included here with the public backend key
 **Server-only secrets — set these yourself (never commit real values):**
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram alerts
 - `UPSTOX_ACCESS_TOKEN` — option chain data (optional; test alerts use mock data)
-- `GROWW_API_KEY`, `GROWW_API_SECRET` — Groww live data (optional; needs Live Data + Historical Data roles enabled in the Groww Trading API dashboard)
+- `DHAN_CLIENT_ID`, `DHAN_ACCESS_TOKEN` — DhanHQ API v2 live data (LTP quotes, historical candles, portfolio holdings & execution)
 - `RSI_SHEET_URL`, `RSI_SHEET_NAME` — Google Sheet for RSI alerts (optional)
 
 > Note: secrets stored in Lovable Cloud are not in this download. Set them in your
@@ -47,7 +47,7 @@ Copy `.env.example` to `.env` (already included here with the public backend key
 │   │       └── public/hooks/# Telegram alert hooks (news, IPO, RSI, funds, F&O)
 │   ├── components/          # UI components (terminal, tradingview, ui/kit)
 │   ├── context/             # AdminContext (settings, Telegram config)
-│   ├── lib/                 # Data engines: yahoo, groww, upstox, ipo, funds, fno
+│   ├── lib/                 # Data engines: dhan, yahoo, upstox, ipo, funds, fno
 │   │   └── *.server.ts      # Server-only modules (read process.env)
 │   ├── integrations/        # Backend client (auto-generated — do not edit)
 │   ├── router.tsx / start.ts / server.ts   # App bootstrap

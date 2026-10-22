@@ -256,7 +256,7 @@ export async function sendPremiumTrades(plan: AiTradePlan) {
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  return { sent, total: CHAT_IDS.length };
+  return { sent, total: chatIds.length };
 }
 
 /* ------------------------- F&O alert cards (boxed style) ------------------------ */

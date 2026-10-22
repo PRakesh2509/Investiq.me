@@ -2,11 +2,31 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { useAdmin } from "@/context/AdminContext";
+import { useAdmin, PERMANENT_CHAT_IDS, type CustomApiKey } from "@/context/AdminContext";
 import { DESKTOP_SYMBOLS, NOTIFICATIONS_LOG, USERS_MOCK } from "@/lib/desktop-data";
 import { STOCKS } from "@/lib/market-data";
 import { readPublicSheet } from "@/lib/sheets.functions";
-import { Send, RefreshCw, Copy, Trash2, Download, LogOut, Lock } from "lucide-react";
+import {
+  Send,
+  RefreshCw,
+  Trash2,
+  Download,
+  LogOut,
+  Lock,
+  ExternalLink,
+  Plus,
+  X,
+  RotateCcw,
+  Key,
+  Copy,
+  Check,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  AlertCircle,
+  AlertTriangle,
+  Sparkles,
+} from "lucide-react";
 
 export const Route = createFileRoute("/desktop/admin")({
   component: AdminPanel,
@@ -14,18 +34,18 @@ export const Route = createFileRoute("/desktop/admin")({
 
 type Tab =
   | "overview"
+  | "apikeys"
   | "telegram"
   | "sheets"
-  | "apikeys"
   | "stocks"
   | "notifications"
   | "users";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "overview", label: "Overview" },
+  { id: "apikeys", label: "API Keys" },
   { id: "telegram", label: "Telegram" },
   { id: "sheets", label: "Google Sheets" },
-  { id: "apikeys", label: "API Keys" },
   { id: "stocks", label: "Stocks" },
   { id: "notifications", label: "Notifications" },
   { id: "users", label: "Users" },
@@ -91,10 +111,10 @@ function AdminPanel() {
         ))}
       </div>
 
-      {tab === "overview" && <Overview />}
+      {tab === "overview" && <Overview onSelectTab={setTab} />}
+      {tab === "apikeys" && <ApiKeysTab />}
       {tab === "telegram" && <TelegramTab />}
       {tab === "sheets" && <SheetsTab />}
-      {tab === "apikeys" && <ApiKeysTab />}
       {tab === "stocks" && <StocksTab />}
       {tab === "notifications" && <NotificationsTab />}
       {tab === "users" && <UsersTab />}
@@ -103,11 +123,18 @@ function AdminPanel() {
 }
 
 /* -------- Overview -------- */
-function Overview() {
+function Overview({ onSelectTab }: { onSelectTab?: (t: Tab) => void }) {
+  const { settings } = useAdmin();
+  const activeKeysCount = [
+    settings.apiKey,
+    settings.fnoEngineApiKey,
+    settings.growwApiKey,
+    settings.ocApiKey,
+  ].filter(Boolean).length;
   const stats = [
     { l: "Total users", v: USERS_MOCK.length.toString() },
     { l: "Active today", v: USERS_MOCK.filter((u) => u.lastLogin === "2026-07-14").length.toString() },
-    { l: "Portfolio value", v: "₹18.7L" },
+    { l: "Configured API Keys", v: activeKeysCount.toString() },
     { l: "Notifications sent", v: NOTIFICATIONS_LOG.filter((n) => n.status === "Sent").length.toString() },
   ];
   return (
@@ -123,7 +150,13 @@ function Overview() {
       <div className="rounded-2xl border border-border bg-surface/60 p-5">
         <h3 className="font-display text-sm font-semibold">Quick actions</h3>
         <div className="mt-3 flex flex-wrap gap-2">
-          {["Send test Telegram", "Refresh sheet data", "Generate API key", "Export notifications"].map((a) => (
+          <button
+            onClick={() => onSelectTab?.("apikeys")}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-medium text-primary hover:bg-primary/20 transition"
+          >
+            <Plus className="h-3.5 w-3.5" /> Create API Key
+          </button>
+          {["Send test Telegram", "Refresh sheet data", "Export notifications"].map((a) => (
             <button
               key={a}
               onClick={() => toast.info(`${a} — mock`)}
@@ -143,12 +176,41 @@ function TelegramTab() {
   const { settings, updateSettings } = useAdmin();
   const [sending, setSending] = useState(false);
   const [fnoSymbol, setFnoSymbol] = useState("NIFTY");
-
+  const [newChatId, setNewChatId] = useState("");
 
   const chatIds = settings.telegramChatId
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+
+  const handleAddChatId = () => {
+    const trimmed = newChatId.trim();
+    if (!trimmed) return;
+    const toAdd = trimmed
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const merged = Array.from(new Set([...chatIds, ...toAdd]));
+    updateSettings({ telegramChatId: merged.join(",") });
+    setNewChatId("");
+    toast.success(`Added ${toAdd.length} Chat ID(s)`);
+  };
+
+  const handleRemoveChatId = (idToRemove: string) => {
+    const filtered = chatIds.filter((id) => id !== idToRemove);
+    updateSettings({ telegramChatId: filtered.join(",") });
+    toast.info(`Removed Chat ID ${idToRemove}`);
+  };
+
+  const handleResetToDefaults = () => {
+    updateSettings({ telegramChatId: PERMANENT_CHAT_IDS.join(",") });
+    toast.success("Reset Chat IDs to default recipients");
+  };
+
+  const handleClearAllChatIds = () => {
+    updateSettings({ telegramChatId: "" });
+    toast.info("Cleared all Chat IDs");
+  };
 
   const sendTest = async () => {
     if (!settings.masterEnabled) {
@@ -156,7 +218,7 @@ function TelegramTab() {
       return;
     }
     if (!settings.telegramBotToken || chatIds.length === 0) {
-      toast.error("Bot token and Chat ID are required");
+      toast.error("Bot token and at least one Chat ID are required");
       return;
     }
     setSending(true);
@@ -230,27 +292,109 @@ function TelegramTab() {
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-4">
+      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="Bot token">
           <input
             value={settings.telegramBotToken}
             onChange={(e) => updateSettings({ telegramBotToken: e.target.value })}
+            placeholder="e.g. 8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc"
             className="admin-input"
           />
         </Field>
-        <Field label="Chat IDs (permanent — comma-separated)">
+        <Field label={`Chat IDs (${chatIds.length} configured recipient${chatIds.length === 1 ? "" : "s"} — editable)`}>
           <input
             value={settings.telegramChatId}
-            readOnly
-            title="Permanent chat IDs — locked"
-            className="admin-input cursor-not-allowed opacity-90"
+            onChange={(e) => updateSettings({ telegramChatId: e.target.value })}
+            placeholder="e.g. 7350570004, 5589831995 (comma-separated)"
+            className="admin-input font-mono text-xs"
           />
         </Field>
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">
-        Locked recipients: <code>7350570004</code>, <code>5589831995</code>, <code>1840901163</code>, <code>1360613728</code>, <code>8155139346</code>, <code>6799336293</code>, <code>7280324188</code>. Every alert is
-        delivered to all IDs above and cannot be removed from the UI.
-      </p>
+
+      {/* Recipient Management Controls & Interactive Badges */}
+      <div className="mt-4 rounded-xl border border-border/80 bg-background/50 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Configured Recipients ({chatIds.length})
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              You have full manual edit access. Type or paste comma-separated IDs in the field above, or manage them below.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleResetToDefaults}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background/80 px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              title="Reset to default permanent recipients"
+            >
+              <RotateCcw className="h-3 w-3" /> Reset to defaults
+            </button>
+            {chatIds.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAllChatIds}
+                className="inline-flex items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1 text-xs text-destructive hover:bg-destructive/20 transition-colors"
+                title="Clear all configured chat IDs"
+              >
+                <Trash2 className="h-3 w-3" /> Clear all
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Add input */}
+        <div className="mt-3 flex items-center gap-2 max-w-md">
+          <input
+            value={newChatId}
+            onChange={(e) => setNewChatId(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAddChatId();
+              }
+            }}
+            placeholder="Add Chat ID (e.g. 7350570004)"
+            className="admin-input text-xs font-mono py-1.5"
+          />
+          <button
+            type="button"
+            onClick={handleAddChatId}
+            disabled={!newChatId.trim()}
+            className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors shrink-0"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add ID
+          </button>
+        </div>
+
+        {/* Badges / Pills list */}
+        <div className="mt-3.5 flex flex-wrap gap-1.5">
+          {chatIds.length === 0 ? (
+            <p className="text-xs text-amber-500 font-medium py-1">
+              ⚠️ No chat IDs configured. Enter at least one Telegram Chat ID to receive outbound alerts.
+            </p>
+          ) : (
+            chatIds.map((id) => (
+              <span
+                key={id}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 font-mono text-xs text-foreground transition-colors hover:border-primary/50"
+              >
+                <span>{id}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveChatId(id)}
+                  className="rounded-full p-0.5 text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors"
+                  title={`Remove ${id}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+      </div>
+
       <div className={`mt-6 ${master ? "" : "opacity-50 pointer-events-none"}`}>
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Notification types (only fire when master is ON)
@@ -307,9 +451,13 @@ function TelegramTab() {
           onClick={async () => {
             setSending(true);
             try {
-              const res = await fetch("/api/public/hooks/rsi-alert", { method: "POST" });
+              const res = await fetch("/api/public/hooks/rsi-alert", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ chatIds }),
+              });
               const json = (await res.json()) as { ok: boolean; sent?: number; error?: string };
-              if (json.ok) toast.success(`RSI alert sent — ${json.sent} ETFs`);
+              if (json.ok) toast.success(`RSI alert sent — ${json.sent} ETFs to ${chatIds.length} chat(s)`);
               else toast.error(`Alert failed: ${json.error}`);
             } catch (e) {
               toast.error((e as Error).message);
@@ -326,9 +474,13 @@ function TelegramTab() {
           onClick={async () => {
             setSending(true);
             try {
-              const res = await fetch("/api/public/hooks/premarket-alert", { method: "POST" });
+              const res = await fetch("/api/public/hooks/premarket-alert", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ chatIds }),
+              });
               const j = (await res.json()) as { ok: boolean; delivered?: number; gainers?: number; error?: string };
-              if (j.ok) toast.success(`Pre-market alert sent — ${j.gainers} gainers to ${j.delivered} chat(s)`);
+              if (j.ok) toast.success(`Pre-market alert sent — ${j.gainers} gainers to ${j.delivered ?? chatIds.length} chat(s)`);
               else toast.error(`Alert failed: ${j.error ?? "unknown"}`);
             } catch (e) {
               toast.error((e as Error).message);
@@ -348,10 +500,10 @@ function TelegramTab() {
               const res = await fetch("/api/public/hooks/postmarket-alert", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ section: "all" }),
+                body: JSON.stringify({ section: "all", chatIds }),
               });
               const j = (await res.json()) as { ok: boolean; delivered?: number; scanned?: number; error?: string };
-              if (j.ok) toast.success(`Post-market alert sent — ${j.scanned} stocks scanned, ${j.delivered} chat(s)`);
+              if (j.ok) toast.success(`Post-market alert sent — ${j.scanned} stocks scanned, ${j.delivered ?? chatIds.length} chat(s)`);
               else toast.error(`Alert failed: ${j.error ?? "unknown"}`);
             } catch (e) {
               toast.error((e as Error).message);
@@ -368,9 +520,13 @@ function TelegramTab() {
           onClick={async () => {
             setSending(true);
             try {
-              const res = await fetch("/api/public/hooks/ipo-alert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force: true }) });
+              const res = await fetch("/api/public/hooks/ipo-alert", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ force: true, chatIds }),
+              });
               const j = (await res.json()) as { ok: boolean; delivered?: number; sent?: number; error?: string };
-              if (j.ok) toast.success(`IPO alert sent — ${j.sent} IPOs to ${j.delivered} chat delivery(ies)`);
+              if (j.ok) toast.success(`IPO alert sent — ${j.sent} IPOs to ${j.delivered ?? chatIds.length} chat delivery(ies)`);
               else toast.error(`Alert failed: ${j.error ?? "unknown"}`);
             } catch (e) {
               toast.error((e as Error).message);
@@ -387,9 +543,13 @@ function TelegramTab() {
           onClick={async () => {
             setSending(true);
             try {
-              const res = await fetch("/api/public/hooks/funds-alert", { method: "POST" });
+              const res = await fetch("/api/public/hooks/funds-alert", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ chatIds }),
+              });
               const j = (await res.json()) as { ok: boolean; delivered?: number; categories?: string[]; error?: string };
-              if (j.ok) toast.success(`Fund digest sent — ${j.categories?.length ?? 0} categories, ${j.delivered} deliveries`);
+              if (j.ok) toast.success(`Fund digest sent — ${j.categories?.length ?? 0} categories, ${j.delivered ?? chatIds.length} deliveries`);
               else toast.error(`Alert failed: ${j.error ?? "unknown"}`);
             } catch (e) {
               toast.error((e as Error).message);
@@ -419,7 +579,7 @@ function TelegramTab() {
                 const res = await fetch("/api/fno-alert", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ symbol: fnoSymbol }),
+                  body: JSON.stringify({ symbol: fnoSymbol, chatIds }),
                 });
                 const j = (await res.json()) as {
                   ok: boolean; trades?: number; notified?: { sent: number; total: number }; error?: string;
@@ -631,414 +791,882 @@ function SheetsTab() {
 
 /* -------- API Keys -------- */
 function ApiKeysTab() {
-  const { settings, regenerateApiKey } = useAdmin();
-  const masked = settings.apiKey.slice(0, 14) + "•••••••••••" + settings.apiKey.slice(-4);
-  const fnoMasked =
-    settings.fnoEngineApiKey.slice(0, 6) + "••••••••••••••••••••" + settings.fnoEngineApiKey.slice(-6);
+  const {
+    settings,
+    deleteAllApiKeys,
+    setWebpageApiKey,
+    deleteWebpageApiKey,
+    setFnoEngineApiKey,
+    deleteFnoEngineApiKey,
+    setGrowwCredentials,
+    deleteGrowwCredentials,
+    setOcApiKey,
+    deleteOcApiKey,
+    setOcUserLevel,
+    setOcUserEnabled,
+    removeOcUser,
+    addOcUser,
+  } = useAdmin();
+
+  const [activeModal, setActiveModal] = useState<
+    "deleteAll" | "webpage" | "fno" | "groww" | "optionChain" | "addUser" | null
+  >(null);
+
+  const [deleteAllInput, setDeleteAllInput] = useState("");
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Form inputs
+  const [webKeyInput, setWebKeyInput] = useState("");
+  const [fnoKeyInput, setFnoKeyInput] = useState("");
+  const [growwApiKeyInput, setGrowwApiKeyInput] = useState("");
+  const [growwSecretInput, setGrowwSecretInput] = useState("");
+  const [ocKeyInput, setOcKeyInput] = useState("");
+  const [ocExpiresInput, setOcExpiresInput] = useState("Never");
+  const [userNameInput, setUserNameInput] = useState("");
+  const [userEmailInput, setUserEmailInput] = useState("");
+  const [userLevelInput, setUserLevelInput] = useState<"Read-only" | "Read-Write" | "Full Access">("Read-only");
+
+  const handleCopy = (text: string, id: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopiedKey(id);
+    toast.success("API Key copied to clipboard");
+    setTimeout(() => {
+      setCopiedKey((curr) => (curr === id ? null : curr));
+    }, 2000);
+  };
+
+  const maskKeyStr = (str: string) => {
+    if (!str || str.length < 10) return "••••••••••••";
+    return `${str.slice(0, 6)}${"•".repeat(Math.max(8, str.length - 10))}${str.slice(-4)}`;
+  };
+
+  const activeUsers = (settings.ocUsers || []).filter((u) => u.enabled);
+
   return (
     <div className="space-y-6">
-      {/* Existing webpage API key — untouched */}
-      <div className="rounded-2xl border border-border bg-surface/60 p-6">
-        <h3 className="font-display text-lg font-semibold">Webpage API Key</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Existing key used by the InvestIQ website — leave as-is unless rotating.
-        </p>
-        <div className="mt-5 rounded-xl border border-border bg-background/40 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Current key</p>
-              <p className="mt-1 font-mono text-sm">{masked}</p>
-            </div>
-            <span className="rounded-full bg-success/15 px-3 py-1 text-xs text-success">Active</span>
+      {/* Top Header Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-surface/60 p-6">
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="font-display text-lg font-semibold">API Key Management</h3>
+            <span className="rounded-full border border-border bg-background/50 px-2.5 py-0.5 text-xs text-muted-foreground">
+              4 Core Sections
+            </span>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-4 text-xs text-muted-foreground">
-            <p>Created: {settings.apiKeyCreated}</p>
-            <p>Last used: {settings.apiKeyLastUsed}</p>
-          </div>
-          <div className="mt-4 flex gap-2">
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(settings.apiKey).catch(() => {});
-                toast.success("API key copied");
-              }}
-              className="inline-flex items-center gap-2 rounded-lg border border-border bg-background/50 px-3 py-2 text-xs hover:bg-accent"
-            >
-              <Copy className="h-3.5 w-3.5" /> Copy
-            </button>
-            <button
-              onClick={() => {
-                regenerateApiKey();
-                toast.success("New API key generated");
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-glow"
-            >
-              <RefreshCw className="h-3.5 w-3.5" /> Regenerate
-            </button>
-            <button
-              onClick={() => toast.error("Key revoke is a destructive action (mock)")}
-              className="inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive hover:bg-destructive/20"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Revoke
-            </button>
-          </div>
+          <p className="mt-1 text-xs text-muted-foreground max-w-xl">
+            Configure and manage API keys for Webpage access, F&amp;O Trading Engine, Groww broker credentials, and Option Chain feeds.
+          </p>
         </div>
+        <button
+          onClick={() => {
+            setDeleteAllInput("");
+            setActiveModal("deleteAll");
+          }}
+          className="inline-flex items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-xs font-semibold text-destructive hover:bg-destructive hover:text-destructive-foreground transition shadow-sm"
+        >
+          <Trash2 className="h-4 w-4" /> Delete all API keys
+        </button>
       </div>
 
-      {/* NEW: F&O Trading Engine API Key */}
-      <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6">
+      {/* SECTION 1: Webpage API Key */}
+      <div className="rounded-2xl border border-border bg-surface/60 p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-display text-lg font-semibold">Webpage API Key</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              API key used by external clients to access market feeds and trading data via HTTP headers (<code className="rounded bg-background/60 px-1 font-mono text-[11px]">x-api-key</code>).
+            </p>
+          </div>
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+              settings.apiKey
+                ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-400"
+                : "border border-border bg-muted/40 text-muted-foreground"
+            }`}
+          >
+            {settings.apiKey ? "Configured" : "Not Configured"}
+          </span>
+        </div>
+
+        {!settings.apiKey ? (
+          <div className="mt-5 flex flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-background/30 p-8 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-xl border border-border/80 bg-background/60 text-muted-foreground">
+              <Key className="h-6 w-6" />
+            </div>
+            <p className="mt-3 text-sm font-medium text-foreground">No API key configured</p>
+            <p className="mt-1 text-xs text-muted-foreground max-w-sm">
+              All client requests without authorization will receive a clean "API key not configured" response.
+            </p>
+            <button
+              onClick={() => {
+                setWebKeyInput("");
+                setActiveModal("webpage");
+              }}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-glow hover:opacity-95 transition"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add API key
+            </button>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-xl border border-border bg-background/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="font-mono text-xs select-all text-foreground">
+                {revealed["webpage"] ? settings.apiKey : maskKeyStr(settings.apiKey)}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRevealed((p) => ({ ...p, webpage: !p.webpage }))}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition"
+                >
+                  {revealed["webpage"] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  <span>{revealed["webpage"] ? "Hide" : "Show"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(settings.apiKey, "webpage")}
+                  className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition"
+                >
+                  {copiedKey === "webpage" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span>{copiedKey === "webpage" ? "Copied" : "Copy"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteWebpageApiKey();
+                    toast.success("Webpage API key removed");
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg border border-destructive/30 bg-background/50 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/15 transition"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </button>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground border-t border-border/50 pt-2">
+              <span>Created: {settings.apiKeyCreated || "Recent"}</span>
+              <span>Last used: {settings.apiKeyLastUsed || "Active"}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 2: F&O Trading Engine API Key */}
+      <div className="rounded-2xl border border-border bg-surface/60 p-6">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-display text-lg font-semibold">F&amp;O Trading Engine API Key</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Separate key for the F&amp;O signal engine (India + USA). Stored server-side in the
-              secrets manager as <code className="rounded bg-background/60 px-1">FNO_ENGINE_API_KEY</code> —
-              never bundled into the frontend.
+              Separate key for the F&amp;O signal engine (India + USA). Stored server-side in the secrets manager as{" "}
+              <code className="rounded bg-background/60 px-1 font-mono text-[11px]">FNO_ENGINE_API_KEY</code> — never bundled into the frontend.
             </p>
           </div>
-          <span className="rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
-            Server-managed
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+              settings.fnoEngineApiKey
+                ? "border border-amber-500/30 bg-amber-500/15 text-amber-400"
+                : "border border-border bg-muted/40 text-muted-foreground"
+            }`}
+          >
+            {settings.fnoEngineApiKey ? "Server-managed" : "Not Configured"}
           </span>
         </div>
-        <div className="mt-5 rounded-xl border border-border bg-background/40 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                F&amp;O engine key (masked)
-              </p>
-              <p className="mt-1 font-mono text-sm">{fnoMasked}</p>
+
+        {!settings.fnoEngineApiKey ? (
+          <div className="mt-5 flex flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-background/30 p-8 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-xl border border-border/80 bg-background/60 text-muted-foreground">
+              <Key className="h-6 w-6" />
             </div>
-            <span className="rounded-full bg-success/15 px-3 py-1 text-xs text-success">Active</span>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-4 text-xs text-muted-foreground">
-            <p>Created: {settings.fnoEngineApiKeyCreated}</p>
-            <p>Storage: Encrypted env var (workspace secrets)</p>
-          </div>
-          <div className="mt-4 flex gap-2">
+            <p className="mt-3 text-sm font-medium text-foreground">No API key configured</p>
+            <p className="mt-1 text-xs text-muted-foreground max-w-sm">
+              F&amp;O continuous signal engine is unconfigured. Dependent signal streams show a graceful "API key not configured" state.
+            </p>
             <button
-              onClick={() =>
-                toast.info(
-                  "F&O engine key is stored server-side. To rotate, use the secrets manager — the new value is never returned to the browser.",
-                )
-              }
-              className="inline-flex items-center gap-2 rounded-lg border border-border bg-background/50 px-3 py-2 text-xs hover:bg-accent"
+              onClick={() => {
+                setFnoKeyInput("");
+                setActiveModal("fno");
+              }}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-glow hover:opacity-95 transition"
             >
-              <RefreshCw className="h-3.5 w-3.5" /> Rotate (server-side)
+              <Plus className="h-3.5 w-3.5" /> Add API key
             </button>
           </div>
-        </div>
+        ) : (
+          <div className="mt-5 rounded-xl border border-border bg-background/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">F&amp;O Engine Key (Masked)</p>
+                <p className="mt-1 font-mono text-xs text-foreground select-all">
+                  {revealed["fno"] ? settings.fnoEngineApiKey : maskKeyStr(settings.fnoEngineApiKey)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRevealed((p) => ({ ...p, fno: !p.fno }))}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition"
+                >
+                  {revealed["fno"] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  <span>{revealed["fno"] ? "Hide" : "Show"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(settings.fnoEngineApiKey, "fno")}
+                  className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition"
+                >
+                  {copiedKey === "fno" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span>{copiedKey === "fno" ? "Copied" : "Copy"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteFnoEngineApiKey();
+                    toast.success("F&O Engine API key removed");
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg border border-destructive/30 bg-background/50 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/15 transition"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </button>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground border-t border-border/50 pt-2">
+              <span>Created: {settings.fnoEngineApiKeyCreated || "Recent"}</span>
+              <span>Storage: Encrypted env var (workspace secrets)</span>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Groww Trading API Key */}
-      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6">
+      {/* SECTION 3: Groww Trading API */}
+      <div className="rounded-2xl border border-border bg-surface/60 p-6">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-display text-lg font-semibold flex items-center gap-2">
               <span>Groww Trading API</span>
-              <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-500">
-                Connected
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  settings.growwApiKey
+                    ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-400"
+                    : "border border-border bg-muted/40 text-muted-foreground"
+                }`}
+              >
+                {settings.growwApiKey ? "Connected" : "Disconnected"}
               </span>
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Official Groww Trade API integration. Used for live user portfolio holdings, execution, and market data.
+              Official Groww Trade API integration credentials (<code className="rounded bg-background/60 px-1 font-mono text-[11px]">GROWW_API_KEY</code> &amp; <code className="rounded bg-background/60 px-1 font-mono text-[11px]">GROWW_API_SECRET</code>).
             </p>
           </div>
-          <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-500">
-            Session: Investiq
-          </span>
-        </div>
-        <div className="mt-5 rounded-xl border border-border bg-background/40 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Active Roles</p>
-              <p className="mt-1 font-mono text-xs text-foreground">
-                order-basic, non_trading-basic, order_read_only-basic
-              </p>
-            </div>
-            <span className="rounded-full bg-success/15 px-3 py-1 text-xs text-success">
-              Holdings Synced (7 Assets)
+          {settings.growwApiKey && (
+            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400">
+              Session: {settings.growwSession || "Investiq"}
             </span>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-4 text-xs text-muted-foreground">
-            <p>Auth Flow: Daily checksum HMAC SHA-256 token exchange</p>
-            <p>Storage: Encrypted server environment (GROWW_API_KEY &amp; SECRET)</p>
-          </div>
-          <div className="mt-4 rounded-lg bg-background/80 p-3 text-xs text-muted-foreground border border-border/60">
-            <p className="font-semibold text-foreground">Live Data Feeds Note:</p>
-            <p className="mt-0.5">
-              Holdings and orders are fully operational. To stream tick-level real-time LTP quotes and option chains directly from Groww, toggle the &quot;Live Data / Historical Data&quot; permission in your Groww API Developer portal.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <OptionChainKeyCard />
-    </div>
-  );
-}
-
-/* -------- Option Chain API key management -------- */
-function OptionChainKeyCard() {
-  const {
-    settings,
-    regenerateOcApiKey,
-    revokeOcApiKey,
-    setOcUserEnabled,
-    setOcUserLevel,
-    removeOcUser,
-  } = useAdmin();
-  const [reveal, setReveal] = useState(false);
-  const [confirm, setConfirm] = useState<null | "generate" | "revoke">(null);
-  const [busy, setBusy] = useState(false);
-
-  const key = settings.ocApiKey;
-  const masked = "•".repeat(Math.max(0, key.length - 4)) + key.slice(-4);
-  const status = settings.ocApiKeyStatus;
-  const activeUsers = settings.ocUsers.filter((u) => u.enabled);
-  const statusStyle =
-    status === "active"
-      ? "bg-success/15 text-success"
-      : status === "revoked"
-        ? "bg-destructive/15 text-destructive"
-        : "bg-muted text-muted-foreground";
-
-  const copy = () => {
-    navigator.clipboard.writeText(key).catch(() => {});
-    toast.success("API Key copied to clipboard");
-  };
-
-  return (
-    <div className="rounded-2xl border border-border bg-surface/60 p-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="font-display text-lg font-semibold">Option Chain API Key</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Key used for option-chain data access. Full lifecycle: copy, generate, revoke and
-            per-user access control.
-          </p>
-        </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusStyle}`}>
-          {status}
-        </span>
-      </div>
-
-      <div
-        className="mt-5 rounded-xl border border-border bg-background/40 p-4"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
-            e.preventDefault();
-            copy();
-          }
-        }}
-      >
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">Current key</p>
-        <div className="mt-1 flex items-center gap-3">
-          <p className="font-mono text-sm break-all">{reveal ? key : masked}</p>
-          <button
-            onClick={() => setReveal((v) => !v)}
-            className="rounded border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
-          >
-            {reveal ? "Hide" : "Show"}
-          </button>
-        </div>
-        <div className="mt-4 grid grid-cols-2 gap-4 text-xs text-muted-foreground md:grid-cols-4">
-          <p>Created: {settings.ocApiKeyCreated}</p>
-          <p>Last used: {settings.ocApiKeyLastUsed}</p>
-          <p>Expires: {settings.ocApiKeyExpires}</p>
-          <p>Rate limit: 1,000 req/min</p>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            onClick={copy}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-background/50 px-3 py-2 text-xs hover:bg-accent"
-          >
-            <Copy className="h-3.5 w-3.5" /> Copy
-          </button>
-          <button
-            onClick={() => setConfirm("generate")}
-            className="inline-flex items-center gap-2 rounded-lg bg-gradient-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-glow"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} /> Generate New API Key
-          </button>
-          {status === "active" && (
-            <button
-              onClick={() => setConfirm("revoke")}
-              className="inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive hover:bg-destructive/20"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Revoke Key
-            </button>
           )}
         </div>
-        {status === "revoked" && (
-          <p className="mt-3 text-xs text-destructive">
-            This key is revoked — all option-chain access is disabled. Generate a new key to restore
-            access.
-          </p>
+
+        {!settings.growwApiKey ? (
+          <div className="mt-5 flex flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-background/30 p-8 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-xl border border-border/80 bg-background/60 text-muted-foreground">
+              <Key className="h-6 w-6" />
+            </div>
+            <p className="mt-3 text-sm font-medium text-foreground">No API key configured</p>
+            <p className="mt-1 text-xs text-muted-foreground max-w-sm">
+              Session disconnected • No cached tokens, sessions, or synced holdings. Dependent portfolio features show a clean "API key not configured" state.
+            </p>
+            <button
+              onClick={() => {
+                setGrowwApiKeyInput("");
+                setGrowwSecretInput("");
+                setActiveModal("groww");
+              }}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-glow hover:opacity-95 transition"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add API key
+            </button>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-xl border border-border bg-background/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Groww API Token (Masked)</p>
+                <p className="mt-1 font-mono text-xs text-foreground select-all">
+                  {maskKeyStr(settings.growwApiKey)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteGrowwCredentials();
+                  toast.success("Groww credentials removed permanently");
+                }}
+                className="inline-flex items-center gap-1 rounded-lg border border-destructive/30 bg-background/50 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/15 transition"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete credentials
+              </button>
+            </div>
+            <div className="mt-3 text-xs text-muted-foreground border-t border-border/50 pt-2">
+              Storage: Encrypted server environment (GROWW_API_KEY &amp; SECRET)
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Users with access */}
-      <div className="mt-6">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Users with access ({activeUsers.length}/{settings.ocUsers.length} enabled)
-        </p>
-        <div className="mt-3 overflow-hidden rounded-xl border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-background/60 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 text-left">User</th>
-                <th className="px-4 py-2 text-left">Email</th>
-                <th className="px-4 py-2 text-left">Access level</th>
-                <th className="px-4 py-2 text-left">Access</th>
-                <th className="px-4 py-2 text-left">Last activity</th>
-                <th className="px-4 py-2 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {settings.ocUsers.map((u) => (
-                <tr key={u.id} className="border-t border-border">
-                  <td className="px-4 py-2">
-                    <p>{u.name}</p>
-                    <p className="text-[11px] text-muted-foreground">{u.id}</p>
-                  </td>
-                  <td className="px-4 py-2 text-muted-foreground">{u.email}</td>
-                  <td className="px-4 py-2">
-                    <select
-                      value={u.level}
-                      onChange={(e) => {
-                        setOcUserLevel(u.id, e.target.value as typeof u.level);
-                        toast.success(`${u.name} set to ${e.target.value}`);
-                      }}
-                      className="admin-input py-1 text-xs"
-                    >
-                      <option value="Read-only">Read-only</option>
-                      <option value="Read-Write">Read-Write</option>
-                      <option value="Full Access">Full Access</option>
-                    </select>
-                  </td>
-                  <td className="px-4 py-2">
-                    <button
-                      type="button"
-                      aria-pressed={u.enabled}
-                      aria-label={`Toggle access for ${u.name}`}
-                      disabled={status !== "active"}
-                      onClick={() => {
-                        setOcUserEnabled(u.id, !u.enabled);
-                        toast.success(
-                          `Access for ${u.name} has been ${u.enabled ? "Disabled" : "Enabled"}`,
-                        );
-                      }}
-                      className={`relative h-6 w-11 rounded-full transition-colors duration-300 disabled:opacity-40 ${
-                        u.enabled ? "bg-gradient-primary" : "bg-muted"
-                      }`}
-                    >
-                      <span
-                        className={`absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition-all duration-300 ${
-                          u.enabled ? "left-5" : "left-0.5"
-                        }`}
-                      />
-                    </button>
-                  </td>
-                  <td className="px-4 py-2 text-xs text-muted-foreground">{u.lastActivity}</td>
-                  <td className="px-4 py-2 text-right">
-                    <button
-                      onClick={() => {
-                        removeOcUser(u.id);
-                        toast.success(`${u.name} removed`);
-                      }}
-                      className="rounded border border-destructive/40 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10"
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!settings.ocUsers.length && (
+      {/* SECTION 4: Option Chain API Key */}
+      <div className="rounded-2xl border border-border bg-surface/60 p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-display text-lg font-semibold">Option Chain API Key</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Dedicated key for option chain data feeds, Greeks ingestion, and strike updates.
+            </p>
+          </div>
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+              settings.ocApiKey
+                ? "border border-blue-500/30 bg-blue-500/15 text-blue-400"
+                : "border border-border bg-muted/40 text-muted-foreground"
+            }`}
+          >
+            {settings.ocApiKey ? "Active" : "Not Configured"}
+          </span>
+        </div>
+
+        {!settings.ocApiKey ? (
+          <div className="mt-5 flex flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-background/30 p-8 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-xl border border-border/80 bg-background/60 text-muted-foreground">
+              <Key className="h-6 w-6" />
+            </div>
+            <p className="mt-3 text-sm font-medium text-foreground">No API key configured</p>
+            <p className="mt-1 text-xs text-muted-foreground max-w-sm">
+              No option chain key is currently registered. External option chain requests return a clean "API key not configured" message.
+            </p>
+            <button
+              onClick={() => {
+                setOcKeyInput("");
+                setActiveModal("optionChain");
+              }}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-glow hover:opacity-95 transition"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add API key
+            </button>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-xl border border-border bg-background/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="font-mono text-xs select-all text-foreground">
+                {revealed["optionChain"] ? settings.ocApiKey : maskKeyStr(settings.ocApiKey)}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRevealed((p) => ({ ...p, optionChain: !p.optionChain }))}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition"
+                >
+                  {revealed["optionChain"] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  <span>{revealed["optionChain"] ? "Hide" : "Show"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(settings.ocApiKey, "optionChain")}
+                  className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition"
+                >
+                  {copiedKey === "optionChain" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span>{copiedKey === "optionChain" ? "Copied" : "Copy"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteOcApiKey();
+                    toast.success("Option Chain API key removed");
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg border border-destructive/30 bg-background/50 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/15 transition"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </button>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground border-t border-border/50 pt-2">
+              <span>Created: {settings.ocApiKeyCreated || "Recent"}</span>
+              <span>Expires: {settings.ocApiKeyExpires || "Never"}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Users with access */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Users with access ({activeUsers.length}/{settings.ocUsers.length} enabled)
+            </p>
+            {settings.ocApiKey && (
+              <button
+                onClick={() => {
+                  setUserNameInput("");
+                  setUserEmailInput("");
+                  setUserLevelInput("Read-only");
+                  setActiveModal("addUser");
+                }}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                <Plus className="h-3 w-3" /> Add user
+              </button>
+            )}
+          </div>
+          <div className="mt-3 overflow-hidden rounded-xl border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-background/60 text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-xs text-muted-foreground">
-                    No users have access to this key.
-                  </td>
+                  <th className="px-4 py-2 text-left">User</th>
+                  <th className="px-4 py-2 text-left">Email</th>
+                  <th className="px-4 py-2 text-left">Access level</th>
+                  <th className="px-4 py-2 text-left">Access</th>
+                  <th className="px-4 py-2 text-left">Last activity</th>
+                  <th className="px-4 py-2 text-right">Action</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {settings.ocUsers.map((u) => (
+                  <tr key={u.id} className="border-t border-border">
+                    <td className="px-4 py-2">
+                      <p>{u.name}</p>
+                      <p className="text-[11px] text-muted-foreground">{u.id}</p>
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">{u.email}</td>
+                    <td className="px-4 py-2">
+                      <select
+                        value={u.level}
+                        onChange={(e) => {
+                          setOcUserLevel(u.id, e.target.value as typeof u.level);
+                          toast.success(`${u.name} set to ${e.target.value}`);
+                        }}
+                        className="admin-input py-1 text-xs"
+                      >
+                        <option value="Read-only">Read-only</option>
+                        <option value="Read-Write">Read-Write</option>
+                        <option value="Full Access">Full Access</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-2">
+                      <button
+                        type="button"
+                        aria-pressed={u.enabled}
+                        aria-label={`Toggle access for ${u.name}`}
+                        onClick={() => {
+                          setOcUserEnabled(u.id, !u.enabled);
+                          toast.success(`Access for ${u.name} ${u.enabled ? "Disabled" : "Enabled"}`);
+                        }}
+                        className={`relative h-6 w-11 rounded-full transition ${
+                          u.enabled ? "bg-gradient-primary" : "bg-muted"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition ${
+                            u.enabled ? "left-5" : "left-0.5"
+                          }`}
+                        />
+                      </button>
+                    </td>
+                    <td className="px-4 py-2 text-xs text-muted-foreground">{u.lastActivity}</td>
+                    <td className="px-4 py-2 text-right">
+                      <button
+                        onClick={() => {
+                          removeOcUser(u.id);
+                          toast.success(`${u.name} removed`);
+                        }}
+                        className="rounded border border-destructive/40 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {settings.ocUsers.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-6 text-center text-xs text-muted-foreground">
+                      No users have access to this key.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
-      {/* Audit log */}
-      <div className="mt-6">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Audit log
-        </p>
-        <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+      {/* SECTION 5: Audit Log */}
+      <div className="rounded-2xl border border-border bg-surface/60 p-6">
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-lg font-semibold">Audit log</h3>
+          <span className="text-xs text-muted-foreground">
+            {settings.ocAudit.length} {settings.ocAudit.length === 1 ? "entry" : "entries"}
+          </span>
+        </div>
+        <ul className="mt-4 space-y-2 text-xs text-muted-foreground">
           {settings.ocAudit.map((a, i) => (
-            <li key={i} className="rounded border border-border bg-background/40 px-3 py-2">
-              <span className="font-mono">{a.at}</span> — {a.event}
+            <li
+              key={i}
+              className="flex items-center gap-3 rounded-lg border border-border bg-background/40 px-3.5 py-2.5"
+            >
+              <span className="font-mono text-foreground shrink-0">{a.at}</span>
+              <span>—</span>
+              <span
+                className={
+                  a.event.includes("deleted")
+                    ? "font-medium text-destructive"
+                    : "text-muted-foreground"
+                }
+              >
+                {a.event}
+              </span>
             </li>
           ))}
         </ul>
       </div>
 
-      {/* Confirmation modal */}
-      {confirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6">
-            <h4 className="font-display text-base font-semibold">
-              {confirm === "generate" ? "Generate new API key?" : "Revoke this API key?"}
-            </h4>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {confirm === "generate"
-                ? "Generating a new API key will invalidate the current one."
-                : "Revoking this key will immediately disable all access for users."}
+      {/* MODAL: Delete All API Keys Confirmation */}
+      {activeModal === "deleteAll" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl border border-destructive/40 bg-surface p-6 shadow-2xl">
+            <div className="flex items-center gap-3 text-destructive">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-destructive/10">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <h4 className="font-display text-base font-semibold text-foreground">
+                  Permanently Delete ALL API Keys?
+                </h4>
+                <p className="text-xs text-muted-foreground">Hard delete action</p>
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs text-muted-foreground leading-relaxed">
+              This is a permanent hard delete, not a soft-delete or revocation. All four sections (Webpage, F&amp;O Trading Engine, Groww credentials, and Option Chain), all user access entries, and cached sessions will be wiped. Nothing will be regenerated.
             </p>
-            {confirm === "revoke" && (
-              <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
-                {activeUsers.map((u) => (
-                  <li key={u.id}>• {u.name} ({u.email})</li>
-                ))}
-                {!activeUsers.length && <li>• No users currently have active access.</li>}
-              </ul>
-            )}
+
+            <div className="mt-4 rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-xs text-muted-foreground">
+              To confirm this hard delete, please type{" "}
+              <strong className="font-mono text-destructive">DELETE ALL</strong> below:
+            </div>
+
+            <input
+              type="text"
+              value={deleteAllInput}
+              onChange={(e) => setDeleteAllInput(e.target.value)}
+              placeholder="Type DELETE ALL to confirm"
+              className="admin-input mt-3 font-mono text-xs uppercase"
+              autoFocus
+            />
+
             <div className="mt-5 flex justify-end gap-2">
               <button
-                onClick={() => setConfirm(null)}
-                className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-accent"
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="rounded-xl border border-border px-4 py-2 text-xs font-medium hover:bg-accent transition"
               >
                 Cancel
               </button>
               <button
-                disabled={busy}
+                type="button"
+                disabled={deleteAllInput !== "DELETE ALL"}
                 onClick={() => {
-                  setBusy(true);
-                  const mode = confirm;
-                  setTimeout(() => {
-                    if (mode === "generate") {
-                      const fresh = regenerateOcApiKey();
-                      setReveal(true);
-                      toast.success("New API key generated", {
-                        action: {
-                          label: "Copy",
-                          onClick: () => {
-                            navigator.clipboard.writeText(fresh).catch(() => {});
-                            toast.success("API Key copied to clipboard");
-                          },
-                        },
-                      });
-                    } else {
-                      revokeOcApiKey();
-                      toast.success("API Key successfully revoked");
-                    }
-                    setBusy(false);
-                    setConfirm(null);
-                  }, 400);
+                  deleteAllApiKeys();
+                  setActiveModal(null);
+                  toast.success("All API keys permanently deleted");
                 }}
-                className={`rounded-lg px-4 py-2 text-sm font-semibold ${
-                  confirm === "revoke"
-                    ? "bg-destructive text-destructive-foreground"
-                    : "bg-gradient-primary text-primary-foreground shadow-glow"
-                } disabled:opacity-50`}
+                className="rounded-xl bg-destructive px-4 py-2 text-xs font-semibold text-destructive-foreground disabled:opacity-40 transition"
               >
-                {busy ? "Working…" : "Confirm"}
+                Permanently Delete All Keys
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Add Webpage API Key */}
+      {activeModal === "webpage" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h4 className="font-display text-base font-semibold">Add Webpage API Key</h4>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-accent"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <Field label="API Key Value">
+                <input
+                  type="text"
+                  value={webKeyInput}
+                  onChange={(e) => setWebKeyInput(e.target.value)}
+                  placeholder="Paste key or leave empty to auto-generate"
+                  className="admin-input font-mono text-xs"
+                  autoFocus
+                />
+              </Field>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-xl border border-border px-4 py-2 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const val = webKeyInput.trim() || `iq_web_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
+                  setWebpageApiKey(val);
+                  setActiveModal(null);
+                  toast.success("Webpage API key saved");
+                }}
+                className="rounded-xl bg-gradient-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-glow"
+              >
+                Save API Key
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Add F&O Engine API Key */}
+      {activeModal === "fno" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h4 className="font-display text-base font-semibold">Add F&amp;O Engine API Key</h4>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-accent"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <Field label="FNO Engine Secret Key">
+                <input
+                  type="text"
+                  value={fnoKeyInput}
+                  onChange={(e) => setFnoKeyInput(e.target.value)}
+                  placeholder="Paste FNO engine secret key"
+                  className="admin-input font-mono text-xs"
+                  autoFocus
+                />
+              </Field>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-xl border border-border px-4 py-2 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const val = fnoKeyInput.trim() || `iq_fno_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
+                  setFnoEngineApiKey(val);
+                  setActiveModal(null);
+                  toast.success("F&O Engine API key saved");
+                }}
+                className="rounded-xl bg-gradient-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-glow"
+              >
+                Save API Key
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Add Groww API Credentials */}
+      {activeModal === "groww" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h4 className="font-display text-base font-semibold">Add Groww API Credentials</h4>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-accent"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <Field label="GROWW_API_KEY (Token / Key)">
+                <input
+                  type="text"
+                  value={growwApiKeyInput}
+                  onChange={(e) => setGrowwApiKeyInput(e.target.value)}
+                  placeholder="Paste Groww API token"
+                  className="admin-input font-mono text-xs"
+                  autoFocus
+                  required
+                />
+              </Field>
+              <Field label="GROWW_API_SECRET">
+                <input
+                  type="password"
+                  value={growwSecretInput}
+                  onChange={(e) => setGrowwSecretInput(e.target.value)}
+                  placeholder="Paste Groww API secret"
+                  className="admin-input font-mono text-xs"
+                  required
+                />
+              </Field>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-xl border border-border px-4 py-2 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!growwApiKeyInput.trim() || !growwSecretInput.trim()}
+                onClick={() => {
+                  setGrowwCredentials(growwApiKeyInput.trim(), growwSecretInput.trim());
+                  setActiveModal(null);
+                  toast.success("Groww credentials configured");
+                }}
+                className="rounded-xl bg-gradient-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-glow disabled:opacity-40"
+              >
+                Save Credentials
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Add Option Chain API Key */}
+      {activeModal === "optionChain" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h4 className="font-display text-base font-semibold">Add Option Chain API Key</h4>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-accent"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <Field label="Option Chain Key">
+                <input
+                  type="text"
+                  value={ocKeyInput}
+                  onChange={(e) => setOcKeyInput(e.target.value)}
+                  placeholder="Paste key or leave empty to auto-generate"
+                  className="admin-input font-mono text-xs"
+                  autoFocus
+                />
+              </Field>
+              <Field label="Expiration">
+                <select
+                  value={ocExpiresInput}
+                  onChange={(e) => setOcExpiresInput(e.target.value)}
+                  className="admin-input"
+                >
+                  <option value="Never">Never (Permanent)</option>
+                  <option value="30 Days">30 Days</option>
+                  <option value="90 Days">90 Days</option>
+                  <option value="1 Year">1 Year</option>
+                </select>
+              </Field>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-xl border border-border px-4 py-2 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const val = ocKeyInput.trim() || `iq_oc_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
+                  setOcApiKey(val, ocExpiresInput);
+                  setActiveModal(null);
+                  toast.success("Option Chain API key saved");
+                }}
+                className="rounded-xl bg-gradient-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-glow"
+              >
+                Save API Key
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Add User to Option Chain */}
+      {activeModal === "addUser" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h4 className="font-display text-base font-semibold">Grant Option Chain Access</h4>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-accent"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <Field label="User Name">
+                <input
+                  type="text"
+                  value={userNameInput}
+                  onChange={(e) => setUserNameInput(e.target.value)}
+                  placeholder="e.g. Risk Desk Analyst"
+                  className="admin-input"
+                  autoFocus
+                  required
+                />
+              </Field>
+              <Field label="Email Address">
+                <input
+                  type="email"
+                  value={userEmailInput}
+                  onChange={(e) => setUserEmailInput(e.target.value)}
+                  placeholder="e.g. analyst@investiq.in"
+                  className="admin-input"
+                  required
+                />
+              </Field>
+              <Field label="Access Level">
+                <select
+                  value={userLevelInput}
+                  onChange={(e) => setUserLevelInput(e.target.value as typeof userLevelInput)}
+                  className="admin-input"
+                >
+                  <option value="Read-only">Read-only</option>
+                  <option value="Read-Write">Read-Write</option>
+                  <option value="Full Access">Full Access</option>
+                </select>
+              </Field>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-xl border border-border px-4 py-2 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!userNameInput.trim() || !userEmailInput.trim()}
+                onClick={() => {
+                  addOcUser({
+                    name: userNameInput.trim(),
+                    email: userEmailInput.trim(),
+                    level: userLevelInput,
+                    enabled: true,
+                  });
+                  setActiveModal(null);
+                  toast.success(`Access granted to ${userNameInput}`);
+                }}
+                className="rounded-xl bg-gradient-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-glow disabled:opacity-40"
+              >
+                Grant Access
               </button>
             </div>
           </div>
@@ -1047,7 +1675,6 @@ function OptionChainKeyCard() {
     </div>
   );
 }
-
 
 /* -------- Stocks -------- */
 function StocksTab() {

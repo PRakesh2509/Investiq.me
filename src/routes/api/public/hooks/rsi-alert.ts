@@ -58,15 +58,18 @@ async function sendTelegram(token: string, chatId: string, text: string) {
 export const Route = createFileRoute("/api/public/hooks/rsi-alert")({
   server: {
     handlers: {
-      POST: async () => {
+      POST: async ({ request }) => {
         try {
+          const body = (await request?.json().catch(() => ({}))) as { chatIds?: string[] } | undefined;
           const token = process.env.TELEGRAM_BOT_TOKEN || "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc";
 
           const envIds = (process.env.TELEGRAM_CHAT_ID ?? "")
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean);
-          const chatIds = Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
+          const chatIds = body?.chatIds?.length
+            ? Array.from(new Set(body.chatIds.map((s) => String(s).trim()).filter(Boolean)))
+            : Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
 
           const sheetUrl = process.env.RSI_SHEET_URL || DEFAULT_SHEET_URL;
           const sheetName = process.env.RSI_SHEET_NAME || DEFAULT_SHEET_NAME;

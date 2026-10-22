@@ -1,115 +1,18 @@
 /**
- * Groww Trading API client (server-only).
- *
- * Auth: API key + secret -> daily access token (expires 06:00 IST).
- * Docs: https://groww.in/trade-api/docs/curl
+ * Groww Trading API client — DEPRECATED.
+ * All live data feeds, charts, and user portfolio holdings have been migrated to DhanHQ API v2.
+ * This file provides backwards-compatible bridges to DhanHQ.
  */
-import { createHash } from "node:crypto";
-
-const BASE = "https://api.groww.in";
-
-export class GrowwMissingEnvError extends Error {
-  missing: string[];
-  constructor(missing: string[]) {
-    super(`Missing Groww credentials: ${missing.join(", ")}`);
-    this.missing = missing;
-  }
-}
-
-/** Thrown when the key authenticates but lacks the required data subscription. */
-export class GrowwForbiddenError extends Error {
-  constructor(path: string) {
-    super(
-      `Groww API rejected ${path} (403). Enable the Live Data / Historical Data ` +
-        `roles for this API key in the Groww Trading API dashboard.`,
-    );
-  }
-}
-
-const DEFAULT_GROWW_KEY =
-  "eyJraWQiOiJaTUtjVXciLCJhbGciOiJFUzI1NiJ9.eyJleHAiOjI1ODA2NTEyOTMsImlhdCI6MTc5MjI1MTI5MywibmJmIjoxNzkyMjUxMjkzLCJzdWIiOiJ7XCJ0b2tlblJlZklkXCI6XCIwMTMzOWE1Yi01ZDYyLTQ4NDItODMxNC01NGRiYjJmYTBiNzBcIixcInZlbmRvckludGVncmF0aW9uS2V5XCI6XCJlMzFmZjIzYjA4NmI0MDZjODg3NGIyZjZkODQ5NTMxM1wiLFwidXNlckFjY291bnRJZFwiOlwiZjAyZGI2ODktMjYyNS00MGQzLTk0MjYtYjJjZDVlZmJlYmRiXCIsXCJkZXZpY2VJZFwiOlwiZTFjNDFmNzItNmNmNC01ODM4LThiODQtNzM3ZGEwMDQyYmY1XCIsXCJzZXNzaW9uSWRcIjpcIjgzNjhlYTZhLTA0NDYtNDQxMy04YTQ5LWQzZWZmODI5YWE1OVwiLFwiYWRkaXRpb25hbERhdGFcIjpcIno1NC9NZzltdjE2WXdmb0gvS0EwYkMvQk5EbU9TU1Zqd2R6aDkxWkpmWEZSTkczdTlLa2pWZDNoWjU1ZStNZERhWXBOVi9UOUxIRmtQejFFQisybTdRPT1cIixcInJvbGVcIjpcImF1dGgtdG90cFwiLFwic291cmNlSXBBZGRyZXNzXCI6XCI0OS4zNy4xMzUuNDQsMTYyLjE1OC41NC4xNTEsMzUuMjQxLjIzLjEyM1wiLFwidHdvRmFFeHBpcnlUc1wiOjI1ODA2NTEyOTMxMzUsXCJ2ZW5kb3JOYW1lXCI6XCJncm93d0FwaVwifSIsImlzcyI6ImFwZXgtYXV0aC1wcm9kLWFwcCJ9.pUvBLQ9qGNJVFHPT4TpDTzhxSj892PU0bZ81Wxor-xClvNNdNdiVZVpfMu0446umkPoEsRCP6BN94LUDeWc6Yw";
-const DEFAULT_GROWW_SECRET = "isZS7i^H*(LF)uCtm*mbhT6Nn1EjVZzE";
-
-function credentials() {
-  const key = process.env["GROWW_API_KEY"] || DEFAULT_GROWW_KEY;
-  const secret = process.env["GROWW_API_SECRET"] || DEFAULT_GROWW_SECRET;
-  const missing: string[] = [];
-  if (!key) missing.push("GROWW_API_KEY");
-  if (!secret) missing.push("GROWW_API_SECRET");
-  if (missing.length) throw new GrowwMissingEnvError(missing);
-  return { key, secret };
-}
-
-let cached: { token: string; expiresAt: number } | null = null;
-
-export async function getGrowwToken(): Promise<string> {
-  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
-  const { key, secret } = credentials();
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const checksum = createHash("sha256").update(secret + timestamp).digest("hex");
-  const res = await fetch(`${BASE}/v1/token/api/access`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      "X-API-VERSION": "1.0",
-    },
-    body: JSON.stringify({ key_type: "approval", checksum, timestamp }),
-  });
-  const json = (await res.json().catch(() => ({}))) as {
-    token?: string;
-    expiry?: string;
-    error?: { message?: string };
-  };
-  if (!res.ok || !json.token) {
-    throw new Error(json?.error?.message ?? `Groww token request failed (${res.status})`);
-  }
-  const expiry = json.expiry ? Date.parse(json.expiry + "+05:30") : NaN;
-  cached = {
-    token: json.token,
-    expiresAt: Number.isFinite(expiry) ? expiry : Date.now() + 6 * 3600_000,
-  };
-  return cached.token;
-}
-
-async function growwGet<T>(path: string): Promise<T> {
-  const token = await getGrowwToken();
-  const res = await fetch(`${BASE}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "X-API-VERSION": "1.0",
-      Accept: "application/json",
-    },
-  });
-  if (res.status === 401) {
-    cached = null;
-    throw new Error("Groww access token expired");
-  }
-  if (res.status === 403) throw new GrowwForbiddenError(path);
-  const json = (await res.json().catch(() => ({}))) as {
-    status?: string;
-    payload?: T;
-    error?: { message?: string };
-  };
-  if (!res.ok || json.status === "FAILURE") {
-    throw new Error(json?.error?.message ?? `Groww request failed (${res.status})`);
-  }
-  return (json.payload ?? (json as unknown)) as T;
-}
-
-/* --------------------------------- Live data -------------------------------- */
+import {
+  getDhanChartCandles,
+  getDhanQuote,
+  getDhanEnrichedHoldings,
+  getDhanRawHoldings,
+  getDhanLtp,
+  getDhanOptionChain,
+} from "./dhan.server";
 
 export type GrowwSegment = "CASH" | "FNO";
-
-/** Last traded price for `EXCHANGE_SYMBOL` tokens, e.g. `NSE_RELIANCE`. */
-export async function growwLtp(exchangeSymbols: string[], segment: GrowwSegment = "CASH") {
-  const p = await growwGet<Record<string, number> | { ltp?: Record<string, number> }>(
-    `/v1/live-data/ltp?segment=${segment}&exchange_symbols=${encodeURIComponent(
-      exchangeSymbols.join(","),
-    )}`,
-  );
-  return (("ltp" in (p as object) ? (p as any).ltp : p) ?? {}) as Record<string, number>;
-}
 
 export type GrowwQuote = {
   symbol: string;
@@ -123,37 +26,8 @@ export type GrowwQuote = {
   changePct: number;
 };
 
-export async function growwQuote(
-  tradingSymbol: string,
-  exchange = "NSE",
-  segment: GrowwSegment = "CASH",
-): Promise<GrowwQuote> {
-  const q = await growwGet<any>(
-    `/v1/live-data/quote?exchange=${exchange}&segment=${segment}&trading_symbol=${encodeURIComponent(
-      tradingSymbol,
-    )}`,
-  );
-  const ohlc = q?.ohlc ?? {};
-  const price = Number(q?.last_price ?? q?.ltp ?? ohlc?.close ?? 0);
-  const prevClose = Number(q?.close ?? q?.previous_close ?? ohlc?.close ?? price);
-  const change = price - prevClose;
-  return {
-    symbol: tradingSymbol,
-    price,
-    open: Number(ohlc?.open ?? 0),
-    high: Number(q?.day_high ?? ohlc?.high ?? 0),
-    low: Number(q?.day_low ?? ohlc?.low ?? 0),
-    prevClose,
-    volume: Number(q?.volume ?? 0),
-    change,
-    changePct: prevClose ? (change / prevClose) * 100 : 0,
-  };
-}
-
-/* ------------------------------ Historical data ----------------------------- */
-
 export type GrowwCandle = {
-  time: number; // unix seconds
+  time: number;
   open: number;
   high: number;
   low: number;
@@ -161,10 +35,36 @@ export type GrowwCandle = {
   volume: number;
 };
 
-/**
- * Historical / intraday candles. `start`/`end` are epoch ms.
- * Groww returns rows as [timestamp, open, high, low, close, volume].
- */
+export async function getGrowwToken(): Promise<string> {
+  return "dhan-migrated";
+}
+
+export async function growwLtp(exchangeSymbols: string[], _segment: GrowwSegment = "CASH") {
+  const syms = exchangeSymbols.map((s) => s.replace(/^[A-Z]+_/, ""));
+  const ltp = await getDhanLtp(syms);
+  return ltp || {};
+}
+
+export async function growwQuote(
+  tradingSymbol: string,
+  _exchange = "NSE",
+  _segment: GrowwSegment = "CASH",
+): Promise<GrowwQuote> {
+  const q = await getDhanQuote(tradingSymbol);
+  if (q) return q;
+  return {
+    symbol: tradingSymbol,
+    price: 0,
+    open: 0,
+    high: 0,
+    low: 0,
+    prevClose: 0,
+    volume: 0,
+    change: 0,
+    changePct: 0,
+  };
+}
+
 export async function growwCandles(opts: {
   tradingSymbol: string;
   exchange?: string;
@@ -173,221 +73,45 @@ export async function growwCandles(opts: {
   end: number;
   intervalMinutes?: number;
 }): Promise<GrowwCandle[]> {
-  const fmt = (ms: number) =>
-    new Date(ms + 5.5 * 3600_000).toISOString().slice(0, 19).replace("T", " ");
-  const qs = new URLSearchParams({
-    exchange: opts.exchange ?? "NSE",
-    segment: opts.segment ?? "CASH",
-    trading_symbol: opts.tradingSymbol,
-    start_time: fmt(opts.start),
-    end_time: fmt(opts.end),
-  });
-  if (opts.intervalMinutes) qs.set("interval_in_minutes", String(opts.intervalMinutes));
-  const p = await growwGet<any>(`/v1/historical/candle/range?${qs.toString()}`);
-  const rows: any[] = p?.candles ?? p?.candle ?? [];
-  return rows
-    .map((r) => ({
-      time: Math.floor(Number(Array.isArray(r) ? r[0] : r?.timestamp) / (String(Array.isArray(r) ? r[0] : r?.timestamp).length > 10 ? 1000 : 1)),
-      open: Number(Array.isArray(r) ? r[1] : r?.open),
-      high: Number(Array.isArray(r) ? r[2] : r?.high),
-      low: Number(Array.isArray(r) ? r[3] : r?.low),
-      close: Number(Array.isArray(r) ? r[4] : r?.close),
-      volume: Number((Array.isArray(r) ? r[5] : r?.volume) ?? 0),
-    }))
-    .filter((c) => Number.isFinite(c.close) && Number.isFinite(c.time));
+  const range = opts.end - opts.start > 5 * 86400_000 ? "1mo" : "5d";
+  const c = await getDhanChartCandles(opts.tradingSymbol, range, opts.intervalMinutes);
+  if (!c) return [];
+  return c.map((row) => ({
+    time: Math.floor(row.t / 1000),
+    open: row.open,
+    high: row.high,
+    low: row.low,
+    close: row.price,
+    volume: row.volume,
+  }));
 }
 
-/* ------------------------------- Option chain ------------------------------- */
+export async function growwHoldings() {
+  const h = await getDhanRawHoldings();
+  return h || [];
+}
 
-export type GrowwOptionRow = {
-  strike: number;
-  call: { ltp: number; oi: number; oiChange: number; volume: number; iv: number };
-  put: { ltp: number; oi: number; oiChange: number; volume: number; iv: number };
-};
-
-export type GrowwOptionChain = {
-  underlying: string;
-  expiry: string;
-  spot: number;
-  atmStrike: number;
-  pcr: number;
-  maxPain: number;
-  totalCallOi: number;
-  totalPutOi: number;
-  rows: GrowwOptionRow[];
-  generatedAt: number;
-};
-
-const n = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-
-function leg(raw: any) {
+export async function growwEnrichedHoldings() {
+  const data = await getDhanEnrichedHoldings();
   return {
-    ltp: n(raw?.live_price?.ltp ?? raw?.ltp ?? raw?.last_price),
-    oi: n(raw?.live_price?.open_interest ?? raw?.open_interest ?? raw?.oi),
-    oiChange: n(raw?.live_price?.oi_day_change ?? raw?.oi_change),
-    volume: n(raw?.live_price?.volume ?? raw?.volume),
-    iv: n(raw?.implied_volatility ?? raw?.iv),
+    holdings: data.holdings,
+    summary: data.summary,
   };
 }
 
 export async function growwOptionChain(
   underlying: string,
   expiryDate: string,
-  exchange = "NSE",
-): Promise<GrowwOptionChain> {
-  const p = await growwGet<any>(
-    `/v1/option-chain/exchange/${exchange}/underlying/${encodeURIComponent(
-      underlying,
-    )}?expiry_date=${encodeURIComponent(expiryDate)}`,
-  );
-  const raw: any[] = p?.option_chains ?? p?.optionChains ?? [];
-  const rows: GrowwOptionRow[] = raw
-    .map((r) => ({
-      strike: n(r?.strike_price ?? r?.strike),
-      call: leg(r?.call_option ?? r?.call_options ?? r?.ce),
-      put: leg(r?.put_option ?? r?.put_options ?? r?.pe),
-    }))
-    .filter((r) => r.strike > 0)
-    .sort((a, b) => a.strike - b.strike);
-
-  const spot = n(p?.underlying_ltp ?? p?.spot ?? raw[0]?.underlying_spot_price);
-  const totalCallOi = rows.reduce((s, r) => s + r.call.oi, 0);
-  const totalPutOi = rows.reduce((s, r) => s + r.put.oi, 0);
-
-  let atmStrike = 0;
-  let best = Infinity;
-  for (const r of rows) {
-    const d = Math.abs(r.strike - spot);
-    if (d < best) {
-      best = d;
-      atmStrike = r.strike;
-    }
-  }
-  let maxPain = 0;
-  let minPain = Infinity;
-  for (const r of rows) {
-    let pain = 0;
-    for (const o of rows) {
-      if (r.strike > o.strike) pain += (r.strike - o.strike) * o.call.oi;
-      if (r.strike < o.strike) pain += (o.strike - r.strike) * o.put.oi;
-    }
-    if (pain < minPain) {
-      minPain = pain;
-      maxPain = r.strike;
-    }
-  }
-
-  return {
-    underlying,
-    expiry: expiryDate,
-    spot,
-    atmStrike,
-    pcr: totalCallOi ? Number((totalPutOi / totalCallOi).toFixed(2)) : 0,
-    maxPain,
-    totalCallOi,
-    totalPutOi,
-    rows,
-    generatedAt: Date.now(),
-  };
+  _exchange = "NSE",
+) {
+  return await getDhanOptionChain(underlying, expiryDate);
 }
 
-/* --------------------------------- Portfolio -------------------------------- */
-
-export async function growwHoldings() {
-  const p = await growwGet<{ holdings?: any[] }>("/v1/holdings/user");
-  return p?.holdings ?? [];
-}
-
-export async function growwEnrichedHoldings() {
-  const holdings = await growwHoldings();
-  if (!holdings || holdings.length === 0) {
-    return {
-      holdings: [],
-      summary: { totalInvested: 0, totalCurrent: 0, totalPnl: 0, totalPnlPct: 0 },
-    };
-  }
-
-  const enriched = await Promise.all(
-    holdings.map(async (h: any) => {
-      const sym = h.trading_symbol;
-      let ltp = Number(h.average_price) || 0;
-      let dayChangePct = 0;
-      try {
-        const res = await fetch(
-          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}.NS?range=2d&interval=1d`,
-          { headers: { "User-Agent": "Mozilla/5.0" } },
-        );
-        if (res.ok) {
-          const j = await res.json();
-          const meta = j?.chart?.result?.[0]?.meta;
-          if (meta?.regularMarketPrice) {
-            ltp = Number(meta.regularMarketPrice);
-            const prev = Number(meta.chartPreviousClose ?? meta.previousClose);
-            if (prev > 0) dayChangePct = +(((ltp - prev) / prev) * 100).toFixed(2);
-          }
-        }
-      } catch {}
-
-      const qty = Number(h.quantity) || 0;
-      const avg = Number(h.average_price) || 0;
-      const invested = +(qty * avg).toFixed(2);
-      const current = +(qty * ltp).toFixed(2);
-      const pnl = +(current - invested).toFixed(2);
-      const pnlPct = invested > 0 ? +((pnl / invested) * 100).toFixed(2) : 0;
-
-      return {
-        symbol: sym,
-        isin: h.isin,
-        quantity: qty,
-        averagePrice: avg,
-        currentPrice: ltp,
-        investedValue: invested,
-        currentValue: current,
-        pnl,
-        pnlPct,
-        dayChangePct,
-      };
-    }),
-  );
-
-  const totalInvested = +enriched.reduce((s, h) => s + h.investedValue, 0).toFixed(2);
-  const totalCurrent = +enriched.reduce((s, h) => s + h.currentValue, 0).toFixed(2);
-  const totalPnl = +(totalCurrent - totalInvested).toFixed(2);
-  const totalPnlPct = totalInvested > 0 ? +((totalPnl / totalInvested) * 100).toFixed(2) : 0;
-
-  return {
-    holdings: enriched,
-    summary: { totalInvested, totalCurrent, totalPnl, totalPnlPct },
-  };
-}
-
-/** Quick health probe used by the admin panel. */
 export async function growwStatus() {
-  const out: Record<string, string> = {};
-  try {
-    await getGrowwToken();
-    out.auth = "ok";
-  } catch (e) {
-    out.auth = (e as Error).message;
-    return out;
-  }
-  for (const [label, fn] of [
-    ["liveData", () => growwLtp(["NSE_RELIANCE"])],
-    ["historical", () =>
-      growwCandles({
-        tradingSymbol: "RELIANCE",
-        start: Date.now() - 3 * 86400_000,
-        end: Date.now(),
-        intervalMinutes: 5,
-      })],
-    ["portfolio", () => growwHoldings()],
-  ] as const) {
-    try {
-      await fn();
-      out[label] = "ok";
-    } catch (e) {
-      out[label] = (e as Error).message;
-    }
-  }
-  return out;
+  const configured = Boolean(process.env.GROWW_API_KEY && process.env.GROWW_API_SECRET);
+  return {
+    configured,
+    status: configured ? "connected" : "unconfigured",
+    message: configured ? "Connected" : "API key not configured",
+  };
 }

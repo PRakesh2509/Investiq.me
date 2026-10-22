@@ -176,13 +176,15 @@ export const Route = createFileRoute("/api/public/hooks/postmarket-alert")({
     handlers: {
       POST: async ({ request }) => {
         const token = process.env.TELEGRAM_BOT_TOKEN || "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc";
-        let body: { section?: Section } = {};
+        let body: { section?: Section; chatIds?: string[] } = {};
         try { body = (await request.json()) as any; } catch { /* empty body allowed */ }
         const section: Section = body.section ?? "all";
 
         const envIds = (process.env.TELEGRAM_CHAT_ID ?? "")
           .split(",").map((s) => s.trim()).filter(Boolean);
-        const chatIds = Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
+        const chatIds = body.chatIds?.length
+          ? Array.from(new Set(body.chatIds.map((s) => String(s).trim()).filter(Boolean)))
+          : Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
 
         const out: Quote[] = [];
         const chunk = 12;

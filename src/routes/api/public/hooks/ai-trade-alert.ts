@@ -54,6 +54,7 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
       POST: async ({ request }) => {
         const body = (await request.json().catch(() => ({}))) as {
           force?: boolean;
+          chatIds?: string[];
         };
         const force = !!body.force;
         try {
@@ -65,7 +66,9 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean);
-          const chatIds = Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
+          const chatIds = body.chatIds?.length
+            ? Array.from(new Set(body.chatIds.map((s) => String(s).trim()).filter(Boolean)))
+            : Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
 
           const { getAccessToken, fetchExpiries, fetchOptionChain, INDEX_UNDERLYINGS } =
             await import("@/lib/upstox.server");

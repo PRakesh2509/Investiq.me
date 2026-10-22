@@ -7,8 +7,8 @@ import { NIFTY_UNIVERSE, NIFTY_YAHOO_SYMBOLS } from "@/lib/nifty-universe";
 import { getYahooQuotes } from "@/lib/yahoo.functions";
 import { getIndianStockQuotes, LiveStockQuote } from "@/lib/indian-stocks.functions";
 import { useRecentViewed } from "@/lib/recent-viewed";
-import { ArrowDownRight, ArrowUpRight, ExternalLink, RefreshCw, Clock, Search, Sparkles, Briefcase, Zap } from "lucide-react";
-import { getGrowwHoldings } from "@/lib/groww.functions";
+import { ArrowDownRight, ArrowUpRight, ExternalLink, RefreshCw, Clock, Search, Sparkles, Briefcase, Zap, ShieldCheck } from "lucide-react";
+import { getDhanHoldings } from "@/lib/dhan.functions";
 import { IndianStocksLiveWatch } from "@/components/IndianStocksLiveWatch";
 import { DhanConnectModal } from "@/components/DhanConnectModal";
 
@@ -27,14 +27,14 @@ type LiveQuote = {
 function DesktopDashboard() {
   const fetchQuotes = useServerFn(getYahooQuotes);
   const fetchIndianQuotes = useServerFn(getIndianStockQuotes);
-  const fetchHoldings = useServerFn(getGrowwHoldings);
+  const fetchHoldings = useServerFn(getDhanHoldings);
   const recent = useRecentViewed();
   const navigate = useNavigate();
   const [quotes, setQuotes] = useState<LiveQuote[]>([]);
   const [fullQuotes, setFullQuotes] = useState<LiveStockQuote[]>([]);
   const [indices, setIndices] = useState<LiveQuote[]>([]);
-  const [feedSource, setFeedSource] = useState<string>("DhanHQ / NSE Live");
-  const [growwData, setGrowwData] = useState<any>(null);
+  const [feedSource, setFeedSource] = useState<string>("DhanHQ Live Direct Feed");
+  const [dhanData, setDhanData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [dhanModalOpen, setDhanModalOpen] = useState(false);
   const loadingRef = useRef(false);
@@ -57,15 +57,15 @@ function DesktopDashboard() {
     loadingRef.current = true;
     setLoading(true);
     try {
-      const [stocksResult, indicesResult, growwResult] = await Promise.allSettled([
+      const [stocksResult, indicesResult, dhanResult] = await Promise.allSettled([
         fetchIndianQuotes({ data: {} }),
         fetchQuotes({ data: { symbols: "^NSEI,^BSESN,^NSEBANK,^CNXIT" } }),
         fetchHoldings(),
       ]);
       const stocksRes = stocksResult.status === "fulfilled" ? stocksResult.value : null;
       const idxRes = indicesResult.status === "fulfilled" ? indicesResult.value : null;
-      if (growwResult.status === "fulfilled" && growwResult.value?.ok) {
-        setGrowwData(growwResult.value);
+      if (dhanResult.status === "fulfilled" && dhanResult.value?.ok) {
+        setDhanData(dhanResult.value);
       }
       if (stocksRes?.ok && stocksRes.quotes?.length) {
         setFullQuotes(stocksRes.quotes);
@@ -272,8 +272,8 @@ function DesktopDashboard() {
 
 
 
-      {/* Groww Connected Portfolio */}
-      {growwData?.ok && growwData?.holdings?.length > 0 && (
+      {/* DhanHQ Connected Portfolio */}
+      {dhanData?.ok && dhanData?.holdings?.length > 0 && (
         <div className="rounded-2xl border border-emerald-500/30 bg-surface/70 p-5 shadow-lg backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
             <div className="flex items-center gap-2.5">
@@ -282,42 +282,60 @@ function DesktopDashboard() {
               </span>
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="font-display text-base font-semibold">Groww Portfolio</h2>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-500">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Live Synced
-                  </span>
+                  <h2 className="font-display text-base font-semibold">DhanHQ Portfolio</h2>
+                  {dhanData.connected ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-500">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Live Synced · Client {dhanData.clientId || "1114340693"}
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setDhanModalOpen(true)}
+                      className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/20 transition"
+                    >
+                      <Zap className="h-3 w-3" />
+                      Connect Token
+                    </button>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Direct Groww Trading API feed · {growwData.holdings.length} assets held
+                  Direct DhanHQ API v2 feed · {dhanData.holdings.length} assets held
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-4 text-right">
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Current Value</p>
-                <p className="font-display text-lg font-bold">{formatINR(growwData.summary.totalCurrent)}</p>
+                <p className="font-display text-lg font-bold">{formatINR(dhanData.summary.totalCurrent)}</p>
               </div>
               <div className="border-l border-border pl-4">
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total P&amp;L</p>
                 <p
                   className={`font-display text-lg font-bold ${
-                    growwData.summary.totalPnl >= 0 ? "text-success" : "text-destructive"
+                    dhanData.summary.totalPnl >= 0 ? "text-success" : "text-destructive"
                   }`}
                 >
-                  {growwData.summary.totalPnl >= 0 ? "+" : ""}
-                  {formatINR(growwData.summary.totalPnl)}
+                  {dhanData.summary.totalPnl >= 0 ? "+" : ""}
+                  {formatINR(dhanData.summary.totalPnl)}
                   <span className="ml-1 text-xs font-normal">
-                    ({growwData.summary.totalPnl >= 0 ? "+" : ""}
-                    {growwData.summary.totalPnlPct.toFixed(2)}%)
+                    ({dhanData.summary.totalPnl >= 0 ? "+" : ""}
+                    {dhanData.summary.totalPnlPct.toFixed(2)}%)
                   </span>
                 </p>
               </div>
+              <button
+                onClick={() => setDhanModalOpen(true)}
+                className="rounded-lg border border-border bg-background/50 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition flex items-center gap-1"
+                title="Manage DhanHQ Account"
+              >
+                <Zap className="h-3.5 w-3.5 text-primary" />
+                <span className="hidden sm:inline">DhanHQ</span>
+              </button>
             </div>
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-            {growwData.holdings.map((h: any) => {
+            {dhanData.holdings.map((h: any) => {
               const pos = h.pnl >= 0;
               return (
                 <Link

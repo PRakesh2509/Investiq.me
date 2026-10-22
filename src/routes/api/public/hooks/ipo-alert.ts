@@ -69,7 +69,7 @@ export const Route = createFileRoute("/api/public/hooks/ipo-alert")({
               .from("ipo_sent")
               .select("ipo_id")
               .in("ipo_id", ids);
-            const seen = new Set((sent ?? []).map((r) => r.ipo_id));
+            const seen = new Set((sent ?? []).map((r: any) => r.ipo_id));
             targets = candidates.filter((i) => !seen.has(i.id));
           }
 

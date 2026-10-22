@@ -20,6 +20,8 @@ import {
   BarChart3,
   Sliders,
   ExternalLink,
+  Award,
+  Zap,
 } from "lucide-react";
 import {
   computeTerminalData,
@@ -32,6 +34,24 @@ import {
 } from "@/lib/terminal-workstation.functions";
 import WorkstationTradingChart from "./WorkstationTradingChart";
 import { toast } from "sonner";
+import {
+  getFnoWorkstationIntelligence,
+  type FnoIntelligenceData,
+} from "@/lib/fno-intelligence.functions";
+import AiTradeIntelligenceSummary from "./AiTradeIntelligenceSummary";
+import OptionsGreeksPanel from "./OptionsGreeksPanel";
+import OptionChainAiInsights from "./OptionChainAiInsights";
+import GeopoliticalMacroIntelligence from "./GeopoliticalMacroIntelligence";
+import SensibullStatusModal from "./SensibullStatusModal";
+import SensibullGreeksChart from "./SensibullGreeksChart";
+import RankedTradeCandidatesPanel from "./RankedTradeCandidatesPanel";
+import ScenarioSimulatorPanel from "./ScenarioSimulatorPanel";
+import BacktestValidationModal from "./BacktestValidationModal";
+import ContinuousFnoIntelligencePanel from "./ContinuousFnoIntelligencePanel";
+import {
+  getContinuousFnoIntelligence,
+  type ContinuousFnoData,
+} from "@/lib/fno-continuous-engine.functions";
 
 const TIMEFRAMES = ["1M", "3M", "5M", "15M", "30M", "1H", "1D"] as const;
 type TF = (typeof TIMEFRAMES)[number];
@@ -77,6 +97,8 @@ export default function TradingTerminalWorkstation() {
   // Server functions
   const fetchMarketData = useServerFn(getTerminalMarketData);
   const fetchBars = useServerFn(getTerminalBars);
+  const fetchIntelligence = useServerFn(getFnoWorkstationIntelligence);
+  const fetchContinuousFno = useServerFn(getContinuousFnoIntelligence);
 
   // Initial synchronous state so page never flickers or starts empty
   const [data, setData] = useState<TerminalWorkstationData>(() => computeTerminalData("NIFTY 50"));
@@ -85,13 +107,35 @@ export default function TradingTerminalWorkstation() {
   );
   const [setupActive, setSetupActive] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [intelligence, setIntelligence] = useState<FnoIntelligenceData | null>(null);
+  const [continuousData, setContinuousData] = useState<ContinuousFnoData | null>(null);
+  const [chainViewMode, setChainViewMode] = useState<"CLASSIC" | "GREEKS" | "GREEK_CHART">("GREEK_CHART");
+  const [isBacktestModalOpen, setIsBacktestModalOpen] = useState<boolean>(false);
 
   const cfg = WORKSTATION_INSTRUMENTS[instrument] ?? WORKSTATION_INSTRUMENTS["NIFTY 50"];
   const curSymbol = cfg.currency;
   const tvSymbol = cfg.tvSymbol ?? "NSE:NIFTY";
   const tvInterval = TV_INTERVAL_MAP[tf] ?? "1";
 
-  // Load live data from server
+  // Load live data & AI intelligence from server
+  const loadIntelligence = async (inst: string, spot: number, changePct: number, dir: "CALL" | "PUT") => {
+    try {
+      const res = await fetchIntelligence({
+        data: {
+          instrument: inst,
+          spotPrice: spot,
+          changePct: changePct,
+          intendedDirection: dir,
+        },
+      });
+      if (res) {
+        setIntelligence(res);
+      }
+    } catch (e) {
+      console.warn("Could not load F&O intelligence:", e);
+    }
+  };
+
   const loadData = async (inst: string) => {
     setIsRefreshing(true);
     try {
@@ -115,9 +159,35 @@ export default function TradingTerminalWorkstation() {
           };
           return [...prev.slice(0, -1), updatedLast];
         });
+
+        // Trigger AI Confluence Intelligence update
+        loadIntelligence(inst, res.spotPrice, res.changePct, res.direction);
+        fetchContinuousFno({
+          data: {
+            instrument: inst,
+            accountCapital: tradingCapital,
+            maxRiskPerTradePct: riskPct,
+          },
+        })
+          .then((cRes) => {
+            if (cRes) setContinuousData(cRes);
+          })
+          .catch(() => {});
       }
     } catch {
       setData((prev) => computeTerminalData(inst, prev?.spotPrice));
+      loadIntelligence(inst, data?.spotPrice ?? 22862.9, data?.changePct ?? -0.01, data?.direction ?? "PUT");
+      fetchContinuousFno({
+        data: {
+          instrument: inst,
+          accountCapital: tradingCapital,
+          maxRiskPerTradePct: riskPct,
+        },
+      })
+        .then((cRes) => {
+          if (cRes) setContinuousData(cRes);
+        })
+        .catch(() => {});
     } finally {
       setIsRefreshing(false);
     }
@@ -472,6 +542,24 @@ export default function TradingTerminalWorkstation() {
           </div>
         </div>
       </section>
+
+      {/* A. AI Trade Intelligence Summary (7-Factor Confluence & Hard Risk Check Gates) */}
+      <AiTradeIntelligenceSummary
+        scoreData={intelligence?.tradeScore}
+        isLoading={isRefreshing}
+        onRefresh={() => loadData(instrument)}
+      />
+
+      {/* Phase 7 & 8: Ranked Trade Candidates & Risk Management Engine */}
+      <RankedTradeCandidatesPanel
+        rankingData={intelligence?.candidateRankings ?? null}
+        lotSize={cfg.lotSize}
+        onSelectCandidate={(c) => {
+          setSelectedContract(c.title);
+          setCustomPremium(c.entryPremium.toFixed(2));
+          toast.success(`Selected ${c.title} for analysis & execution`);
+        }}
+      />
 
       {/* 2-Column Workstation Grid */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
@@ -878,107 +966,189 @@ export default function TradingTerminalWorkstation() {
         </div>
       </div>
 
-      {/* 5. Live Option Chain (Strikes & Premiums) — Requirements 29-34 */}
-      <section className="rounded-2xl border border-border bg-surface/60 p-4 shadow-lg backdrop-blur">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-sm">🔗</span>
-            <h3 className="font-mono text-sm font-bold uppercase tracking-wide text-foreground">
-              LIVE OPTION CHAIN ({instrument} — STRIKES &amp; PREMIUMS)
-            </h3>
-            {/* Model-Based Premium Estimation Badge (Requirement 34) */}
-            <span className="rounded bg-surface px-2 py-0.5 text-[10px] font-mono text-muted-foreground border border-border">
-              MODEL ESTIMATE
-            </span>
-          </div>
+      {/* 5. Live Option Chain & AI Insights (Desktop Adjacent Grid / Mobile Stacked) */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        {/* Left Column (8 of 12 cols): Option Chain with View Tabs (Classic vs Greeks) */}
+        <div className="space-y-3 xl:col-span-8">
+          <section className="rounded-2xl border border-border bg-surface/60 p-4 shadow-lg backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🔗</span>
+                <h3 className="font-mono text-sm font-bold uppercase tracking-wide text-foreground">
+                  LIVE OPTION CHAIN ({instrument})
+                </h3>
+                {/* View Mode Toggle: Sensibull Greeks View Chart vs Classic Strikes vs Greeks Matrix */}
+                <div className="inline-flex rounded-lg border border-border bg-background/60 p-0.5 text-[10px] font-mono">
+                  <button
+                    onClick={() => setChainViewMode("GREEK_CHART")}
+                    className={`rounded-md px-2.5 py-1 transition flex items-center gap-1 font-bold ${
+                      chainViewMode === "GREEK_CHART"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <span>SENSIBULL GREEKS VIEW CHART 📈</span>
+                  </button>
+                  <button
+                    onClick={() => setChainViewMode("CLASSIC")}
+                    className={`rounded-md px-2 py-0.5 transition ${
+                      chainViewMode === "CLASSIC"
+                        ? "bg-primary text-primary-foreground font-bold shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    STRIKES &amp; PREMIUMS
+                  </button>
+                  <button
+                    onClick={() => setChainViewMode("GREEKS")}
+                    className={`rounded-md px-2 py-0.5 transition ${
+                      chainViewMode === "GREEKS"
+                        ? "bg-primary text-primary-foreground font-bold shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    GREEKS MATRIX (Δ Γ Θ ν)
+                  </button>
+                </div>
+              </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => loadData(instrument)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background/60 px-2.5 py-1 text-[11px] font-mono font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition"
-            >
-              <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin text-primary" : ""}`} />
-              REFRESH QUOTES
-            </button>
-            <span className="font-mono text-[11px] text-muted-foreground">
-              Step: {cfg.step} pts · Lot Size: {cfg.lotSize} Qty
-            </span>
-          </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Sensibull Status Modal / Badge (Requirement 4) */}
+                <SensibullStatusModal status={intelligence?.sensibullStatus ?? null} />
+
+                <button
+                  onClick={() => loadData(instrument)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background/60 px-2.5 py-1 text-[11px] font-mono font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin text-primary" : ""}`} />
+                  REFRESH QUOTES
+                </button>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  Step: {cfg.step} pts · Lot Size: {cfg.lotSize} Qty
+                </span>
+              </div>
+            </div>
+
+            {chainViewMode === "CLASSIC" ? (
+              /* Original Classic Option Chain Table */
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-center font-mono text-xs">
+                  <thead>
+                    <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground bg-background/50">
+                      <th className="py-2.5 px-3 text-left">CALL LTP (₹)</th>
+                      <th className="py-2.5 px-3">CALL TYPE</th>
+                      <th className="py-2.5 px-3 font-bold text-foreground">STRIKE PRICE</th>
+                      <th className="py-2.5 px-3">PUT TYPE</th>
+                      <th className="py-2.5 px-3 text-right">PUT LTP (₹)</th>
+                      <th className="py-2.5 px-3 text-right">ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {(data?.strikes ?? []).map((row) => (
+                      <tr key={row.strike} className="hover:bg-accent/30 transition">
+                        <td className="py-2.5 px-3 text-left font-bold text-emerald-400">
+                          ₹{row.callLtp.toFixed(2)}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                              row.callType === "ITM"
+                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                : row.callType === "ATM"
+                                ? "bg-primary text-primary-foreground shadow-glow"
+                                : "bg-surface text-muted-foreground border border-border"
+                            }`}
+                          >
+                            {row.callType}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-foreground text-sm">
+                          {row.strike} {row.callType === "ATM" || row.putType === "ATM" ? "(ATM)" : ""}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                              row.putType === "ITM"
+                                ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                                : row.putType === "ATM"
+                                ? "bg-primary text-primary-foreground shadow-glow"
+                                : "bg-surface text-muted-foreground border border-border"
+                            }`}
+                          >
+                            {row.putType}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-rose-400">
+                          ₹{row.putLtp.toFixed(2)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="inline-flex gap-1.5">
+                            {/* Calculator Shortcuts (Requirement 33) */}
+                            <button
+                              onClick={() => handleSelectStrike(row.strike, "CE", row.callLtp)}
+                              className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-mono font-bold text-emerald-400 hover:bg-emerald-500/20 transition"
+                            >
+                              CALC CE
+                            </button>
+                            <button
+                              onClick={() => handleSelectStrike(row.strike, "PE", row.putLtp)}
+                              className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-mono font-bold text-rose-400 hover:bg-rose-500/20 transition"
+                            >
+                              CALC PE
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : chainViewMode === "GREEKS" ? (
+              /* B. Options Greeks Tab & Sensitivity Matrix */
+              <div className="mt-3">
+                <OptionsGreeksPanel
+                  chain={intelligence?.chain ?? null}
+                  underlyingPrice={data?.spotPrice ?? 22862.9}
+                  lotSize={cfg.lotSize}
+                  onSelectStrike={(strike, type, ltp) => handleSelectStrike(strike, type, ltp)}
+                />
+              </div>
+            ) : (
+              /* Sensibull Greek View Chart Only */
+              <div className="mt-3">
+                <SensibullGreeksChart
+                  chartData={intelligence?.sensibullGreeksChart ?? null}
+                  lotSize={cfg.lotSize}
+                />
+              </div>
+            )}
+          </section>
         </div>
 
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-center font-mono text-xs">
-            <thead>
-              <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground bg-background/50">
-                <th className="py-2.5 px-3 text-left">CALL LTP (₹)</th>
-                <th className="py-2.5 px-3">CALL TYPE</th>
-                <th className="py-2.5 px-3 font-bold text-foreground">STRIKE PRICE</th>
-                <th className="py-2.5 px-3">PUT TYPE</th>
-                <th className="py-2.5 px-3 text-right">PUT LTP (₹)</th>
-                <th className="py-2.5 px-3 text-right">ACTION</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {(data?.strikes ?? []).map((row) => (
-                <tr key={row.strike} className="hover:bg-accent/30 transition">
-                  <td className="py-2.5 px-3 text-left font-bold text-emerald-400">
-                    ₹{row.callLtp.toFixed(2)}
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                        row.callType === "ITM"
-                          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                          : row.callType === "ATM"
-                          ? "bg-primary text-primary-foreground shadow-glow"
-                          : "bg-surface text-muted-foreground border border-border"
-                      }`}
-                    >
-                      {row.callType}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3 font-bold text-foreground text-sm">
-                    {row.strike} {row.callType === "ATM" || row.putType === "ATM" ? "(ATM)" : ""}
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                        row.putType === "ITM"
-                          ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
-                          : row.putType === "ATM"
-                          ? "bg-primary text-primary-foreground shadow-glow"
-                          : "bg-surface text-muted-foreground border border-border"
-                      }`}
-                    >
-                      {row.putType}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3 text-right font-bold text-rose-400">
-                    ₹{row.putLtp.toFixed(2)}
-                  </td>
-                  <td className="py-2.5 px-3 text-right">
-                    <div className="inline-flex gap-1.5">
-                      {/* Calculator Shortcuts (Requirement 33) */}
-                      <button
-                        onClick={() => handleSelectStrike(row.strike, "CE", row.callLtp)}
-                        className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-mono font-bold text-emerald-400 hover:bg-emerald-500/20 transition"
-                      >
-                        CALC CE
-                      </button>
-                      <button
-                        onClick={() => handleSelectStrike(row.strike, "PE", row.putLtp)}
-                        className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-mono font-bold text-rose-400 hover:bg-rose-500/20 transition"
-                      >
-                        CALC PE
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Right Column (4 of 12 cols): C. AI Analysis Beside Option Chain */}
+        <div className="xl:col-span-4">
+          <OptionChainAiInsights
+            chain={intelligence?.chain ?? null}
+            underlyingPrice={data?.spotPrice ?? 22862.9}
+          />
         </div>
-      </section>
+      </div>
+
+      {/* PHASE 6: Greeks Scenario Simulator & Statutory Cost Breakdown */}
+      <ScenarioSimulatorPanel
+        underlyingSpot={data?.spotPrice ?? 22862.9}
+        daysToExpiry={intelligence?.chain?.daysToExpiry ?? 2}
+        lotSize={cfg.lotSize}
+        selectedContract={selectedContract}
+        currentPremium={parseFloat(customPremium) || 145}
+      />
+
+      {/* PHASE 8: Continuous F&O + Options Greeks Intelligence & Explainable Candidates */}
+      <ContinuousFnoIntelligencePanel
+        data={continuousData}
+        isLoading={isRefreshing}
+        onRefresh={() => loadData(instrument)}
+      />
 
       {/* 7. Historical Signals & Backtest Performance — Requirements 41-47 */}
       <section className="rounded-2xl border border-border bg-surface/60 p-4 shadow-lg backdrop-blur text-xs space-y-3">
@@ -991,6 +1161,13 @@ export default function TradingTerminalWorkstation() {
           </div>
           {/* Backtest & Win Rate Summary (Requirements 44, 46, 47) */}
           <div className="flex items-center gap-3 font-mono text-[11px]">
+            <button
+              onClick={() => setIsBacktestModalOpen(true)}
+              className="rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary hover:bg-primary/20 transition flex items-center gap-1.5 shadow-sm"
+            >
+              <Award className="h-3.5 w-3.5" />
+              <span>4-MODEL ALPHA BENCHMARK (PHASE 10)</span>
+            </button>
             <span className="rounded bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 font-bold text-emerald-400">
               Win Rate: {data.winRatePct}%
             </span>
@@ -1052,6 +1229,20 @@ export default function TradingTerminalWorkstation() {
           })}
         </div>
       </section>
+
+      {/* D. Geopolitical & Macroeconomic Intelligence (Collapsible Market Intelligence) */}
+      <GeopoliticalMacroIntelligence
+        report={intelligence?.macroReport ?? null}
+        newsItems={intelligence?.newsEvents ?? []}
+        onRefresh={() => loadData(instrument)}
+      />
+
+      {/* Phase 10: Comparative Backtest & Alpha Benchmark Modal */}
+      <BacktestValidationModal
+        report={intelligence?.backtestReport ?? null}
+        isOpen={isBacktestModalOpen}
+        onClose={() => setIsBacktestModalOpen(false)}
+      />
 
       {/* 8. Data & System Management Status Strip — Requirements 48-53 */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface/40 p-3 text-[11px] font-mono text-muted-foreground">

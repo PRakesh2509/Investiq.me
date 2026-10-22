@@ -1,11 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { getDhanLiveChart, getDhanHoldings as getDhanHoldingsFn } from "./dhan.functions";
+import { getDhanQuote } from "./dhan.server";
 
 export type ChartPoint = { t: number; price: number; volume: number };
 
 /**
- * Live chart data sourced exclusively from the Groww Trading API.
- * No third-party fallback — if Groww has no data we report the error.
+ * Live chart data re-routed directly to DhanHQ API v2.
+ * Groww has been deprecated in favor of DhanHQ.
  */
 export const getLiveChart = createServerFn({ method: "POST" })
   .validator((d) =>
@@ -20,44 +22,18 @@ export const getLiveChart = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    const { growwCandles, growwQuote } = await import("@/lib/groww.server");
-    try {
-      const end = Date.now();
-      const start = end - data.days * 86400_000;
-      const [candles, quote] = await Promise.all([
-        growwCandles({
-          tradingSymbol: data.growwSymbol,
-          exchange: data.exchange,
-          segment: data.segment,
-          start,
-          end,
-          intervalMinutes: data.intervalMinutes,
-        }),
-        growwQuote(data.growwSymbol, data.exchange, data.segment).catch(() => null),
-      ]);
-      if (!candles.length) {
-        return { ok: false as const, error: "Groww returned no candles for this interval" };
-      }
-      const points: ChartPoint[] = candles.map((c) => ({
-        t: c.time * 1000,
-        price: c.close,
-        volume: c.volume,
-      }));
-      return {
-        ok: true as const,
-        source: "groww" as const,
-        points,
-        previousClose:
-          quote?.prevClose ?? points[0]?.price ?? points[points.length - 1]?.price ?? 0,
-      };
-    } catch (e) {
-      console.warn("[groww chart]", (e as Error).message);
-      return { ok: false as const, error: (e as Error).message };
-    }
+    return await getDhanLiveChart({
+      data: {
+        symbol: data.growwSymbol,
+        dhanSymbol: data.growwSymbol,
+        exchange: data.exchange,
+        intervalMinutes: data.intervalMinutes,
+        days: data.days,
+      },
+    });
   });
 
-
-/** Live quote for a Groww trading symbol (with Yahoo fallback). */
+/** Live quote re-routed to DhanHQ v2 */
 export const getGrowwQuote = createServerFn({ method: "POST" })
   .validator((d) =>
     z
@@ -69,36 +45,29 @@ export const getGrowwQuote = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    const { growwQuote } = await import("@/lib/groww.server");
     try {
-      return { ok: true as const, quote: await growwQuote(data.growwSymbol, data.exchange, data.segment) };
+      const q = await getDhanQuote(data.growwSymbol);
+      if (q) return { ok: true as const, quote: q };
+      return { ok: false as const, error: "DhanHQ quote not found" };
     } catch (e) {
       return { ok: false as const, error: (e as Error).message };
     }
   });
 
-/** Groww connection / role health, used by the admin panel. */
+/** Status endpoint returning clean API key not configured response */
 export const getGrowwStatus = createServerFn({ method: "GET" }).handler(async () => {
-  const { growwStatus } = await import("@/lib/groww.server");
-  try {
-    return { ok: true as const, status: await growwStatus() };
-  } catch (e) {
-    return { ok: false as const, error: (e as Error).message };
-  }
+  const configured = Boolean(process.env.GROWW_API_KEY && process.env.GROWW_API_SECRET);
+  return {
+    ok: true as const,
+    status: {
+      configured,
+      auth: configured ? "connected" : "unconfigured",
+      message: configured ? "Groww Trading API connected" : "API key not configured",
+    },
+  };
 });
 
+/** Holdings re-routed to DhanHQ portfolio */
 export const getGrowwHoldings = createServerFn({ method: "GET" }).handler(async () => {
-  const { growwEnrichedHoldings } = await import("@/lib/groww.server");
-  try {
-    const data = await growwEnrichedHoldings();
-    return { ok: true as const, ...data };
-  } catch (e) {
-    return {
-      ok: false as const,
-      holdings: [],
-      summary: { totalInvested: 0, totalCurrent: 0, totalPnl: 0, totalPnlPct: 0 },
-      error: (e as Error).message,
-    };
-  }
+  return await getDhanHoldingsFn();
 });
-

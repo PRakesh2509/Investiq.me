@@ -133,13 +133,17 @@ export const Route = createFileRoute("/api/option-alert")({
               { status: 500 },
             );
           }
-          const body = (await request.json().catch(() => ({}))) as Payload;
+          const body = (await request.json().catch(() => ({}))) as Payload & { chatIds?: string[] };
           if (!body.force && inQuietHours()) {
             return Response.json({ ok: true, skipped: "quiet-hours" });
           }
           const text = buildMessage(body);
+          const envIds = (process.env["TELEGRAM_CHAT_ID"] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+          const chatIds = body.chatIds?.length
+            ? Array.from(new Set(body.chatIds.map((s) => String(s).trim()).filter(Boolean)))
+            : Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
           const results = await Promise.all(
-            PERMANENT_CHAT_IDS.map((id) => sendTelegram(token, id, text)),
+            chatIds.map((id) => sendTelegram(token, id, text)),
           );
           const sent = results.filter(Boolean).length;
           console.log(`[option-alert] kind=${body.kind ?? "execution"} sent=${sent}/${results.length}`);

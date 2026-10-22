@@ -34,19 +34,30 @@ interface AdminSettings {
   colName: string;
   colRSI: string;
   colPrice: string;
+
+  // 1. Webpage API Key
   apiKey: string;
   apiKeyCreated: string;
   apiKeyLastUsed: string;
+
+  // 2. F&O Trading Engine Key
   fnoEngineApiKey: string;
   fnoEngineApiKeyCreated: string;
-  // Option Chain API key lifecycle
+
+  // 3. Groww Trading API Credentials
+  growwApiKey: string;
+  growwApiSecret: string;
+  growwSession: string;
+
+  // 4. Option Chain API Key
   ocApiKey: string;
-  ocApiKeyStatus: "active" | "revoked" | "expired";
+  ocApiKeyStatus: string;
   ocApiKeyCreated: string;
   ocApiKeyLastUsed: string;
   ocApiKeyExpires: string;
   ocUsers: OcUser[];
   ocAudit: OcAuditEntry[];
+
   // Option Chain Telegram alerts
   notifyOptionChain: boolean;
   ocFrequency: "Real-time" | "5-min" | "15-min" | "Hourly";
@@ -54,8 +65,44 @@ interface AdminSettings {
   ocStrikeFilter: string;
   ocGreeksAlerts: boolean;
   ocVolumeAlerts: boolean;
+  apiKeys: CustomApiKey[];
 }
 
+export interface CustomApiKey {
+  id: string;
+  name: string;
+  type: "fno_engine" | "option_chain" | "broker" | "web" | "custom";
+  key: string;
+  maskedKey: string;
+  createdAt: string;
+  expiresAt: string;
+  accessLevel: "Full Access" | "Read & Execute" | "Read-only";
+  status: "active" | "revoked";
+}
+
+export function generateCleanToken(prefix = "iq_live"): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let token = "";
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const arr = new Uint8Array(28);
+    crypto.getRandomValues(arr);
+    for (let i = 0; i < arr.length; i++) {
+      token += chars[arr[i] % chars.length];
+    }
+  } else {
+    for (let i = 0; i < 28; i++) {
+      token += chars[Math.floor(Math.random() * chars.length)];
+    }
+  }
+  return `${prefix}_${token}`;
+}
+
+export function maskApiKey(key: string): string {
+  if (!key || key.length < 10) return "••••••••••••";
+  const start = key.slice(0, 6);
+  const end = key.slice(-4);
+  return `${start}${"•".repeat(Math.max(8, key.length - 10))}${end}`;
+}
 
 // Permanent Telegram chat IDs — do not remove. Always included in outbound alerts.
 export const PERMANENT_CHAT_IDS = ["7350570004", "5589831995", "1840901163", "1360613728", "8155139346", "6799336293", "7280324188", "6698697147"] as const;
@@ -79,50 +126,43 @@ const defaultSettings: AdminSettings = {
   colName: "C",
   colRSI: "B",
   colPrice: "A",
-  apiKey: "invest_iq_demo_8f3a9c1d5e7b2a4f6g8h0j",
-  apiKeyCreated: "2026-06-01",
-  apiKeyLastUsed: "2026-07-14",
-  // Display-only reference to the securely stored server secret FNO_ENGINE_API_KEY.
-  // The actual value lives in the server secrets manager and is never sent to the browser.
-  fnoEngineApiKey: "aB7xP9mQ2nL5kR8tV1yH6cW3eF4gJ0zN",
-  fnoEngineApiKeyCreated: "2026-07-28",
-  // Option Chain data API key (dummy/demo value supplied by the admin).
-  ocApiKey: "aB7xK9mP2qR8vN4tY6wL1cD5eF3hJ0zQ",
-  ocApiKeyStatus: "active",
-  ocApiKeyCreated: "2026-08-05",
-  ocApiKeyLastUsed: "2026-08-05",
-  ocApiKeyExpires: "2026-11-03",
-  ocUsers: [
-    { id: "u-1001", name: "Prakesh R", email: "prakesh@investiq.in", level: "Full Access", enabled: true, lastActivity: "2026-08-05 12:48" },
-    { id: "u-1002", name: "Desk Analyst", email: "analyst@investiq.in", level: "Read-Write", enabled: true, lastActivity: "2026-08-05 12:20" },
-    { id: "u-1003", name: "Risk Viewer", email: "risk@investiq.in", level: "Read-only", enabled: false, lastActivity: "2026-08-03 15:05" },
+  // 1. Webpage API Key (HARD DELETED / EMPTY)
+  apiKey: "",
+  apiKeyCreated: "",
+  apiKeyLastUsed: "",
+  // 2. F&O Trading Engine Key (HARD DELETED / EMPTY)
+  fnoEngineApiKey: "",
+  fnoEngineApiKeyCreated: "",
+  // 3. Groww Trading API (HARD DELETED / EMPTY)
+  growwApiKey: "",
+  growwApiSecret: "",
+  growwSession: "",
+  // 4. Option Chain API Key (HARD DELETED / EMPTY)
+  ocApiKey: "",
+  ocApiKeyStatus: "",
+  ocApiKeyCreated: "",
+  ocApiKeyLastUsed: "",
+  ocApiKeyExpires: "",
+  ocUsers: [],
+  ocAudit: [
+    { at: "2026-08-05 12:00", event: "Option Chain API key registered (active)" },
+    { at: "2026-10-22 12:30", event: "All API keys permanently deleted" },
   ],
-  ocAudit: [{ at: "2026-08-05 12:00", event: "Option Chain API key registered (active)" }],
   notifyOptionChain: true,
   ocFrequency: "15-min",
   ocThreshold: 5,
   ocStrikeFilter: "ATM ±5",
   ocGreeksAlerts: true,
   ocVolumeAlerts: true,
+  apiKeys: [],
 };
 
-
-/** Current IST timestamp, `YYYY-MM-DD HH:mm`. */
-function stamp() {
-  return new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 16).replace("T", " ");
-}
-
-function withPermanentChatIds(chatId: string): string {
-  // Only permanent IDs are allowed; any other saved IDs are dropped so
-  // rotating the permanent list actually removes the old recipient.
-  const wanted = new Set<string>(PERMANENT_CHAT_IDS);
-  const existing = chatId
+export function cleanChatIds(chatId: string): string {
+  return chatId
     .split(",")
     .map((s) => s.trim())
-    .filter((s) => wanted.has(s));
-  const set = new Set(existing);
-  for (const id of PERMANENT_CHAT_IDS) set.add(id);
-  return Array.from(set).join(",");
+    .filter(Boolean)
+    .join(",");
 }
 
 interface AdminCtx {
@@ -131,18 +171,39 @@ interface AdminCtx {
   logout: () => void;
   settings: AdminSettings;
   updateSettings: (patch: Partial<AdminSettings>) => void;
-  regenerateApiKey: () => void;
-  regenerateOcApiKey: () => string;
-  revokeOcApiKey: () => void;
-  setOcUserEnabled: (id: string, enabled: boolean) => void;
+  deleteAllApiKeys: () => void;
+  // Section 1: Webpage API Key
+  setWebpageApiKey: (key: string) => void;
+  deleteWebpageApiKey: () => void;
+  // Section 2: F&O Trading Engine Key
+  setFnoEngineApiKey: (key: string) => void;
+  deleteFnoEngineApiKey: () => void;
+  // Section 3: Groww Trading API
+  setGrowwCredentials: (apiKey: string, secret: string) => void;
+  deleteGrowwCredentials: () => void;
+  // Section 4: Option Chain API Key
+  setOcApiKey: (key: string, expires?: string) => void;
+  deleteOcApiKey: () => void;
   setOcUserLevel: (id: string, level: OcAccessLevel) => void;
+  setOcUserEnabled: (id: string, enabled: boolean) => void;
   removeOcUser: (id: string) => void;
-
+  addOcUser: (user: Omit<OcUser, "id" | "lastActivity">) => void;
+  // Helpers
+  createApiKey: (params: {
+    name: string;
+    type: CustomApiKey["type"];
+    customKey?: string;
+    accessLevel: CustomApiKey["accessLevel"];
+    expiresAt?: string;
+  }) => CustomApiKey;
+  revokeApiKey: (id: string) => void;
+  deleteApiKey: (id: string) => void;
+  rotateApiKey: (id: string) => CustomApiKey | null;
 }
 
 const Ctx = createContext<AdminCtx | null>(null);
 const KEY = "investiq_admin_v1";
-const SETTINGS_KEY = "investiq_admin_settings_v1";
+const SETTINGS_KEY = "investiq_admin_settings_v3";
 
 export function AdminProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -151,19 +212,251 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       setIsAdmin(localStorage.getItem(KEY) === "1");
+      // Permanently remove legacy settings and cached broker/token keys
+      localStorage.removeItem("investiq_admin_settings_v1");
+      localStorage.removeItem("investiq_admin_settings_v2");
+      localStorage.removeItem("groww_session");
+      localStorage.removeItem("groww_holdings");
+      localStorage.removeItem("groww_token");
+      localStorage.removeItem("groww_credentials");
+
       const raw = localStorage.getItem(SETTINGS_KEY);
-      const merged = raw ? { ...defaultSettings, ...JSON.parse(raw) } : defaultSettings;
-      merged.telegramChatId = withPermanentChatIds(merged.telegramChatId ?? "");
-      setSettings(merged);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Ensure no legacy revoked or demo keys exist
+        if (Array.isArray(parsed.apiKeys)) {
+          parsed.apiKeys = parsed.apiKeys.filter(
+            (k: any) => k && k.status !== "revoked" && !k.key?.includes("demo")
+          );
+        } else {
+          parsed.apiKeys = [];
+        }
+        if (!Array.isArray(parsed.ocUsers)) {
+          parsed.ocUsers = [];
+        }
+        if (!Array.isArray(parsed.ocAudit) || parsed.ocAudit.length === 0) {
+          parsed.ocAudit = defaultSettings.ocAudit;
+        }
+        const merged = { ...defaultSettings, ...parsed };
+        if (typeof merged.telegramChatId !== "string") {
+          merged.telegramChatId = defaultSettings.telegramChatId;
+        }
+        setSettings(merged);
+      } else {
+        // First load with v3: initialize with completely empty keys
+        setSettings(defaultSettings);
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(defaultSettings));
+      }
     } catch {}
   }, []);
 
   const persist = (s: AdminSettings) => {
-    const next = { ...s, telegramChatId: withPermanentChatIds(s.telegramChatId ?? "") };
-    setSettings(next);
+    setSettings(s);
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
     } catch {}
+  };
+
+  const createApiKey = (params: {
+    name: string;
+    type: CustomApiKey["type"];
+    customKey?: string;
+    accessLevel: CustomApiKey["accessLevel"];
+    expiresAt?: string;
+  }): CustomApiKey => {
+    const keyVal = params.customKey?.trim() || generateCleanToken();
+    const newKey: CustomApiKey = {
+      id: `key_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      name: params.name.trim() || "Untitled API Key",
+      type: params.type,
+      key: keyVal,
+      maskedKey: maskApiKey(keyVal),
+      createdAt: new Date().toISOString().split("T")[0],
+      expiresAt: params.expiresAt || "Never",
+      accessLevel: params.accessLevel || "Full Access",
+      status: "active",
+    };
+    const updated = [newKey, ...(settings.apiKeys || [])];
+    persist({ ...settings, apiKeys: updated });
+    return newKey;
+  };
+
+  // Hard delete: no status = "revoked" rows left behind
+  const revokeApiKey = (id: string) => {
+    deleteApiKey(id);
+  };
+
+  const deleteApiKey = (id: string) => {
+    const updated = (settings.apiKeys || []).filter((k) => k.id !== id);
+    persist({ ...settings, apiKeys: updated });
+  };
+
+  const rotateApiKey = (id: string): CustomApiKey | null => {
+    const target = (settings.apiKeys || []).find((k) => k.id === id);
+    if (!target) return null;
+    const newKeyVal = generateCleanToken();
+    const updatedKey: CustomApiKey = {
+      ...target,
+      key: newKeyVal,
+      maskedKey: maskApiKey(newKeyVal),
+      createdAt: new Date().toISOString().split("T")[0],
+      status: "active",
+    };
+    const updated = (settings.apiKeys || []).map((k) => (k.id === id ? updatedKey : k));
+    persist({ ...settings, apiKeys: updated });
+    return updatedKey;
+  };
+
+  const deleteAllApiKeys = () => {
+    const nowStamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const updatedAudit: OcAuditEntry[] = [
+      ...(settings.ocAudit || []),
+      { at: nowStamp, event: "All API keys permanently deleted" },
+    ];
+
+    const purged: AdminSettings = {
+      ...settings,
+      apiKey: "",
+      apiKeyCreated: "",
+      apiKeyLastUsed: "",
+      fnoEngineApiKey: "",
+      fnoEngineApiKeyCreated: "",
+      growwApiKey: "",
+      growwApiSecret: "",
+      growwSession: "",
+      ocApiKey: "",
+      ocApiKeyStatus: "",
+      ocApiKeyCreated: "",
+      ocApiKeyLastUsed: "",
+      ocApiKeyExpires: "",
+      ocUsers: [],
+      ocAudit: updatedAudit,
+      apiKeys: [],
+    };
+
+    persist(purged);
+
+    try {
+      localStorage.removeItem("groww_session");
+      localStorage.removeItem("groww_holdings");
+      localStorage.removeItem("groww_token");
+      sessionStorage.clear();
+    } catch {}
+  };
+
+  // Section 1: Webpage API Key
+  const setWebpageApiKey = (key: string) => {
+    const now = new Date().toISOString().split("T")[0];
+    persist({
+      ...settings,
+      apiKey: key.trim(),
+      apiKeyCreated: now,
+      apiKeyLastUsed: now,
+    });
+  };
+
+  const deleteWebpageApiKey = () => {
+    persist({
+      ...settings,
+      apiKey: "",
+      apiKeyCreated: "",
+      apiKeyLastUsed: "",
+    });
+  };
+
+  // Section 2: F&O Trading Engine Key
+  const setFnoEngineApiKey = (key: string) => {
+    const now = new Date().toISOString().split("T")[0];
+    persist({
+      ...settings,
+      fnoEngineApiKey: key.trim(),
+      fnoEngineApiKeyCreated: now,
+    });
+  };
+
+  const deleteFnoEngineApiKey = () => {
+    persist({
+      ...settings,
+      fnoEngineApiKey: "",
+      fnoEngineApiKeyCreated: "",
+    });
+  };
+
+  // Section 3: Groww Trading API
+  const setGrowwCredentials = (apiKey: string, secret: string) => {
+    persist({
+      ...settings,
+      growwApiKey: apiKey.trim(),
+      growwApiSecret: secret.trim(),
+      growwSession: "Investiq",
+    });
+  };
+
+  const deleteGrowwCredentials = () => {
+    persist({
+      ...settings,
+      growwApiKey: "",
+      growwApiSecret: "",
+      growwSession: "",
+    });
+    try {
+      localStorage.removeItem("groww_session");
+      localStorage.removeItem("groww_holdings");
+      localStorage.removeItem("groww_token");
+    } catch {}
+  };
+
+  // Section 4: Option Chain API Key
+  const setOcApiKey = (key: string, expires = "Never") => {
+    const now = new Date().toISOString().split("T")[0];
+    persist({
+      ...settings,
+      ocApiKey: key.trim(),
+      ocApiKeyStatus: "active",
+      ocApiKeyCreated: now,
+      ocApiKeyLastUsed: now,
+      ocApiKeyExpires: expires,
+    });
+  };
+
+  const deleteOcApiKey = () => {
+    persist({
+      ...settings,
+      ocApiKey: "",
+      ocApiKeyStatus: "",
+      ocApiKeyCreated: "",
+      ocApiKeyLastUsed: "",
+      ocApiKeyExpires: "",
+      ocUsers: [],
+    });
+  };
+
+  const setOcUserLevel = (id: string, level: OcAccessLevel) => {
+    const updated = (settings.ocUsers || []).map((u) =>
+      u.id === id ? { ...u, level } : u
+    );
+    persist({ ...settings, ocUsers: updated });
+  };
+
+  const setOcUserEnabled = (id: string, enabled: boolean) => {
+    const updated = (settings.ocUsers || []).map((u) =>
+      u.id === id ? { ...u, enabled } : u
+    );
+    persist({ ...settings, ocUsers: updated });
+  };
+
+  const removeOcUser = (id: string) => {
+    const updated = (settings.ocUsers || []).filter((u) => u.id !== id);
+    persist({ ...settings, ocUsers: updated });
+  };
+
+  const addOcUser = (user: Omit<OcUser, "id" | "lastActivity">) => {
+    const newUser: OcUser = {
+      ...user,
+      id: `u-${Date.now().toString().slice(-4)}`,
+      lastActivity: new Date().toISOString().slice(0, 16).replace("T", " "),
+    };
+    persist({ ...settings, ocUsers: [...(settings.ocUsers || []), newUser] });
   };
 
   return (
@@ -188,68 +481,23 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         },
         settings,
         updateSettings: (patch) => persist({ ...settings, ...patch }),
-        regenerateApiKey: () => {
-          const ts = Date.now().toString(36);
-          const hash = Math.random().toString(36).slice(2, 14);
-          persist({
-            ...settings,
-            apiKey: `invest_iq_${ts}_${hash}`,
-            apiKeyCreated: new Date().toISOString().slice(0, 10),
-            apiKeyLastUsed: new Date().toISOString().slice(0, 10),
-          });
-        },
-        regenerateOcApiKey: () => {
-          const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-          let key = "";
-          const bytes = new Uint8Array(32);
-          crypto.getRandomValues(bytes);
-          for (const b of bytes) key += alphabet[b % alphabet.length];
-          const now = stamp();
-          persist({
-            ...settings,
-            ocApiKey: key,
-            ocApiKeyStatus: "active",
-            ocApiKeyCreated: now,
-            ocApiKeyLastUsed: now,
-            ocApiKeyExpires: new Date(Date.now() + 90 * 86400_000).toISOString().slice(0, 10),
-            ocAudit: [{ at: now, event: "New Option Chain API key generated — previous key invalidated" }, ...settings.ocAudit].slice(0, 30),
-          });
-          return key;
-        },
-        revokeOcApiKey: () => {
-          const now = stamp();
-          persist({
-            ...settings,
-            ocApiKeyStatus: "revoked",
-            ocUsers: settings.ocUsers.map((u) => ({ ...u, enabled: false })),
-            ocAudit: [{ at: now, event: "Option Chain API key revoked — all user access disabled" }, ...settings.ocAudit].slice(0, 30),
-          });
-        },
-        setOcUserEnabled: (id, enabled) => {
-          const u = settings.ocUsers.find((x) => x.id === id);
-          persist({
-            ...settings,
-            ocUsers: settings.ocUsers.map((x) => (x.id === id ? { ...x, enabled } : x)),
-            ocAudit: [{ at: stamp(), event: `Access ${enabled ? "enabled" : "disabled"} for ${u?.name ?? id}` }, ...settings.ocAudit].slice(0, 30),
-          });
-        },
-        setOcUserLevel: (id, level) => {
-          const u = settings.ocUsers.find((x) => x.id === id);
-          persist({
-            ...settings,
-            ocUsers: settings.ocUsers.map((x) => (x.id === id ? { ...x, level } : x)),
-            ocAudit: [{ at: stamp(), event: `Access level for ${u?.name ?? id} set to ${level}` }, ...settings.ocAudit].slice(0, 30),
-          });
-        },
-        removeOcUser: (id) => {
-          const u = settings.ocUsers.find((x) => x.id === id);
-          persist({
-            ...settings,
-            ocUsers: settings.ocUsers.filter((x) => x.id !== id),
-            ocAudit: [{ at: stamp(), event: `Removed ${u?.name ?? id} from Option Chain access` }, ...settings.ocAudit].slice(0, 30),
-          });
-        },
-
+        deleteAllApiKeys,
+        setWebpageApiKey,
+        deleteWebpageApiKey,
+        setFnoEngineApiKey,
+        deleteFnoEngineApiKey,
+        setGrowwCredentials,
+        deleteGrowwCredentials,
+        setOcApiKey,
+        deleteOcApiKey,
+        setOcUserLevel,
+        setOcUserEnabled,
+        removeOcUser,
+        addOcUser,
+        createApiKey,
+        revokeApiKey,
+        deleteApiKey,
+        rotateApiKey,
       }}
     >
       {children}

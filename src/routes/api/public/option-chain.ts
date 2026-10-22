@@ -50,7 +50,7 @@ export const Route = createFileRoute("/api/public/option-chain")({
           .map((k) => k.trim())
           .filter(Boolean);
         if (!allowed.length) {
-          return json({ ok: false, error: "OPTION_CHAIN_API_KEY is not configured" }, 500);
+          return json({ ok: false, error: "API key not configured" }, 200);
         }
         const key = presentedKey(request);
         if (!key || !allowed.includes(key)) {
