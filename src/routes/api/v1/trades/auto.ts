@@ -10,6 +10,7 @@ import {
   getIndianHighProfitTrades,
   getGlobalHighProfitTrades,
   getMarketTiming,
+  getActiveMarketByTiming,
   type HighProfitTradeSetup,
 } from "@/lib/trade-analysis";
 
@@ -22,7 +23,7 @@ export const Route = createFileRoute("/api/v1/trades/auto")({
        * GET /api/v1/trades/auto
        * Fully automated trade delivery endpoint for external paper trading webpages.
        * Requires zero manual dispatch: automatically analyzes charts, Greeks, and geopolitics
-       * and returns the best profit trade setup ready for execution.
+       * and returns the best profit trade setup strictly according to market timings.
        */
       GET: async ({ request }) => {
         const key = extractApiKey(request);
@@ -54,11 +55,38 @@ export const Route = createFileRoute("/api/v1/trades/auto")({
         const url = new URL(request.url);
         const autoExecute = url.searchParams.get("autoExecute") !== "false";
         const requestedSymbol = url.searchParams.get("symbol");
+        const requestedMarketParam = url.searchParams.get("market")?.toUpperCase();
 
-        // 1. Determine Market & Active Trades
-        const market = isGlobal ? "GLOBAL_US" : "NSE_FNO";
+        // 1. Determine Market according to real-time Market Timings:
+        // Indian Market: 09:15 AM - 03:30 PM IST
+        // US Market: 07:00 PM - 01:30 AM IST (Pre-market 04:00 PM - 07:00 PM IST)
+        const timingResolution = getActiveMarketByTiming();
+
+        let market: "NSE_FNO" | "GLOBAL_US";
+        if (
+          requestedMarketParam === "NSE" ||
+          requestedMarketParam === "NSE_FNO" ||
+          requestedMarketParam === "INDIA"
+        ) {
+          market = "NSE_FNO";
+        } else if (
+          requestedMarketParam === "GLOBAL" ||
+          requestedMarketParam === "GLOBAL_US" ||
+          requestedMarketParam === "US" ||
+          requestedMarketParam === "USA"
+        ) {
+          market = "GLOBAL_US";
+        } else if (isGlobal && !isNse) {
+          market = "GLOBAL_US";
+        } else if (isNse && !isGlobal && requestedMarketParam) {
+          market = "NSE_FNO";
+        } else {
+          // Dynamic market selection according to current IST trading session:
+          market = timingResolution.activeMarket;
+        }
+
         const timing = getMarketTiming(market);
-        const allTrades = isGlobal ? getGlobalHighProfitTrades() : getIndianHighProfitTrades();
+        const allTrades = market === "GLOBAL_US" ? getGlobalHighProfitTrades() : getIndianHighProfitTrades();
 
         // Filter by requested symbol if provided, otherwise pick the #1 highest conviction trade
         const primaryTrade: HighProfitTradeSetup =
@@ -164,9 +192,10 @@ setInterval(async () => {
           return jsonResponse({ ok: false, error: "Invalid API Key." }, 403);
         }
 
-        const market = isGlobal ? "GLOBAL_US" : "NSE_FNO";
+        const timingResolution = getActiveMarketByTiming();
+        const market = isGlobal && !isNse ? "GLOBAL_US" : timingResolution.activeMarket;
         const timing = getMarketTiming(market);
-        const allTrades = isGlobal ? getGlobalHighProfitTrades() : getIndianHighProfitTrades();
+        const allTrades = market === "GLOBAL_US" ? getGlobalHighProfitTrades() : getIndianHighProfitTrades();
         const primaryTrade = allTrades[0];
 
         const autoOrderId = `AUTO_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;

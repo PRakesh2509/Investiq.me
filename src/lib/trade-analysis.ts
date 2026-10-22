@@ -14,6 +14,10 @@ export interface MarketTimingInfo {
   regularHoursIST: string;
   regularHoursLocal: string;
   isSessionActive: boolean;
+  isRegularMarketOpen: boolean;
+  isPreMarketOpen: boolean;
+  isMarketClosed: boolean;
+  currentISTTime: string;
   statusText: string;
   executionWindow: string;
   nextSessionStartIST: string;
@@ -91,6 +95,9 @@ export interface HighProfitTradeSetup {
 /**
  * Returns market timing status for Indian & US markets based on current IST time
  */
+/**
+ * Returns market timing status for Indian & US markets based on current IST time
+ */
 export function getMarketTiming(market: "NSE_FNO" | "GLOBAL_US"): MarketTimingInfo {
   const now = new Date();
   const utcHours = now.getUTCHours();
@@ -99,6 +106,12 @@ export function getMarketTiming(market: "NSE_FNO" | "GLOBAL_US"): MarketTimingIn
   const normalizedIST = (istMinutes + 1440) % 1440;
   const day = now.getUTCDay();
   const isWeekday = day >= 1 && day <= 5;
+
+  const istH = Math.floor(normalizedIST / 60);
+  const istM = normalizedIST % 60;
+  const ampm = istH >= 12 ? "PM" : "AM";
+  const displayH = istH % 12 || 12;
+  const currentISTTime = `${displayH < 10 ? "0" : ""}${displayH}:${istM < 10 ? "0" : ""}${istM} ${ampm} IST`;
 
   if (market === "NSE_FNO") {
     // 09:15 AM IST = 555 mins, 03:30 PM IST = 930 mins
@@ -109,6 +122,10 @@ export function getMarketTiming(market: "NSE_FNO" | "GLOBAL_US"): MarketTimingIn
       regularHoursIST: "09:15 AM - 03:30 PM IST",
       regularHoursLocal: "09:15 AM - 03:30 PM IST",
       isSessionActive: isOpen,
+      isRegularMarketOpen: isOpen,
+      isPreMarketOpen: isWeekday && normalizedIST >= 540 && normalizedIST < 555, // 09:00 - 09:15 AM IST
+      isMarketClosed: !isOpen,
+      currentISTTime,
       statusText: isOpen ? "LIVE TRADING SESSION (09:15 - 15:30 IST)" : "MARKET CLOSED (NEXT SESSION: 09:15 AM IST)",
       executionWindow: isOpen
         ? "Active Intraday Execution Window"
@@ -117,7 +134,7 @@ export function getMarketTiming(market: "NSE_FNO" | "GLOBAL_US"): MarketTimingIn
     };
   } else {
     // US Session: 09:30 AM - 04:00 PM EST = 07:00 PM - 01:30 AM IST (1140 mins to 1530 mins / 90 mins)
-    // Pre-market is active from 04:00 PM to 07:00 PM IST
+    // Pre-market is active from 04:00 PM to 07:00 PM IST (960 to 1140 mins)
     const isPreMarket = isWeekday && normalizedIST >= 960 && normalizedIST < 1140; // 04:00 PM - 07:00 PM IST
     const isRegularOpen = isWeekday && (normalizedIST >= 1140 || normalizedIST < 90); // 07:00 PM - 01:30 AM IST
     const isSessionActive = isRegularOpen || isPreMarket;
@@ -128,6 +145,10 @@ export function getMarketTiming(market: "NSE_FNO" | "GLOBAL_US"): MarketTimingIn
       regularHoursIST: "07:00 PM - 01:30 AM IST",
       regularHoursLocal: "09:30 AM - 04:00 PM EST",
       isSessionActive,
+      isRegularMarketOpen: isRegularOpen,
+      isPreMarketOpen: isPreMarket,
+      isMarketClosed: !isSessionActive,
+      currentISTTime,
       statusText: isRegularOpen
         ? "LIVE US REGULAR TRADING SESSION (07:00 PM - 01:30 AM IST)"
         : isPreMarket
@@ -135,10 +156,108 @@ export function getMarketTiming(market: "NSE_FNO" | "GLOBAL_US"): MarketTimingIn
         : "US MARKET CLOSED (OPENS 07:00 PM IST)",
       executionWindow: isRegularOpen
         ? "Immediate Regular Market Execution"
-        : "Pre-Market Placement & Opening Bell Fill (07:00 PM IST)",
+        : isPreMarket
+        ? "Pre-Market Placement & Opening Bell Fill (07:00 PM IST)"
+        : "Queued for US Session Open (07:00 PM IST)",
       nextSessionStartIST: "07:00 PM IST (Today)",
     };
   }
+}
+
+/**
+ * Determines which market is currently active according to real-time market timings
+ */
+export function getActiveMarketByTiming(): {
+  activeMarket: "GLOBAL_US" | "NSE_FNO";
+  activeKeyType: "GLOBAL" | "NSE_FNO";
+  isLiveSession: boolean;
+  isPreMarket: boolean;
+  marketReason: string;
+  indianTiming: MarketTimingInfo;
+  globalTiming: MarketTimingInfo;
+} {
+  const indian = getMarketTiming("NSE_FNO");
+  const global = getMarketTiming("GLOBAL_US");
+
+  // 1. If US market is in regular hours or pre-market, US market is actively trading
+  if (global.isRegularMarketOpen) {
+    return {
+      activeMarket: "GLOBAL_US",
+      activeKeyType: "GLOBAL",
+      isLiveSession: true,
+      isPreMarket: false,
+      marketReason: `US Regular Trading Session is LIVE NOW (${global.currentISTTime} · 07:00 PM - 01:30 AM IST)`,
+      indianTiming: indian,
+      globalTiming: global,
+    };
+  }
+
+  if (global.isPreMarketOpen) {
+    return {
+      activeMarket: "GLOBAL_US",
+      activeKeyType: "GLOBAL",
+      isLiveSession: true,
+      isPreMarket: true,
+      marketReason: `US Pre-Market Session is ACTIVE (${global.currentISTTime} · 04:00 PM - 07:00 PM IST)`,
+      indianTiming: indian,
+      globalTiming: global,
+    };
+  }
+
+  // 2. If Indian market is in regular hours
+  if (indian.isRegularMarketOpen) {
+    return {
+      activeMarket: "NSE_FNO",
+      activeKeyType: "NSE_FNO",
+      isLiveSession: true,
+      isPreMarket: false,
+      marketReason: `NSE Indian F&O Trading Session is LIVE NOW (${indian.currentISTTime} · 09:15 AM - 03:30 PM IST)`,
+      indianTiming: indian,
+      globalTiming: global,
+    };
+  }
+
+  if (indian.isPreMarketOpen) {
+    return {
+      activeMarket: "NSE_FNO",
+      activeKeyType: "NSE_FNO",
+      isLiveSession: true,
+      isPreMarket: true,
+      marketReason: `NSE Indian Pre-Market Call Auction is ACTIVE (${indian.currentISTTime} · 09:00 AM - 09:15 AM IST)`,
+      indianTiming: indian,
+      globalTiming: global,
+    };
+  }
+
+  // 3. Both are closed: determine which session opens next
+  const now = new Date();
+  const utcHours = now.getUTCHours();
+  const utcMins = now.getUTCMinutes();
+  const istMinutes = (utcHours * 60 + utcMins + 330 + 1440) % 1440;
+
+  // If between 01:30 AM IST (90 mins) and 09:15 AM IST (555 mins) -> next is NSE
+  if (istMinutes >= 90 && istMinutes < 555) {
+    return {
+      activeMarket: "NSE_FNO",
+      activeKeyType: "NSE_FNO",
+      isLiveSession: false,
+      isPreMarket: false,
+      marketReason: `Both markets closed (${indian.currentISTTime}). Next opening session is NSE Indian F&O at 09:15 AM IST.`,
+      indianTiming: indian,
+      globalTiming: global,
+    };
+  }
+
+  // Otherwise -> next is US Pre-Market at 04:00 PM IST
+  return {
+    activeMarket: "GLOBAL_US",
+    activeKeyType: "GLOBAL",
+    isLiveSession: false,
+    isPreMarket: false,
+    marketReason: `Both markets closed (${global.currentISTTime}). Next opening session is US Market at 04:00 PM / 07:00 PM IST.`,
+    indianTiming: indian,
+    globalTiming: global,
+  };
 }
 
 /**

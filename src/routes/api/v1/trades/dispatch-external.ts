@@ -12,6 +12,7 @@ import {
   getIndianHighProfitTrades,
   getGlobalHighProfitTrades,
   getMarketTiming,
+  getActiveMarketByTiming,
   type HighProfitTradeSetup,
 } from "@/lib/trade-analysis";
 
@@ -55,9 +56,10 @@ export async function executeExternalTradePush(options?: {
   const startTime = Date.now();
   const targetUrl = (options?.targetUrl || DEFAULT_LOVABLE_ENDPOINT).trim();
 
-  // 1. Determine active market
-  const indianTiming = getMarketTiming("NSE_FNO");
-  const globalTiming = getMarketTiming("GLOBAL_US");
+  // 1. Determine active market according to real-time market timings
+  const timingResolution = getActiveMarketByTiming();
+  const indianTiming = timingResolution.indianTiming;
+  const globalTiming = timingResolution.globalTiming;
 
   let market: "NSE_FNO" | "GLOBAL_US";
   if (options?.market === "NSE_FNO") {
@@ -65,12 +67,8 @@ export async function executeExternalTradePush(options?: {
   } else if (options?.market === "GLOBAL_US") {
     market = "GLOBAL_US";
   } else {
-    // AUTO: If US regular or pre-market is open, use GLOBAL_US; otherwise use NSE_FNO
-    if (globalTiming.isRegularMarketOpen || globalTiming.isPreMarketOpen) {
-      market = "GLOBAL_US";
-    } else {
-      market = "NSE_FNO";
-    }
+    // AUTO: strictly follow real-time market timing
+    market = timingResolution.activeMarket;
   }
 
   // 2. Select trade setup
@@ -80,7 +78,7 @@ export async function executeExternalTradePush(options?: {
       ? trades.find((t) => t.symbol.toUpperCase() === options.symbol?.toUpperCase())
       : null) || trades[0];
 
-  // 3. Resolve API key
+  // 3. Resolve API key according to active market
   let apiKey = options?.customApiKey?.trim();
   if (!apiKey) {
     apiKey = market === "GLOBAL_US" ? DEFAULT_GLOBAL_KEY : DEFAULT_NSE_FNO_KEY;
@@ -100,6 +98,9 @@ export async function executeExternalTradePush(options?: {
     status: "FILLED",
     market,
     marketSession: timing.statusText,
+    isLiveMarketSession: timing.isRegularMarketOpen,
+    activeMarketTimingReason: timingResolution.marketReason,
+    currentISTTime: timing.currentISTTime,
     symbol: selectedTrade.symbol,
     contract: selectedTrade.contract,
     instrument: selectedTrade.contract,

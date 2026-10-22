@@ -17,6 +17,7 @@ import {
   getIndianHighProfitTrades,
   getGlobalHighProfitTrades,
   getMarketTiming,
+  getActiveMarketByTiming,
 } from "@/lib/trade-analysis";
 import {
   Send,
@@ -844,6 +845,7 @@ function ApiKeysTab() {
   const [autoPushInterval, setAutoPushInterval] = useState(
     settings.autoPushIntervalSeconds || 30
   );
+  const [dispatchMarketMode, setDispatchMarketMode] = useState<"AUTO" | "NSE_FNO" | "GLOBAL_US" | "BOTH">("AUTO");
   const [countdown, setCountdown] = useState(30);
   const [isPushingNow, setIsPushingNow] = useState(false);
   const [recentDispatches, setRecentDispatches] = useState<any[]>([]);
@@ -872,7 +874,7 @@ function ApiKeysTab() {
       .catch(() => {});
   }, []);
 
-  // Periodic Auto-Push Countdown & Execution
+  // Periodic Auto-Push Countdown & Execution strictly according to market timings
   useEffect(() => {
     if (!autoPushEnabled) return;
     const timer = setInterval(() => {
@@ -885,47 +887,52 @@ function ApiKeysTab() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [autoPushEnabled, autoPushInterval, externalUrl]);
+  }, [autoPushEnabled, autoPushInterval, externalUrl, dispatchMarketMode]);
 
   const triggerExternalPush = async (isBackground = false) => {
     if (isPushingNow) return;
     setIsPushingNow(true);
     try {
       const activeUrl = externalUrl.trim() || DEFAULT_LOVABLE_ENDPOINT;
-      const res = await fetch("/api/v1/trades/dispatch-external", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetUrl: activeUrl,
-          market: "AUTO",
-        }),
-      });
-      const json = await res.json();
-      const resData = json.result || json;
-      setLastPushStatus(resData);
-      if (resData) {
-        setRecentDispatches((prev) => [
-          {
-            id: resData.logId || `disp_${Date.now()}`,
-            timestamp: new Date().toISOString(),
+      const marketsToPush: Array<"AUTO" | "NSE_FNO" | "GLOBAL_US"> =
+        dispatchMarketMode === "BOTH" ? ["NSE_FNO", "GLOBAL_US"] : [dispatchMarketMode];
+
+      for (const m of marketsToPush) {
+        const res = await fetch("/api/v1/trades/dispatch-external", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             targetUrl: activeUrl,
-            market: resData.market,
-            contract: resData.dispatchedContract,
-            keyUsedMasked: resData.keyUsed,
-            httpStatus: resData.httpStatus,
-            statusText: resData.statusText,
-            responseSnippet: resData.responseSnippet,
-            success: resData.ok,
-            notes: resData.notes,
-          },
-          ...prev.slice(0, 24),
-        ]);
-      }
-      if (!isBackground) {
-        if (json.ok) {
-          toast.success(`Dispatched ${resData?.dispatchedContract} to paper trading endpoint!`);
-        } else {
-          toast.info(`Sent trade to Lovable endpoint (${resData?.httpStatus || resData?.statusText})`);
+            market: m,
+          }),
+        });
+        const json = await res.json();
+        const resData = json.result || json;
+        setLastPushStatus(resData);
+        if (resData) {
+          setRecentDispatches((prev) => [
+            {
+              id: resData.logId || `disp_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+              timestamp: new Date().toISOString(),
+              targetUrl: activeUrl,
+              market: resData.market,
+              contract: resData.dispatchedContract,
+              keyUsedMasked: resData.keyUsed,
+              httpStatus: resData.httpStatus,
+              statusText: resData.statusText,
+              responseSnippet: resData.responseSnippet,
+              success: resData.ok,
+              notes: resData.notes,
+            },
+            ...prev.slice(0, 24),
+          ]);
+        }
+        if (!isBackground) {
+          if (json.ok) {
+            toast.success(`Dispatched ${resData?.dispatchedContract} (${resData?.market}) to paper trading endpoint!`);
+          } else {
+            toast.info(`Sent ${resData?.dispatchedContract} to endpoint (${resData?.httpStatus || resData?.statusText})`);
+          }
         }
       }
     } catch (e: any) {
@@ -957,6 +964,7 @@ function ApiKeysTab() {
   const globalTrades = getGlobalHighProfitTrades();
   const indianTiming = getMarketTiming("NSE_FNO");
   const globalTiming = getMarketTiming("GLOBAL_US");
+  const activeTiming = getActiveMarketByTiming();
 
   const handleCopy = (text: string, id: string) => {
     if (!text) return;
@@ -1631,11 +1639,56 @@ function ApiKeysTab() {
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-muted-foreground border-t border-border/50 pt-2.5">
-              <div className="flex items-center gap-3">
-                <span>Active Routing: <strong className="text-foreground">{globalTiming.isRegularMarketOpen ? "US Session Live" : "Indian NSE F&O"}</strong></span>
-                <span>Active Key: <code className="text-cyan-300 font-mono">{globalTiming.isRegularMarketOpen ? "2nd KEY (GLOBAL)" : "1st KEY (NSE F&O)"}</code></span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold uppercase tracking-wider text-muted-foreground">Market Timing Mode:</span>
+                <select
+                  value={dispatchMarketMode}
+                  onChange={(e) => setDispatchMarketMode(e.target.value as any)}
+                  className="rounded-md border border-cyan-500/40 bg-surface px-2.5 py-1 text-xs text-cyan-300 font-semibold"
+                >
+                  <option value="AUTO">AUTO: Follow Live Market Timings (US Now · NSE Tomorrow 09:15 AM)</option>
+                  <option value="NSE_FNO">NSE F&amp;O Only (Indian Hours: 09:15 - 15:30 IST)</option>
+                  <option value="GLOBAL_US">US &amp; Global Only (US Hours: 07:00 PM - 01:30 AM IST)</option>
+                  <option value="BOTH">Push Both (Indian &amp; US Simultaneously)</option>
+                </select>
               </div>
-              <span className="text-cyan-400 font-medium">Automatic countdown active</span>
+              <span className="text-cyan-400 font-medium">Auto-dispatch timer active</span>
+            </div>
+
+            {/* Live Market Session Timing Diagnostic Card */}
+            <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-3 space-y-1.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-cyan-200 flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </span>
+                  {activeTiming.marketReason}
+                </span>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  Current Time: <strong className="text-foreground">{activeTiming.globalTiming.currentISTTime}</strong>
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-[11px] text-muted-foreground">
+                <span>
+                  Active Trade:{" "}
+                  <strong className="text-foreground">
+                    {activeTiming.activeMarket === "GLOBAL_US" ? "SPX 5870 CALL (Target 2: $62, +117.5%)" : "NIFTY50 22850 PE (Target 2: ₹245, +77.5%)"}
+                  </strong>
+                </span>
+                <span>
+                  Key Used:{" "}
+                  <code className="text-cyan-300 font-mono">
+                    {activeTiming.activeMarket === "GLOBAL_US" ? "2nd KEY (GLOBAL)" : "1st KEY (NSE F&O)"}
+                  </code>
+                </span>
+                <span>
+                  Session Status:{" "}
+                  <strong className={activeTiming.isLiveSession ? "text-emerald-400" : "text-amber-400"}>
+                    {activeTiming.isLiveSession ? "Live Trading Session" : "Queued for Open"}
+                  </strong>
+                </span>
+              </div>
             </div>
           </div>
 
