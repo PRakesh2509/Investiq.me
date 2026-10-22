@@ -48,6 +48,7 @@ import { Route as ApiPublicHooksTelegramBotRouteImport } from './routes/api/publ
 import { Route as ApiV1AuthVerifyRouteImport } from './routes/api/v1/auth/verify'
 import { Route as ApiV1FnoSignalsRouteImport } from './routes/api/v1/fno/signals'
 import { Route as ApiV1GlobalSignalsRouteImport } from './routes/api/v1/global/signals'
+import { Route as ApiV1TradesAutoRouteImport } from './routes/api/v1/trades/auto'
 import { Route as ApiV1TradesOrderRouteImport } from './routes/api/v1/trades/order'
 
 const IndexRoute = IndexRouteImport.update({
@@ -250,6 +251,11 @@ const ApiV1GlobalSignalsRoute = ApiV1GlobalSignalsRouteImport.update({
   path: '/api/v1/global/signals',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1TradesAutoRoute = ApiV1TradesAutoRouteImport.update({
+  id: '/api/v1/trades/auto',
+  path: '/api/v1/trades/auto',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1TradesOrderRoute = ApiV1TradesOrderRouteImport.update({
   id: '/api/v1/trades/order',
   path: '/api/v1/trades/order',
@@ -296,6 +302,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/auth/verify': typeof ApiV1AuthVerifyRoute
   '/api/v1/fno/signals': typeof ApiV1FnoSignalsRoute
   '/api/v1/global/signals': typeof ApiV1GlobalSignalsRoute
+  '/api/v1/trades/auto': typeof ApiV1TradesAutoRoute
   '/api/v1/trades/order': typeof ApiV1TradesOrderRoute
 }
 export interface FileRoutesByTo {
@@ -337,6 +344,7 @@ export interface FileRoutesByTo {
   '/api/v1/auth/verify': typeof ApiV1AuthVerifyRoute
   '/api/v1/fno/signals': typeof ApiV1FnoSignalsRoute
   '/api/v1/global/signals': typeof ApiV1GlobalSignalsRoute
+  '/api/v1/trades/auto': typeof ApiV1TradesAutoRoute
   '/api/v1/trades/order': typeof ApiV1TradesOrderRoute
 }
 export interface FileRoutesById {
@@ -380,6 +388,7 @@ export interface FileRoutesById {
   '/api/v1/auth/verify': typeof ApiV1AuthVerifyRoute
   '/api/v1/fno/signals': typeof ApiV1FnoSignalsRoute
   '/api/v1/global/signals': typeof ApiV1GlobalSignalsRoute
+  '/api/v1/trades/auto': typeof ApiV1TradesAutoRoute
   '/api/v1/trades/order': typeof ApiV1TradesOrderRoute
 }
 export interface FileRouteTypes {
@@ -424,6 +433,7 @@ export interface FileRouteTypes {
     | '/api/v1/auth/verify'
     | '/api/v1/fno/signals'
     | '/api/v1/global/signals'
+    | '/api/v1/trades/auto'
     | '/api/v1/trades/order'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -465,6 +475,7 @@ export interface FileRouteTypes {
     | '/api/v1/auth/verify'
     | '/api/v1/fno/signals'
     | '/api/v1/global/signals'
+    | '/api/v1/trades/auto'
     | '/api/v1/trades/order'
   id:
     | '__root__'
@@ -507,6 +518,7 @@ export interface FileRouteTypes {
     | '/api/v1/auth/verify'
     | '/api/v1/fno/signals'
     | '/api/v1/global/signals'
+    | '/api/v1/trades/auto'
     | '/api/v1/trades/order'
   fileRoutesById: FileRoutesById
 }
@@ -539,6 +551,7 @@ export interface RootRouteChildren {
   ApiV1AuthVerifyRoute: typeof ApiV1AuthVerifyRoute
   ApiV1FnoSignalsRoute: typeof ApiV1FnoSignalsRoute
   ApiV1GlobalSignalsRoute: typeof ApiV1GlobalSignalsRoute
+  ApiV1TradesAutoRoute: typeof ApiV1TradesAutoRoute
   ApiV1TradesOrderRoute: typeof ApiV1TradesOrderRoute
 }
 
@@ -817,6 +830,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1GlobalSignalsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/trades/auto': {
+      id: '/api/v1/trades/auto'
+      path: '/api/v1/trades/auto'
+      fullPath: '/api/v1/trades/auto'
+      preLoaderRoute: typeof ApiV1TradesAutoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/trades/order': {
       id: '/api/v1/trades/order'
       path: '/api/v1/trades/order'
@@ -887,6 +907,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1AuthVerifyRoute: ApiV1AuthVerifyRoute,
   ApiV1FnoSignalsRoute: ApiV1FnoSignalsRoute,
   ApiV1GlobalSignalsRoute: ApiV1GlobalSignalsRoute,
+  ApiV1TradesAutoRoute: ApiV1TradesAutoRoute,
   ApiV1TradesOrderRoute: ApiV1TradesOrderRoute,
 }
 export const routeTree = rootRouteImport

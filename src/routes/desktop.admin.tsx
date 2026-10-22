@@ -848,7 +848,9 @@ function ApiKeysTab() {
     | "DISPATCH_BANKNIFTY"
     | "DISPATCH_SPX"
     | "DISPATCH_NAS100"
-    | "FETCH_ALL_TRADES";
+    | "FETCH_ALL_TRADES"
+    | "AUTO_TRADE_NSE"
+    | "AUTO_TRADE_GLOBAL";
 
   const runLiveTest = async (type: LiveActionType) => {
     setTestingEndpoint(type);
@@ -1010,6 +1012,34 @@ function ApiKeysTab() {
         });
         if (res.ok) toast.success("Fetched all active trades & market timing statuses!");
         else toast.error("Fetch trades failed");
+      } else if (type === "AUTO_TRADE_NSE") {
+        const res = await fetch("/api/v1/trades/auto", {
+          headers: { "x-api-key": activeNseKey },
+        });
+        const data = await res.json();
+        setTestResult({
+          status: res.status,
+          ok: res.ok,
+          endpoint: "GET /api/v1/trades/auto (Automatic Best Trade Delivery - 1st Key)",
+          keyUsed: maskKeyStr(activeNseKey),
+          data,
+        });
+        if (res.ok) toast.success("Automatic Best Trade generated & delivered (No manual click required)!");
+        else toast.error("Auto trade fetch failed");
+      } else if (type === "AUTO_TRADE_GLOBAL") {
+        const res = await fetch("/api/v1/trades/auto", {
+          headers: { "x-api-key": activeGlobalKey },
+        });
+        const data = await res.json();
+        setTestResult({
+          status: res.status,
+          ok: res.ok,
+          endpoint: "GET /api/v1/trades/auto (Automatic Best Trade Delivery - 2nd Key • US Live)",
+          keyUsed: maskKeyStr(activeGlobalKey),
+          data,
+        });
+        if (res.ok) toast.success("Automatic US Best Trade generated & delivered (No manual click required)!");
+        else toast.error("Auto trade fetch failed");
       }
     } catch (e: any) {
       setTestResult({ status: 500, ok: false, error: e?.message || "Network Error" });
@@ -1304,21 +1334,55 @@ function ApiKeysTab() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => runLiveTest("AUTO_TRADE_NSE")}
+              disabled={testingEndpoint === "AUTO_TRADE_NSE"}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3.5 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 transition shadow-sm"
+              title="Deliver best Indian trade automatically without manual click"
+            >
+              <Zap className="h-3.5 w-3.5 text-emerald-400" /> Auto-Trade NSE (Hands-Free)
+            </button>
+            <button
+              type="button"
+              onClick={() => runLiveTest("AUTO_TRADE_GLOBAL")}
+              disabled={testingEndpoint === "AUTO_TRADE_GLOBAL"}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/15 px-3.5 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/25 transition shadow-sm"
+              title="Deliver best US trade automatically without manual click"
+            >
+              <Zap className="h-3.5 w-3.5 text-cyan-400" /> Auto-Trade US (Hands-Free)
+            </button>
             <button
               type="button"
               onClick={() => runLiveTest("FETCH_ALL_TRADES")}
               disabled={testingEndpoint === "FETCH_ALL_TRADES"}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background/80 px-3.5 py-2 text-xs font-semibold hover:bg-accent transition"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background/80 px-3 py-2 text-xs font-medium hover:bg-accent transition"
             >
               {testingEndpoint === "FETCH_ALL_TRADES" ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <RefreshCw className="h-3.5 w-3.5" />
               )}
-              Fetch Active Trade Setups (API)
+              Refresh All
             </button>
           </div>
+        </div>
+
+        {/* Automatic Hands-Free Notification Banner */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-300">
+          <div className="flex items-center gap-2.5">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <span>
+              <strong>100% Hands-Free Automatic Trading Enabled:</strong> No manual clicks needed! Your external paper trading webpage calls <code className="font-mono bg-background/80 px-1 py-0.5 rounded text-emerald-200">GET /api/v1/trades/auto</code> with your API key to automatically receive and fill the best profit trades.
+            </span>
+          </div>
+          <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-[11px] font-semibold text-emerald-300">
+            CORS: Allowed (*)
+          </span>
         </div>
 
         {/* 1. Indian NSE F&O High-Profit Trades */}
