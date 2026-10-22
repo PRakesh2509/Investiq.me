@@ -37,35 +37,9 @@ export default function SensibullGreeksChart({
 }: SensibullGreeksChartProps) {
   const [metric, setMetric] = useState<GreekMetric>("DELTA");
 
-  if (!chartData || !chartData.points.length) {
-    return (
-      <div className="rounded-xl border border-border bg-background/50 p-6 text-center font-mono text-xs text-muted-foreground">
-        <Activity className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
-        Streaming Sensibull Greek View Chart Data...
-      </div>
-    );
-  }
+  const summary = chartData?.summary;
 
-  const {
-    symbol,
-    underlyingPrice,
-    expiryDate,
-    atmStrike,
-    daysToExpiry,
-    provider,
-    dataSourceStatus,
-    timestamp,
-    points,
-    summary,
-  } = chartData;
-
-  const formattedTime = new Date(timestamp).toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-
-  // Metric-specific configurations
+  // Metric-specific configurations (unconditionally declared at top level)
   const metricConfig = useMemo(() => {
     switch (metric) {
       case "DELTA":
@@ -84,7 +58,7 @@ export default function SensibullGreeksChart({
           title: "Gamma Risk Curve (Γ)",
           unit: "Γ",
           description: "Rate of change of Delta per ₹1 spot shift. Peaks sharply at ATM strikes; highest explosive acceleration risk.",
-          yDomain: [0, +(summary.peakGamma * 1.25).toFixed(4)],
+          yDomain: [0, +(summary ? summary.peakGamma * 1.25 : 0.05).toFixed(4)],
           callKey: "callGamma",
           putKey: "putGamma",
           callColor: "#8b5cf6",
@@ -95,7 +69,7 @@ export default function SensibullGreeksChart({
           title: "Daily Theta Decay (Θ)",
           unit: "₹/day",
           description: "Holding cost per share if underlying spot is unchanged. Always negative for net long options.",
-          yDomain: [-summary.maxThetaBurn * 1.2, 0],
+          yDomain: [-(summary ? summary.maxThetaBurn * 1.2 : 50), 0],
           callKey: "callTheta",
           putKey: "putTheta",
           callColor: "#f43f5e",
@@ -125,6 +99,33 @@ export default function SensibullGreeksChart({
         };
     }
   }, [metric, summary]);
+
+  if (!chartData || !chartData.points.length) {
+    return (
+      <div className="rounded-xl border border-border bg-background/50 p-6 text-center font-mono text-xs text-muted-foreground">
+        <Activity className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
+        Streaming Sensibull Greek View Chart Data...
+      </div>
+    );
+  }
+
+  const {
+    symbol,
+    underlyingPrice,
+    expiryDate,
+    atmStrike,
+    daysToExpiry,
+    provider,
+    dataSourceStatus,
+    timestamp,
+    points,
+  } = chartData;
+
+  const formattedTime = new Date(timestamp).toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 
   return (
     <div className="space-y-3 font-mono text-xs">
