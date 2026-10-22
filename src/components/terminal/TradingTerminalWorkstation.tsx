@@ -319,7 +319,7 @@ export default function TradingTerminalWorkstation() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-display text-xl font-bold tracking-tight">Trading Terminal</h1>
+              <h1 className="font-display text-xl font-bold tracking-tight">F&amp;O LIVE</h1>
               <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
                 Institutional Workstation
               </span>

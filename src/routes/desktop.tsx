@@ -15,7 +15,7 @@ export const Route = createFileRoute("/desktop")({
 const nav = [
   { to: "/desktop", label: "Home", icon: LayoutDashboard, exact: true },
   { to: "/desktop/charts", label: "Stocks", icon: LineChart },
-  { to: "/desktop/terminal", label: "Terminal", icon: CandlestickChart },
+  { to: "/desktop/terminal", label: "F&O LIVE", icon: CandlestickChart },
   
   { to: "/desktop/funds", label: "Mutual Funds", icon: Wallet },
   { to: "/desktop/ipos", label: "IPO Tracker", icon: CalendarClock },

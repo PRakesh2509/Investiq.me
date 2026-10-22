@@ -4,13 +4,13 @@ import TradingTerminalWorkstation from "@/components/terminal/TradingTerminalWor
 export const Route = createFileRoute("/desktop/terminal")({
   head: () => ({
     meta: [
-      { title: "InvestIQ · Trading Terminal — Institutional F&O & Global Workstation" },
+      { title: "InvestIQ · F&O LIVE — Institutional F&O & Global Workstation" },
       {
         name: "description",
         content:
-          "Institutional trading terminal with live TradingView charts for Indian F&O and Global indices, AI confluence signals, live option chain and risk management.",
+          "Institutional F&O workstation with live TradingView charts for Indian F&O and Global indices, AI confluence signals, live option chain and risk management.",
       },
-      { property: "og:title", content: "InvestIQ · Trading Terminal" },
+      { property: "og:title", content: "InvestIQ · F&O LIVE" },
       {
         property: "og:description",
         content: "Institutional trading terminal with live TradingView charts, AI confluence signals, option chain and calculator.",
