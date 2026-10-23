@@ -240,13 +240,23 @@ export class TradeCandidateService {
     }
 
     // 4. Generate Candidate Setups based on bias
+    const isGlobal =
+      ["S&P 500", "NASDAQ 100", "DOW JONES", "SP500", "NASDAQ100", "DOWJONES"].includes(
+        (instrument || "").toUpperCase().replace(/\s+/g, "")
+      ) ||
+      (instrument || "").toUpperCase().includes("S&P") ||
+      (instrument || "").toUpperCase().includes("NASDAQ") ||
+      (instrument || "").toUpperCase().includes("DOW");
+    const curSymbol = isGlobal ? "$" : "₹";
+
     const isBullish = combinedAnalysis.marketBias.includes("BULLISH");
     const atmStrike = Math.round(underlyingPrice / step) * step;
     const selectedStrike = isBullish ? atmStrike : atmStrike;
 
     const row = rows.find((r) => r.strike === selectedStrike) ?? rows[Math.floor(rows.length / 2)];
     const leg = isBullish ? row?.call : row?.put;
-    const ltp = leg?.ltp ?? (isBullish ? 120.0 : 115.0);
+    const defaultLtp = isGlobal ? +(underlyingPrice * 0.006).toFixed(2) : (isBullish ? 120.0 : 115.0);
+    const ltp = leg?.ltp ?? defaultLtp;
     const bid = leg?.bid ?? ltp * 0.99;
     const ask = leg?.ask ?? ltp * 1.01;
     const mid = (bid + ask) / 2;
@@ -350,8 +360,8 @@ export class TradeCandidateService {
 
     const reasonsAgainst = [
       ...combinedAnalysis.divergenceWarnings,
-      `Estimated round-trip transaction costs: ₹${riskReport.transactionCosts.totalEstimatedCost}`,
-      `Time decay burn exposure: ₹${greeksReport.thetaAnalysis.atmDailyDecayPerShare} per share per day`,
+      `Estimated round-trip transaction costs: ${curSymbol}${riskReport.transactionCosts.totalEstimatedCost}`,
+      `Time decay burn exposure: ${curSymbol}${greeksReport.thetaAnalysis.atmDailyDecayPerShare} per share per day`,
     ];
 
     // Check if candidate already exists in registry
@@ -367,7 +377,7 @@ export class TradeCandidateService {
         callPut: isBullish ? "CE" : "PE",
         strike: selectedStrike,
         legs,
-        entryTrigger: `${cleanSym} sustains ${isBullish ? "above" : "below"} ₹${underlyingPrice.toFixed(1)} on 5M closing`,
+        entryTrigger: `${cleanSym} sustains ${isBullish ? "above" : "below"} ${curSymbol}${underlyingPrice.toFixed(1)} on 5M closing`,
         entryZone: {
           min: +(netEntryPremium * 0.98).toFixed(2),
           max: +(netEntryPremium * 1.02).toFixed(2),
@@ -375,7 +385,7 @@ export class TradeCandidateService {
         currentReferencePrice: netEntryPremium,
         timestamp: new Date().toISOString(),
         stopLoss: stopLossPremium,
-        invalidationCondition: `${cleanSym} spot crosses ${isBullish ? "below" : "above"} ₹${(isBullish ? underlyingPrice * 0.994 : underlyingPrice * 1.006).toFixed(1)} or option hits ₹${stopLossPremium}`,
+        invalidationCondition: `${cleanSym} spot crosses ${isBullish ? "below" : "above"} ${curSymbol}${(isBullish ? underlyingPrice * 0.994 : underlyingPrice * 1.006).toFixed(1)} or option hits ${curSymbol}${stopLossPremium}`,
         targetLevels: {
           t1: +(netEntryPremium * 1.30).toFixed(2),
           t2: +(netEntryPremium * 1.60).toFixed(2),
@@ -433,8 +443,8 @@ export class TradeCandidateService {
           ],
         },
         invalidationTriggers: [
-          `Index breaches stop level of ₹${(isBullish ? underlyingPrice * 0.994 : underlyingPrice * 1.006).toFixed(1)}`,
-          `Option premium falls below stop loss (₹${stopLossPremium})`,
+          `Index breaches stop level of ${curSymbol}${(isBullish ? underlyingPrice * 0.994 : underlyingPrice * 1.006).toFixed(1)}`,
+          `Option premium falls below stop loss (${curSymbol}${stopLossPremium})`,
           `PCR reverses sharply indicating aggressive counter-party writing`,
         ],
         lifecycleStatus: "CONFIRMED",
@@ -485,7 +495,7 @@ export class TradeCandidateService {
             status: "TARGET_REACHED",
             timestamp: new Date().toISOString(),
             priceAtChange: netEntryPremium,
-            note: `Profit Target T2 (₹${candidate.targetLevels.t2}) reached successfully.`,
+            note: `Profit Target T2 (${curSymbol}${candidate.targetLevels.t2}) reached successfully.`,
           });
           this.history.push({ ...candidate });
         } else if (netEntryPremium <= candidate.stopLoss) {
@@ -494,7 +504,7 @@ export class TradeCandidateService {
             status: "STOP_CONDITION_REACHED",
             timestamp: new Date().toISOString(),
             priceAtChange: netEntryPremium,
-            note: `Stop-loss condition reached at ₹${netEntryPremium}. Setup invalidated.`,
+            note: `Stop-loss condition reached at ${curSymbol}${netEntryPremium}. Setup invalidated.`,
           });
           this.history.push({ ...candidate });
         }

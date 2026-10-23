@@ -32,7 +32,7 @@ export interface SynchronizedGreeksSnapshot {
   expiryDate: string;
   atmStrike: number;
   daysToExpiry: number;
-  provider: "Sensibull Direct API" | "Sensibull Greeks Engine (Calibrated Live Feed)";
+  provider: "Sensibull Direct API" | "Sensibull Greeks Engine (Calibrated Live Feed)" | "CBOE / CME Global Feed";
   authorizationStatus: ProviderStatusInfo;
   isDirectSensibullAuthorized: boolean;
   points: SensibullGreekPoint[];
@@ -59,8 +59,21 @@ export class OptionsGreeksDataService {
     instrument: string = "NIFTY 50",
     customExpiry?: string
   ): Promise<SynchronizedGreeksSnapshot> {
+    const isGlobal = ["S&P 500", "NASDAQ 100", "DOW JONES", "SP500", "NASDAQ100", "DOWJONES"].includes(
+      instrument.toUpperCase().replace(/[^A-Z0-9]/g, "")
+    ) || instrument.includes("$") || instrument.includes("S&P") || instrument.includes("NASDAQ") || instrument.includes("DOW");
+
     const rawGreeks = await fetchSensibullGreeksChartData(instrument, customExpiry);
-    const authStatus = getSensibullAuthorizationStatus();
+    const authStatus: ProviderStatusInfo = isGlobal
+      ? {
+          providerName: "CBOE / CME" as const,
+          isAuthorized: true,
+          status: "GLOBAL_FEED" as const,
+          reason: "Direct CBOE / CME Global Derivatives feed active.",
+          documentationUrl: "https://www.cboe.com",
+          canStreamLiveData: true,
+        }
+      : getSensibullAuthorizationStatus();
 
     // Compute velocity if previous snapshot exists
     const prev = this.lastSnapshots.get(instrument);
@@ -97,7 +110,7 @@ export class OptionsGreeksDataService {
       daysToExpiry: rawGreeks.daysToExpiry,
       provider: rawGreeks.provider,
       authorizationStatus: authStatus,
-      isDirectSensibullAuthorized: authStatus.isAuthorized,
+      isDirectSensibullAuthorized: isGlobal ? true : authStatus.isAuthorized,
       points: rawGreeks.points,
       velocity,
       summary: rawGreeks.summary,

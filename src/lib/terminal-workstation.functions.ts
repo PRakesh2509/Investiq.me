@@ -7,6 +7,7 @@ export interface OptionStrikeRow {
   callType: "ITM" | "OTM" | "ATM";
   putLtp: number;
   putType: "ITM" | "OTM" | "ATM";
+  isAtm?: boolean;
 }
 
 export interface ConfluenceSignalItem {
@@ -162,6 +163,119 @@ export const WORKSTATION_INSTRUMENTS: Record<
   },
 };
 
+export const INSTRUMENT_PROFILES: Record<
+  string,
+  {
+    baseChange: number;
+    baseChangePct: number;
+    baseRsi: number;
+    bias: "CALL" | "PUT";
+    grade: string;
+    baseConfidence: number;
+    rationale: string;
+    winRate: number;
+    profitFactor: number;
+    signals: number;
+  }
+> = {
+  "NIFTY 50": {
+    baseChange: -38.4,
+    baseChangePct: -0.17,
+    baseRsi: 46.2,
+    bias: "PUT",
+    grade: "A CONFLUENCE",
+    baseConfidence: 84,
+    rationale: "EMA9<EMA21 crossdown · Multi-Pivot S1 retest · Moderate put writing absorption",
+    winRate: 78.4,
+    profitFactor: 2.15,
+    signals: 148,
+  },
+  "BANK NIFTY": {
+    baseChange: 185.6,
+    baseChangePct: 0.36,
+    baseRsi: 59.8,
+    bias: "CALL",
+    grade: "A+ CONFLUENCE",
+    baseConfidence: 91,
+    rationale: "Banking index CPR breakout · EMA9>EMA21 expansion · Institutional call volume",
+    winRate: 82.5,
+    profitFactor: 2.65,
+    signals: 164,
+  },
+  "FIN NIFTY": {
+    baseChange: 52.1,
+    baseChangePct: 0.22,
+    baseRsi: 54.1,
+    bias: "CALL",
+    grade: "A CONFLUENCE",
+    baseConfidence: 86,
+    rationale: "NBFC support floor holding · VWAP reclaim · Low volatility base breakout",
+    winRate: 79.2,
+    profitFactor: 2.30,
+    signals: 112,
+  },
+  "SENSEX": {
+    baseChange: -115.3,
+    baseChangePct: -0.15,
+    baseRsi: 48.0,
+    bias: "PUT",
+    grade: "B+ CONFLUENCE",
+    baseConfidence: 81,
+    rationale: "Heavyweight consolidation · S1 pivot friction · Call writers defending resistance",
+    winRate: 76.5,
+    profitFactor: 2.05,
+    signals: 135,
+  },
+  "MIDCAP NIFTY": {
+    baseChange: 84.2,
+    baseChangePct: 0.68,
+    baseRsi: 66.4,
+    bias: "CALL",
+    grade: "A+ CONFLUENCE",
+    baseConfidence: 93,
+    rationale: "High-beta midcap trend continuation · Supertrend bullish · Strong market breadth",
+    winRate: 84.1,
+    profitFactor: 2.90,
+    signals: 98,
+  },
+  "S&P 500": {
+    baseChange: 14.25,
+    baseChangePct: 0.24,
+    baseRsi: 57.2,
+    bias: "CALL",
+    grade: "A CONFLUENCE",
+    baseConfidence: 89,
+    rationale: "Broad market institutional accumulation · S&P holding above 50-day EMA support",
+    winRate: 81.0,
+    profitFactor: 2.45,
+    signals: 190,
+  },
+  "NASDAQ 100": {
+    baseChange: 165.8,
+    baseChangePct: 0.81,
+    baseRsi: 68.5,
+    bias: "CALL",
+    grade: "A+ CONFLUENCE",
+    baseConfidence: 95,
+    rationale: "Mega-cap tech momentum expansion · Semiconductor volume surge · CBOE call skew",
+    winRate: 86.2,
+    profitFactor: 3.10,
+    signals: 210,
+  },
+  "DOW JONES": {
+    baseChange: 51.3,
+    baseChangePct: 0.12,
+    baseRsi: 52.1,
+    bias: "CALL",
+    grade: "A CONFLUENCE",
+    baseConfidence: 85,
+    rationale: "Value & industrial cyclical consolidation · CBOE Put-Call Ratio at 0.92 balanced",
+    winRate: 77.8,
+    profitFactor: 2.20,
+    signals: 175,
+  },
+};
+
 function formatISTTime(date: Date): string {
   const d = date.getDate();
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -182,41 +296,46 @@ export function computeTerminalData(
   metaParam?: { open?: number; high?: number; low?: number; volume?: number }
 ): TerminalWorkstationData {
   const cfg = WORKSTATION_INSTRUMENTS[instrument] ?? WORKSTATION_INSTRUMENTS["NIFTY 50"];
+  const profile = INSTRUMENT_PROFILES[instrument] ?? INSTRUMENT_PROFILES["NIFTY 50"];
+
   const spot = spotParam ?? cfg.defaultSpot;
-  const change = changeParam ?? -2.05;
-  const changePct = changePctParam ?? -0.01;
-  const open = metaParam?.open ?? +(spot * 0.999).toFixed(2);
-  const high = metaParam?.high ?? +(spot * 1.003).toFixed(2);
-  const low = metaParam?.low ?? +(spot * 0.997).toFixed(2);
-  const volume = metaParam?.volume ?? 27123;
+  const change = changeParam !== undefined ? changeParam : profile.baseChange;
+  const changePct = changePctParam !== undefined ? changePctParam : profile.baseChangePct;
+  const open = metaParam?.open ?? +(spot - change).toFixed(2);
+  const high = metaParam?.high ?? +(Math.max(spot, open) + spot * 0.003).toFixed(2);
+  const low = metaParam?.low ?? +(Math.min(spot, open) - spot * 0.003).toFixed(2);
+  const volume = metaParam?.volume ?? Math.floor(18000 + Math.abs(changePct) * 14000);
 
   const now = new Date();
   const istMinutes = now.getUTCHours() * 60 + now.getUTCMinutes() + 330; // UTC to IST
   const day = now.getUTCDay();
   const isWeekday = day >= 1 && day <= 5;
   // NSE Market hours 9:15 to 15:30 (555 to 930 mins)
-  const isMarketOpen = cfg.isGlobal ? true : isWeekday && istMinutes >= 555 && istMinutes <= 930;
-  const marketSessionText = isMarketOpen ? "SESSION LIVE · CLOSES 3:30 PM IST" : "MARKET CLOSED · NEXT SESSION 9:15 AM IST";
+  // For global instruments, session is active during US regular + Globex session
+  const isMarketOpen = cfg.isGlobal ? isWeekday : isWeekday && istMinutes >= 555 && istMinutes <= 930;
+  const marketSessionText = cfg.isGlobal
+    ? isMarketOpen ? "GLOBAL DERIVATIVES ACTIVE · CBOE / CME REAL-TIME" : "GLOBAL WEEKEND · OPENS SUNDAY 6 PM EST"
+    : isMarketOpen ? "SESSION LIVE · CLOSES 3:30 PM IST" : "MARKET CLOSED · NEXT SESSION 9:15 AM IST";
 
   const step = cfg.step;
   const atmStrike = Math.round(spot / step) * step;
 
   // Confluence Strategy Logic
-  const isBear = change <= 0;
+  const isBear = change < 0;
   const direction: "PUT" | "CALL" = isBear ? "PUT" : "CALL";
   const actionText = `BUY ${instrument.toUpperCase()} ${direction}`;
-  const grade = "A+ CONFLUENCE";
-  const confidenceScore = 94;
-  const rationale = isBear
-    ? `EMA9<EMA21 crossdown · RSI 44 · Multi-Pivot S1 rejection`
-    : `Trend pullback reclaim · EMA9>EMA21 · RSI 56 · CPR bounce`;
+  const momentumBonus = Math.min(6, Math.round(Math.abs(changePct) * 4));
+  const confidenceScore = Math.max(72, Math.min(97, profile.baseConfidence + (isBear === (profile.bias === "PUT") ? momentumBonus : -momentumBonus)));
+  const grade = confidenceScore >= 92 ? "A+ CONFLUENCE" : confidenceScore >= 85 ? "A CONFLUENCE" : "B+ CONFLUENCE";
+  const currentRsi = +(profile.baseRsi + changePct * 6).toFixed(1);
+  const rationale = `${profile.rationale} · RSI ${currentRsi}`;
 
   const cleanName = instrument.replace(/[^A-Z0-9]/g, "");
   const contractName = `${cleanName} ${atmStrike} ${direction === "PUT" ? "PE" : "CE"}`;
   const spotEntry = +spot.toFixed(2);
 
   // Black-Scholes Approximation Model for Strikes & Premium
-  const baseAtmPrem = Math.max(25, Math.round(spot * 0.006 * 100) / 100);
+  const baseAtmPrem = Math.max(cfg.isGlobal ? 8 : 25, Math.round(spot * 0.006 * 100) / 100);
   const recommendedPremium = +baseAtmPrem.toFixed(2);
   const tp1 = +(recommendedPremium * 1.25).toFixed(2);
   const tp2 = +(recommendedPremium * 1.5).toFixed(2);
@@ -248,7 +367,7 @@ export function computeTerminalData(
       putType = "ITM";
     }
 
-    strikes.push({ strike, callLtp, callType, putLtp, putType });
+    strikes.push({ strike, callLtp, callType, putLtp, putType, isAtm: strike === atmStrike });
   }
 
   // Historical Signals with performance tracking (Win rate, Target hits)
@@ -355,9 +474,9 @@ export function computeTerminalData(
     trailingStatus,
     strikes,
     recentSignals,
-    winRatePct: 83.3,
-    profitFactor: 2.85,
-    totalSignalsTracked: 142,
+    winRatePct: profile.winRate,
+    profitFactor: profile.profitFactor,
+    totalSignalsTracked: profile.signals,
   };
 }
 
@@ -365,13 +484,14 @@ export const getTerminalMarketData = createServerFn({ method: "GET" })
   .validator((d) => z.object({ instrument: z.string().default("NIFTY 50") }).parse(d))
   .handler(async ({ data }): Promise<TerminalWorkstationData> => {
     const cfg = WORKSTATION_INSTRUMENTS[data.instrument] ?? WORKSTATION_INSTRUMENTS["NIFTY 50"];
+    const profile = INSTRUMENT_PROFILES[data.instrument] ?? INSTRUMENT_PROFILES["NIFTY 50"];
     let spot = cfg.defaultSpot;
-    let change = -2.05;
-    let changePct = -0.01;
-    let open = +(spot * 0.999).toFixed(2);
-    let high = +(spot * 1.003).toFixed(2);
-    let low = +(spot * 0.997).toFixed(2);
-    let volume = 27123;
+    let change = profile.baseChange;
+    let changePct = profile.baseChangePct;
+    let open = +(spot - change).toFixed(2);
+    let high = +(Math.max(spot, open) + spot * 0.003).toFixed(2);
+    let low = +(Math.min(spot, open) - spot * 0.003).toFixed(2);
+    let volume = Math.floor(18000 + Math.abs(changePct) * 14000);
 
     try {
       const res = await fetch(

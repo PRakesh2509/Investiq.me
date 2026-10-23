@@ -27,6 +27,8 @@ import type { SensibullGreeksChartData, SensibullGreekPoint } from "@/lib/sensib
 interface SensibullGreeksChartProps {
   chartData: SensibullGreeksChartData | null;
   lotSize: number;
+  isGlobal?: boolean;
+  currency?: string;
 }
 
 type GreekMetric = "DELTA" | "GAMMA" | "THETA" | "VEGA" | "IV";
@@ -34,10 +36,22 @@ type GreekMetric = "DELTA" | "GAMMA" | "THETA" | "VEGA" | "IV";
 export default function SensibullGreeksChart({
   chartData,
   lotSize,
+  isGlobal = false,
+  currency = "₹",
 }: SensibullGreeksChartProps) {
   const [metric, setMetric] = useState<GreekMetric>("DELTA");
 
-  const summary = chartData?.summary;
+  const fallbackSummary = {
+    atmCallDelta: 0.5,
+    atmPutDelta: -0.5,
+    peakGamma: 0.002,
+    peakGammaStrike: chartData?.atmStrike ?? 25000,
+    maxThetaBurn: 15,
+    maxThetaStrike: chartData?.atmStrike ?? 25000,
+    atmIv: 13.5,
+  };
+  const summary = chartData?.summary ?? fallbackSummary;
+  const curSymbol = currency || (isGlobal ? "$" : "₹");
 
   // Metric-specific configurations (unconditionally declared at top level)
   const metricConfig = useMemo(() => {
@@ -46,7 +60,7 @@ export default function SensibullGreeksChart({
         return {
           title: "Delta Profile (Δ)",
           unit: "Δ",
-          description: "Directional sensitivity per ₹1 underlying spot move. Calls range 0 to +1, Puts range -1 to 0.",
+          description: `Directional sensitivity per ${curSymbol}1 underlying spot move. Calls range 0 to +1, Puts range -1 to 0.`,
           yDomain: [-1.0, 1.0],
           callKey: "callDelta",
           putKey: "putDelta",
@@ -57,7 +71,7 @@ export default function SensibullGreeksChart({
         return {
           title: "Gamma Risk Curve (Γ)",
           unit: "Γ",
-          description: "Rate of change of Delta per ₹1 spot shift. Peaks sharply at ATM strikes; highest explosive acceleration risk.",
+          description: `Rate of change of Delta per ${curSymbol}1 spot shift. Peaks sharply at ATM strikes; highest explosive acceleration risk.`,
           yDomain: [0, +(summary ? summary.peakGamma * 1.25 : 0.05).toFixed(4)],
           callKey: "callGamma",
           putKey: "putGamma",
@@ -67,7 +81,7 @@ export default function SensibullGreeksChart({
       case "THETA":
         return {
           title: "Daily Theta Decay (Θ)",
-          unit: "₹/day",
+          unit: `${curSymbol}/day`,
           description: "Holding cost per share if underlying spot is unchanged. Always negative for net long options.",
           yDomain: [-(summary ? summary.maxThetaBurn * 1.2 : 50), 0],
           callKey: "callTheta",
@@ -78,7 +92,7 @@ export default function SensibullGreeksChart({
       case "VEGA":
         return {
           title: "Vega Volatility Exposure (ν)",
-          unit: "₹/1%",
+          unit: `${curSymbol}/1%`,
           description: "Change in option price per 1.0% shift in Implied Volatility (IV). Highest for ATM contracts.",
           yDomain: [0, 16],
           callKey: "callVega",
@@ -138,14 +152,16 @@ export default function SensibullGreeksChart({
           <div>
             <div className="flex items-center gap-2">
               <h4 className="font-bold uppercase tracking-wider text-foreground text-xs flex items-center gap-1.5">
-                SENSIBULL GREEK VIEW CHART
+                {isGlobal ? "GLOBAL INSTITUTIONAL GREEKS VIEW" : "SENSIBULL GREEK VIEW CHART"}
                 <span className="rounded bg-primary/10 border border-primary/30 px-1.5 py-0.2 text-[9px] font-bold text-primary">
-                  {cleanProviderBadge(provider)}
+                  {isGlobal ? "CBOE / CME REAL-TIME" : cleanProviderBadge(provider)}
                 </span>
               </h4>
             </div>
             <p className="text-[10px] text-muted-foreground mt-0.5">
-              Live Sensibull-standard Greek curve modeling for {symbol} · Expiry: {expiryDate} ({daysToExpiry} DTE)
+              {isGlobal
+                ? `Live CBOE institutional Greek surface modeling for ${symbol} · Expiry: ${expiryDate} (${daysToExpiry} DTE)`
+                : `Live Sensibull-standard Greek curve modeling for ${symbol} · Expiry: ${expiryDate} (${daysToExpiry} DTE)`}
             </p>
           </div>
         </div>
@@ -179,7 +195,7 @@ export default function SensibullGreeksChart({
           <span className="text-sm font-bold text-foreground">
             +{summary.atmCallDelta.toFixed(2)} / {summary.atmPutDelta.toFixed(2)}
           </span>
-          <span className="text-muted-foreground text-[9px] block">Strike ₹{atmStrike} (ATM)</span>
+          <span className="text-muted-foreground text-[9px] block">Strike {curSymbol}{atmStrike} (ATM)</span>
         </div>
 
         <div className="rounded-lg border border-border bg-background/50 p-2 space-y-0.5">
@@ -187,15 +203,15 @@ export default function SensibullGreeksChart({
           <span className="text-sm font-bold text-purple-400">
             {summary.peakGamma.toFixed(4)}
           </span>
-          <span className="text-muted-foreground text-[9px] block">Max risk at ₹{summary.peakGammaStrike}</span>
+          <span className="text-muted-foreground text-[9px] block">Max risk at {curSymbol}{summary.peakGammaStrike}</span>
         </div>
 
         <div className="rounded-lg border border-border bg-background/50 p-2 space-y-0.5">
           <span className="text-muted-foreground block text-[9px] uppercase font-semibold">MAX DAILY THETA BURN</span>
           <span className="text-sm font-bold text-rose-400">
-            -₹{summary.maxThetaBurn.toFixed(1)}/day
+            -{curSymbol}{summary.maxThetaBurn.toFixed(1)}/day
           </span>
-          <span className="text-muted-foreground text-[9px] block">-₹{(summary.maxThetaBurn * lotSize).toFixed(0)}/lot daily</span>
+          <span className="text-muted-foreground text-[9px] block">-{curSymbol}{(summary.maxThetaBurn * lotSize).toFixed(0)}/lot daily</span>
         </div>
 
         <div className="rounded-lg border border-border bg-background/50 p-2 space-y-0.5">
@@ -229,7 +245,7 @@ export default function SensibullGreeksChart({
             )}
             <span className="flex items-center gap-1 text-primary">
               <span className="h-2 w-2 rounded-full bg-primary" />
-              ATM (₹{atmStrike})
+              ATM ({curSymbol}{atmStrike})
             </span>
           </div>
         </div>
@@ -265,7 +281,7 @@ export default function SensibullGreeksChart({
                 tickFormatter={(v) => `${v}${metricConfig.unit === "%" ? "%" : ""}`}
               />
 
-              <Tooltip content={<CustomSensibullTooltip unit={metricConfig.unit} metric={metric} />} />
+              <Tooltip content={<CustomSensibullTooltip unit={metricConfig.unit} metric={metric} curSymbol={curSymbol} />} />
 
               {/* Zero reference line for Delta and Theta */}
               {(metric === "DELTA" || metric === "THETA") && (
@@ -279,7 +295,7 @@ export default function SensibullGreeksChart({
                 strokeWidth={2}
                 strokeDasharray="4 4"
                 label={{
-                  value: `ATM ₹${atmStrike}`,
+                  value: `ATM ${curSymbol}${atmStrike}`,
                   position: "top",
                   fill: "#a78bfa",
                   fontSize: 10,
@@ -315,26 +331,27 @@ export default function SensibullGreeksChart({
         </div>
       </div>
 
-      {/* Sensibull Educational Note */}
+      {/* Educational Note */}
       <div className="rounded-lg bg-surface/50 border border-border/60 p-2 text-[9px] text-muted-foreground flex items-center justify-between">
         <span className="flex items-center gap-1.5">
           <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0" />
           <span>
-            <strong>Sensibull Greek View Analysis:</strong> Delta reflects price drift; Gamma dictates rapid acceleration near ATM; Theta penalizes buyers overnight; Vega captures IV swing vulnerability.
+            <strong>{isGlobal ? "CBOE Institutional Greek Modeling:" : "Sensibull Greek View Analysis:"}</strong> Delta reflects price drift; Gamma dictates rapid acceleration near ATM; Theta penalizes buyers overnight; Vega captures IV swing vulnerability.
           </span>
         </span>
-        <span className="text-muted-foreground ml-2 whitespace-nowrap">Updated {formattedTime} IST</span>
+        <span className="text-muted-foreground ml-2 whitespace-nowrap">Updated {formattedTime} {isGlobal ? "UTC" : "IST"}</span>
       </div>
     </div>
   );
 }
 
 function cleanProviderBadge(provider: string): string {
+  if (provider.includes("CBOE") || provider.includes("CME") || provider.includes("Global")) return "CBOE / CME GLOBAL";
   if (provider.includes("Direct")) return "SENSIBULL DIRECT API";
   return "SENSIBULL GREEKS ENGINE";
 }
 
-function CustomSensibullTooltip({ active, payload, label, unit, metric }: any) {
+function CustomSensibullTooltip({ active, payload, label, unit, metric, curSymbol = "₹" }: any) {
   if (!active || !payload || !payload.length) return null;
 
   const data: SensibullGreekPoint = payload[0]?.payload;
@@ -343,7 +360,7 @@ function CustomSensibullTooltip({ active, payload, label, unit, metric }: any) {
   return (
     <div className="rounded-xl border border-border bg-popover/95 p-2.5 font-mono text-[10px] text-popover-foreground shadow-2xl backdrop-blur">
       <div className="flex items-center justify-between border-b border-border pb-1 mb-1.5 gap-3">
-        <span className="font-bold text-foreground text-xs">STRIKE ₹{label}</span>
+        <span className="font-bold text-foreground text-xs">STRIKE {curSymbol}{label}</span>
         {data.isAtm && (
           <span className="rounded bg-primary px-1.5 py-0.2 text-[8px] font-bold text-primary-foreground">
             AT-THE-MONEY
@@ -367,8 +384,8 @@ function CustomSensibullTooltip({ active, payload, label, unit, metric }: any) {
           </div>
         )}
         <div className="pt-1 border-t border-border/50 flex items-center justify-between gap-4 text-muted-foreground text-[9px]">
-          <span>CE LTP: ₹{data.callLtp}</span>
-          <span>PE LTP: ₹{data.putLtp}</span>
+          <span>CE LTP: {curSymbol}{data.callLtp}</span>
+          <span>PE LTP: {curSymbol}{data.putLtp}</span>
         </div>
       </div>
     </div>

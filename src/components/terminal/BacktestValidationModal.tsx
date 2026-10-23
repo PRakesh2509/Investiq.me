@@ -25,6 +25,11 @@ export default function BacktestValidationModal({
   if (!isOpen || !report) return null;
 
   const { models, comparativeInsight, instrument, testPeriod } = report;
+  const isGlobal = ["S&P 500", "NASDAQ 100", "DOW JONES", "SP500", "NASDAQ100", "DOWJONES"].includes(
+    (instrument || "").toUpperCase().replace(/[^A-Z0-9]/g, "")
+  ) || (instrument || "").includes("$") || (instrument || "").includes("S&P") || (instrument || "").includes("NASDAQ") || (instrument || "").includes("DOW");
+  const curSymbol = isGlobal ? "$" : "₹";
+  const numLocale = isGlobal ? "en-US" : "en-IN";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in duration-200">
@@ -78,7 +83,7 @@ export default function BacktestValidationModal({
                 <th className="p-3 text-right">Max Drawdown</th>
                 <th className="p-3 text-right">Sharpe Ratio</th>
                 <th className="p-3 text-right">Brier Score</th>
-                <th className="p-3 text-right">Net P&amp;L (₹)</th>
+                <th className="p-3 text-right">Net P&amp;L ({curSymbol})</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
@@ -128,7 +133,7 @@ export default function BacktestValidationModal({
                       {m.brierCalibrationScore}
                     </td>
                     <td className="p-3 text-right font-mono font-bold text-emerald-400">
-                      ₹{m.totalNetPnl.toLocaleString("en-IN")}
+                      {curSymbol}{m.totalNetPnl.toLocaleString(numLocale)}
                     </td>
                   </tr>
                 );
@@ -144,8 +149,7 @@ export default function BacktestValidationModal({
             <span>Realistic Friction &amp; Regulatory Charges Applied:</span>
           </div>
           <p>
-            All backtest runs simulate round-trip execution with flat ₹40 brokerage, 0.125% STT on sell premium,
-            NSE turnover charges, 18% GST, stamp duty, and dynamic stop-loss gap slippage (0.25% - 0.50%).
+            All backtest runs simulate round-trip execution with {isGlobal ? "$1.50 execution fee per order leg, OCC/SEC fees" : "flat ₹40 brokerage, 0.125% STT on sell premium, NSE turnover charges, 18% GST, stamp duty"}, and dynamic stop-loss gap slippage (0.25% - 0.50%).
             Survivorship and look-ahead biases are strictly eliminated by anchoring on historical timestamps.
           </p>
         </div>

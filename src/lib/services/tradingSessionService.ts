@@ -99,9 +99,47 @@ export class TradingSessionService {
   /**
    * Evaluate full market session status
    */
-  public getSessionInfo(inputDate: Date = new Date()): TradingSessionInfo {
+  public getSessionInfo(inputDate: Date = new Date(), instrument?: string): TradingSessionInfo {
     const { hours, minutes, dayOfWeek, isoDateString, formattedTime } = this.getIstTime(inputDate);
     const minuteOfDay = hours * 60 + minutes;
+
+    // Check if instrument is Global (US Equity & CME Derivatives)
+    const isGlobal = ["S&P 500", "NASDAQ 100", "DOW JONES", "SP500", "NASDAQ100", "DOWJONES"].includes(
+      (instrument || "").toUpperCase().replace(/[^A-Z0-9]/g, "")
+    ) || (instrument || "").includes("$") || (instrument || "").includes("S&P") || (instrument || "").includes("NASDAQ") || (instrument || "").includes("DOW");
+
+    if (isGlobal) {
+      // US / CME Globex hours:
+      // Active Monday morning through Saturday 03:30 AM IST (nearly 24/5)
+      const isWeekend = dayOfWeek === 0 || (dayOfWeek === 6 && hours >= 4);
+      if (isWeekend) {
+        return {
+          isMarketOpen: false,
+          phase: "WEEKEND",
+          sessionText: "WEEKEND — US / CME Markets Closed (Opens Monday)",
+          istTimeString: formattedTime,
+          istDateString: isoDateString,
+          nextSessionOpensAt: "Sunday 6:00 PM EST (Monday 03:30 AM IST)",
+          canGenerateFreshCandidates: false,
+          isExpiryAfternoon: false,
+          marketNotice: "US Markets closed for the weekend.",
+        };
+      }
+
+      // Check US cash regular session: 19:00 to 01:30 IST
+      const isRegularUsSession = (hours >= 19 && hours <= 23) || (hours >= 0 && hours < 2);
+      return {
+        isMarketOpen: true,
+        phase: "NORMAL_SESSION",
+        sessionText: isRegularUsSession ? "US REGULAR SESSION LIVE (NYSE / NASDAQ / CBOE)" : "CME GLOBEX EXTENDED SESSION ACTIVE",
+        istTimeString: formattedTime,
+        istDateString: isoDateString,
+        nextSessionOpensAt: "Live continuous session active",
+        canGenerateFreshCandidates: true,
+        isExpiryAfternoon: false,
+        marketNotice: "Global US F&O session active with live CBOE / CME quotes.",
+      };
+    }
 
     // 1. Weekend check
     if (dayOfWeek === 0 || dayOfWeek === 6) {

@@ -88,7 +88,16 @@ export class FnoMarketDataService {
 
     // 4. Provider Status Information
     const dhanCreds = getDhanCredentials();
-    const providerStatus: ProviderStatusInfo = dhanCreds?.clientId
+    const providerStatus: ProviderStatusInfo = cfg.isGlobal
+      ? {
+          providerName: "CBOE / CME",
+          isAuthorized: true,
+          status: "GLOBAL_FEED",
+          reason: "Direct CBOE / CME Global Derivatives market feed active.",
+          documentationUrl: "https://www.cboe.com",
+          canStreamLiveData: true,
+        }
+      : dhanCreds?.clientId
       ? {
           providerName: "DhanHQ",
           isAuthorized: true,

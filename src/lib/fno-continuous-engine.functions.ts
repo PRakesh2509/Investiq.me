@@ -49,7 +49,7 @@ export const getContinuousFnoIntelligence = createServerFn({ method: "POST" })
     const capital = data.accountCapital ?? 30000;
     const riskPct = data.maxRiskPerTradePct ?? 2.0;
 
-    const session = tradingSessionService.getSessionInfo();
+    const session = tradingSessionService.getSessionInfo(undefined, instrument);
     const snapshot = await fnoMarketDataService.getMarketSnapshot(instrument, expiry);
     const greeks = await optionsGreeksDataService.getGreeksSnapshot(instrument, expiry);
     const greeksReport = greeksAnalysisService.analyzeGreeks(greeks);

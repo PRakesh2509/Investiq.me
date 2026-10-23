@@ -52,6 +52,12 @@ export default function ContinuousFnoIntelligencePanel({
   const { marketBias, technical, positioning, confluenceScore, confluenceFactors, divergenceWarnings, primaryObservation } = analysis;
   const { activeCandidates, historicalCandidates, noTradeDecision } = candidatesResult;
 
+  const isGlobal = ["S&P 500", "NASDAQ 100", "DOW JONES", "SP500", "NASDAQ100", "DOWJONES"].includes(
+    (snapshot.instrument || "").toUpperCase().replace(/[^A-Z0-9]/g, "")
+  ) || (snapshot.instrument || "").includes("$") || (snapshot.instrument || "").includes("S&P") || (snapshot.instrument || "").includes("NASDAQ") || (snapshot.instrument || "").includes("DOW");
+  const curSymbol = isGlobal ? "$" : "₹";
+  const numLocale = isGlobal ? "en-US" : "en-IN";
+
   const biasColor =
     marketBias === "STRONG_BULLISH"
       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
@@ -92,18 +98,18 @@ export default function ContinuousFnoIntelligencePanel({
           {/* Greeks Provider Badge */}
           <span
             className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] ${
-              greeks.isDirectSensibullAuthorized
+              greeks.isDirectSensibullAuthorized || isGlobal
                 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                 : "border-sky-500/30 bg-sky-500/10 text-sky-400"
             }`}
-            title={greeks.provider}
+            title={isGlobal ? "CBOE / CME Global Feed" : greeks.provider}
           >
-            {greeks.isDirectSensibullAuthorized ? (
+            {greeks.isDirectSensibullAuthorized || isGlobal ? (
               <ShieldCheck className="h-3 w-3" />
             ) : (
               <Shield className="h-3 w-3" />
             )}
-            <span>{greeks.provider}</span>
+            <span>{isGlobal ? "CBOE / CME Global Feed" : greeks.provider}</span>
           </span>
 
           {/* Session Indicator */}
@@ -166,7 +172,7 @@ export default function ContinuousFnoIntelligencePanel({
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Key S/R Range:</span>
-              <span className="font-medium text-foreground">₹{technical.pivotSupport} — ₹{technical.pivotResistance}</span>
+              <span className="font-medium text-foreground">{curSymbol}{technical.pivotSupport} — {curSymbol}{technical.pivotResistance}</span>
             </div>
           </div>
         </div>
@@ -184,15 +190,15 @@ export default function ContinuousFnoIntelligencePanel({
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Max Pain Strike:</span>
-              <span className="font-medium text-foreground">₹{positioning.maxPainStrike}</span>
+              <span className="font-medium text-foreground">{curSymbol}{positioning.maxPainStrike}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Call Wall (Resist):</span>
-              <span className="font-medium text-rose-400">₹{positioning.highestCallOiStrike}</span>
+              <span className="font-medium text-rose-400">{curSymbol}{positioning.highestCallOiStrike}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Put Wall (Support):</span>
-              <span className="font-medium text-emerald-400">₹{positioning.highestPutOiStrike}</span>
+              <span className="font-medium text-emerald-400">{curSymbol}{positioning.highestPutOiStrike}</span>
             </div>
           </div>
         </div>
@@ -216,7 +222,7 @@ export default function ContinuousFnoIntelligencePanel({
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Daily Theta Burn:</span>
-              <span className="font-medium text-amber-400">-₹{greeksReport.thetaAnalysis.atmDailyDecayPerShare}/sh/day</span>
+              <span className="font-medium text-amber-400">-{curSymbol}{greeksReport.thetaAnalysis.atmDailyDecayPerShare}/sh/day</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">IV Smile Skew:</span>
@@ -336,7 +342,7 @@ export default function ContinuousFnoIntelligencePanel({
                       </span>
                     </div>
                     <p className="text-[10px] text-muted-foreground">
-                      Expiry: {candidate.expiry} · Ref Premium: ₹{candidate.currentReferencePrice.toFixed(2)}
+                      Expiry: {candidate.expiry} · Ref Premium: {curSymbol}{candidate.currentReferencePrice.toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -361,19 +367,19 @@ export default function ContinuousFnoIntelligencePanel({
                 <div className="rounded-xl border border-border bg-background/50 p-2.5">
                   <span className="text-muted-foreground text-[10px] block">ENTRY ZONE</span>
                   <span className="font-bold text-foreground text-xs">
-                    ₹{candidate.entryZone.min} — ₹{candidate.entryZone.max}
+                    {curSymbol}{candidate.entryZone.min} — {curSymbol}{candidate.entryZone.max}
                   </span>
                 </div>
                 <div className="rounded-xl border border-border bg-background/50 p-2.5">
                   <span className="text-muted-foreground text-[10px] block">STOP LOSS</span>
                   <span className="font-bold text-rose-400 text-xs">
-                    ₹{candidate.stopLoss}
+                    {curSymbol}{candidate.stopLoss}
                   </span>
                 </div>
                 <div className="rounded-xl border border-border bg-background/50 p-2.5">
                   <span className="text-muted-foreground text-[10px] block">TARGETS (T1 / T2)</span>
                   <span className="font-bold text-emerald-400 text-xs">
-                    ₹{candidate.targetLevels.t1} / ₹{candidate.targetLevels.t2}
+                    {curSymbol}{candidate.targetLevels.t1} / {curSymbol}{candidate.targetLevels.t2}
                   </span>
                 </div>
                 <div className="rounded-xl border border-border bg-background/50 p-2.5">
@@ -394,11 +400,11 @@ export default function ContinuousFnoIntelligencePanel({
                 </div>
                 <div>
                   <span className="text-muted-foreground">Required Debit: </span>
-                  <strong className="text-foreground">₹{candidate.totalDebitRequired.toLocaleString("en-IN")}</strong>
+                  <strong className="text-foreground">{curSymbol}{candidate.totalDebitRequired.toLocaleString(numLocale)}</strong>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Max Capital at Risk: </span>
-                  <strong className="text-rose-400">₹{candidate.maxEstimatedLoss.toLocaleString("en-IN")}</strong>
+                  <strong className="text-rose-400">{curSymbol}{candidate.maxEstimatedLoss.toLocaleString(numLocale)}</strong>
                 </div>
               </div>
 

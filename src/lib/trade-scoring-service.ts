@@ -156,6 +156,15 @@ export function calculateTradeScore(input: TradeScoringInput): TradeScoringResul
   let missingFactorsCount = 0;
   let staleFactorsCount = 0;
 
+  const isGlobal =
+    ["S&P 500", "NASDAQ 100", "DOW JONES", "SP500", "NASDAQ100", "DOWJONES"].includes(
+      (input.instrument || "").toUpperCase().replace(/\s+/g, "")
+    ) ||
+    (input.instrument || "").toUpperCase().includes("S&P") ||
+    (input.instrument || "").toUpperCase().includes("NASDAQ") ||
+    (input.instrument || "").toUpperCase().includes("DOW");
+  const curSym = isGlobal ? "$" : "₹";
+
   // 1. Technical Analysis Factor (20%)
   const tech = input.technical;
   let techScore = 50;
@@ -195,7 +204,7 @@ export function calculateTradeScore(input: TradeScoringInput): TradeScoringResul
     }
 
     techScore = Math.max(10, Math.min(95, points));
-    techEvidence = `RSI(14): ${tech.rsi.toFixed(1)}, 9EMA: ₹${tech.ema9.toFixed(1)}, 21EMA: ₹${tech.ema21.toFixed(1)}, VWAP: ₹${(tech.vwap ?? input.spotPrice).toFixed(1)}`;
+    techEvidence = `RSI(14): ${tech.rsi.toFixed(1)}, 9EMA: ${curSym}${tech.ema9.toFixed(1)}, 21EMA: ${curSym}${tech.ema21.toFixed(1)}, VWAP: ${curSym}${(tech.vwap ?? input.spotPrice).toFixed(1)}`;
     techRationale = `${emaTrendBullish ? "Bullish EMA crossover" : "Bearish EMA alignment"} with spot ${vwapBullish ? "above" : "below"} intraday VWAP.`;
 
     if (techScore >= 65) {
@@ -255,8 +264,8 @@ export function calculateTradeScore(input: TradeScoringInput): TradeScoringResul
     }
 
     greeksScore = Math.max(10, Math.min(95, gPoints));
-    greeksEvidence = `Delta: ${greeks.delta.toFixed(3)}, Gamma: ${(greeks.gamma ?? 0).toFixed(4)}, Theta: ₹${greeks.thetaPerDay.toFixed(1)}/day, DTE: ${dte.toFixed(1)} days`;
-    greeksRationale = `Directional responsiveness calibrated. Theta decay rate ₹${Math.abs(greeks.thetaPerDay).toFixed(1)}/day.`;
+    greeksEvidence = `Delta: ${greeks.delta.toFixed(3)}, Gamma: ${(greeks.gamma ?? 0).toFixed(4)}, Theta: ${curSym}${greeks.thetaPerDay.toFixed(1)}/day, DTE: ${dte.toFixed(1)} days`;
+    greeksRationale = `Directional responsiveness calibrated. Theta decay rate ${curSym}${Math.abs(greeks.thetaPerDay).toFixed(1)}/day.`;
   } else {
     missingFactorsCount++;
     greeksScore = 35;
@@ -350,7 +359,7 @@ export function calculateTradeScore(input: TradeScoringInput): TradeScoringResul
     }
 
     oiScore = Math.max(15, Math.min(90, oiPts));
-    oiEvidence = `Put-Call Ratio (PCR): ${pcr.toFixed(2)}${oi.maxPainStrike ? `, Max Pain: ₹${oi.maxPainStrike}` : ""}`;
+    oiEvidence = `Put-Call Ratio (PCR): ${pcr.toFixed(2)}${oi.maxPainStrike ? `, Max Pain: ${curSym}${oi.maxPainStrike}` : ""}`;
     oiRationale = `Positioning reflects ${pcr > 1.0 ? "put writing support base" : "call writing overhead pressure"}.`;
   } else {
     missingFactorsCount++;

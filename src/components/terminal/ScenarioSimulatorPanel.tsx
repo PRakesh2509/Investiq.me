@@ -25,6 +25,8 @@ interface ScenarioSimulatorPanelProps {
   lotSize: number;
   selectedContract?: string;
   currentPremium?: number;
+  currency?: string;
+  isGlobal?: boolean;
 }
 
 export default function ScenarioSimulatorPanel({
@@ -33,7 +35,11 @@ export default function ScenarioSimulatorPanel({
   lotSize,
   selectedContract = "NIFTY ATM Option",
   currentPremium = 145,
+  currency = "₹",
+  isGlobal = false,
 }: ScenarioSimulatorPanelProps) {
+  const curSymbol = currency || (isGlobal ? "$" : "₹");
+  const numLocale = isGlobal ? "en-US" : "en-IN";
   const [optionType, setOptionType] = useState<"CE" | "PE">("CE");
   const [customSpotPct, setCustomSpotPct] = useState<number>(1.0);
   const [customIvPct, setCustomIvPct] = useState<number>(0.0);
@@ -122,13 +128,13 @@ export default function ScenarioSimulatorPanel({
           <div className={`text-base font-bold ${report.aggregateGreeks.netDelta > 0 ? "text-emerald-400" : "text-rose-400"}`}>
             {report.aggregateGreeks.netDelta > 0 ? "+" : ""}{report.aggregateGreeks.netDelta.toFixed(2)}
           </div>
-          <div className="text-[9px] text-muted-foreground">₹{(report.aggregateGreeks.netDelta * 50).toFixed(0)} P&amp;L per 50pt move</div>
+          <div className="text-[9px] text-muted-foreground">{curSymbol}{(report.aggregateGreeks.netDelta * 50).toFixed(0)} P&amp;L per 50pt move</div>
         </div>
 
         <div className="rounded-xl border border-border/60 bg-background/40 p-2.5">
           <div className="text-[10px] text-muted-foreground">DAILY THETA BURN (Θ)</div>
           <div className="text-base font-bold text-rose-400">
-            ₹{report.aggregateGreeks.netThetaPerDay.toFixed(1)}/day
+            {curSymbol}{report.aggregateGreeks.netThetaPerDay.toFixed(1)}/day
           </div>
           <div className="text-[9px] text-muted-foreground">Calendar day carry cost</div>
         </div>
@@ -136,7 +142,7 @@ export default function ScenarioSimulatorPanel({
         <div className="rounded-xl border border-border/60 bg-background/40 p-2.5">
           <div className="text-[10px] text-muted-foreground">VEGA SENSITIVITY (ν)</div>
           <div className="text-base font-bold text-purple-400">
-            ₹{report.aggregateGreeks.netVegaPerPoint.toFixed(1)}
+            {curSymbol}{report.aggregateGreeks.netVegaPerPoint.toFixed(1)}
           </div>
           <div className="text-[9px] text-muted-foreground">per 1.0% change in IV</div>
         </div>
@@ -144,7 +150,7 @@ export default function ScenarioSimulatorPanel({
         <div className="rounded-xl border border-border/60 bg-background/40 p-2.5">
           <div className="text-[10px] text-muted-foreground">MAX RISK OUTLAY</div>
           <div className="text-base font-bold text-rose-400">
-            ₹{Math.abs(Number(report.maxLoss)).toLocaleString("en-IN")}
+            {curSymbol}{Math.abs(Number(report.maxLoss)).toLocaleString(numLocale)}
           </div>
           <div className="text-[9px] text-muted-foreground">1 Lot ({lotSize} Qty)</div>
         </div>
@@ -180,7 +186,7 @@ export default function ScenarioSimulatorPanel({
 
                 <div className="pt-1 border-t border-border/50">
                   <div className={`text-xs font-bold ${isNetPositive ? "text-emerald-400" : "text-rose-400"}`}>
-                    {isNetPositive ? "+" : ""}₹{scen.netPnl.toLocaleString("en-IN")}
+                    {isNetPositive ? "+" : ""}{curSymbol}{scen.netPnl.toLocaleString(numLocale)}
                   </div>
                   <div className="text-[9px] text-muted-foreground">
                     ({isNetPositive ? "+" : ""}{scen.netPnlPct}%)
@@ -203,7 +209,7 @@ export default function ScenarioSimulatorPanel({
             <div className="text-right">
               <span className="text-[10px] text-muted-foreground">Simulated Spot:</span>
               <span className="ml-1.5 font-bold text-foreground text-sm">
-                ₹{activeScenario.simulatedSpot.toLocaleString("en-IN")}
+                {curSymbol}{activeScenario.simulatedSpot.toLocaleString(numLocale)}
               </span>
             </div>
           </div>
@@ -215,17 +221,17 @@ export default function ScenarioSimulatorPanel({
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Gross P&amp;L:</span>
                 <span className={`font-bold ${activeScenario.grossPnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                  {activeScenario.grossPnl >= 0 ? "+" : ""}₹{activeScenario.grossPnl}
+                  {activeScenario.grossPnl >= 0 ? "+" : ""}{curSymbol}{activeScenario.grossPnl}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Brokerage &amp; Taxes:</span>
-                <span className="text-rose-400">-₹{activeScenario.estimatedCharges.totalCharges}</span>
+                <span className="text-muted-foreground">{isGlobal ? "Cleared Execution Fees:" : "Brokerage & Taxes:"}</span>
+                <span className="text-rose-400">-{curSymbol}{activeScenario.estimatedCharges.totalCharges}</span>
               </div>
               <div className="flex justify-between pt-1 border-t border-border font-bold text-sm">
                 <span>Net Return:</span>
                 <span className={activeScenario.netPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                  {activeScenario.netPnl >= 0 ? "+" : ""}₹{activeScenario.netPnl} ({activeScenario.netPnlPct}%)
+                  {activeScenario.netPnl >= 0 ? "+" : ""}{curSymbol}{activeScenario.netPnl} ({activeScenario.netPnlPct}%)
                 </span>
               </div>
             </div>
@@ -236,43 +242,43 @@ export default function ScenarioSimulatorPanel({
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Delta Move:</span>
                 <span className={activeScenario.greeksAttribution.deltaPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                  {activeScenario.greeksAttribution.deltaPnl >= 0 ? "+" : ""}₹{activeScenario.greeksAttribution.deltaPnl}
+                  {activeScenario.greeksAttribution.deltaPnl >= 0 ? "+" : ""}{curSymbol}{activeScenario.greeksAttribution.deltaPnl}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Gamma Acceleration:</span>
-                <span className="text-purple-400">+{activeScenario.greeksAttribution.gammaPnl}</span>
+                <span className="text-purple-400">+{curSymbol}{activeScenario.greeksAttribution.gammaPnl}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Theta Decay:</span>
-                <span className="text-rose-400">₹{activeScenario.greeksAttribution.thetaPnl}</span>
+                <span className="text-rose-400">{curSymbol}{activeScenario.greeksAttribution.thetaPnl}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Vega (IV Shift):</span>
                 <span className={activeScenario.greeksAttribution.vegaPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                  {activeScenario.greeksAttribution.vegaPnl >= 0 ? "+" : ""}₹{activeScenario.greeksAttribution.vegaPnl}
+                  {activeScenario.greeksAttribution.vegaPnl >= 0 ? "+" : ""}{curSymbol}{activeScenario.greeksAttribution.vegaPnl}
                 </span>
               </div>
             </div>
 
             {/* Column 3: Statutory Costs Breakdown */}
             <div className="rounded-lg border border-border/50 bg-surface/30 p-2.5 space-y-1 text-[10px]">
-              <span className="text-muted-foreground font-bold text-[10px] uppercase">Statutory Deductions (NSE)</span>
+              <span className="text-muted-foreground font-bold text-[10px] uppercase">{isGlobal ? "Cleared Exchange Costs" : "Statutory Deductions (NSE)"}</span>
               <div className="flex justify-between text-muted-foreground">
-                <span>Brokerage (₹20/order):</span>
-                <span>₹{activeScenario.estimatedCharges.brokerage}</span>
+                <span>{isGlobal ? "Execution Fee ($1.50):" : "Brokerage (₹20/order):"}</span>
+                <span>{curSymbol}{isGlobal ? "1.50" : activeScenario.estimatedCharges.brokerage}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
-                <span>STT (0.125% sell):</span>
-                <span>₹{activeScenario.estimatedCharges.stt}</span>
+                <span>{isGlobal ? "Regulatory Fee:" : "STT (0.125% sell):"}</span>
+                <span>{curSymbol}{isGlobal ? "0.08" : activeScenario.estimatedCharges.stt}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
-                <span>Exch Fee + GST (18%):</span>
-                <span>₹{(activeScenario.estimatedCharges.exchangeTurnoverCharge + activeScenario.estimatedCharges.gst).toFixed(2)}</span>
+                <span>{isGlobal ? "Options Clearing Fee:" : "Exch Fee + GST (18%):"}</span>
+                <span>{curSymbol}{isGlobal ? "0.15" : (activeScenario.estimatedCharges.exchangeTurnoverCharge + activeScenario.estimatedCharges.gst).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
-                <span>Stamp Duty:</span>
-                <span>₹{activeScenario.estimatedCharges.stampDuty}</span>
+                <span>{isGlobal ? "Trading Activity Fee:" : "Stamp Duty:"}</span>
+                <span>{curSymbol}{isGlobal ? "0.02" : activeScenario.estimatedCharges.stampDuty}</span>
               </div>
             </div>
           </div>

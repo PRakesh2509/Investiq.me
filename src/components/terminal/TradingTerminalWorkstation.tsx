@@ -538,7 +538,7 @@ export default function TradingTerminalWorkstation() {
 
           <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface/80 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
             <Shield className="h-3.5 w-3.5 text-primary" />
-            <span>DhanHQ Colocation Feed Ready · TradingView Validated</span>
+            <span>{cfg.isGlobal ? "CME / CBOE Direct Feed Ready" : "DhanHQ Colocation Feed Ready"} · TradingView Validated</span>
           </div>
         </div>
 
@@ -1027,7 +1027,7 @@ export default function TradingTerminalWorkstation() {
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    <span>SENSIBULL GREEKS VIEW CHART 📈</span>
+                    <span>{cfg.isGlobal ? "GLOBAL GREEKS VIEW (CBOE) 📈" : "SENSIBULL GREEKS VIEW CHART 📈"}</span>
                   </button>
                   <button
                     onClick={() => setChainViewMode("CLASSIC")}
@@ -1053,8 +1053,15 @@ export default function TradingTerminalWorkstation() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {/* Sensibull Status Modal / Badge (Requirement 4) */}
-                <SensibullStatusModal status={intelligence?.sensibullStatus ?? null} />
+                {/* Sensibull Status Modal / Badge (Requirement 4 - Hidden for Global F&O) */}
+                {cfg.isGlobal ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-emerald-500/10 px-2.5 py-1 text-[11px] font-mono font-bold text-emerald-400">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                    CBOE / CME REAL-TIME
+                  </span>
+                ) : (
+                  <SensibullStatusModal status={intelligence?.sensibullStatus ?? null} />
+                )}
 
                 <button
                   onClick={() => loadData(instrument)}
@@ -1075,11 +1082,11 @@ export default function TradingTerminalWorkstation() {
                 <table className="w-full text-center font-mono text-xs">
                   <thead>
                     <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground bg-background/50">
-                      <th className="py-2.5 px-3 text-left">CALL LTP (₹)</th>
+                      <th className="py-2.5 px-3 text-left">CALL LTP ({curSymbol})</th>
                       <th className="py-2.5 px-3">CALL TYPE</th>
                       <th className="py-2.5 px-3 font-bold text-foreground">STRIKE PRICE</th>
                       <th className="py-2.5 px-3">PUT TYPE</th>
-                      <th className="py-2.5 px-3 text-right">PUT LTP (₹)</th>
+                      <th className="py-2.5 px-3 text-right">PUT LTP ({curSymbol})</th>
                       <th className="py-2.5 px-3 text-right">ACTION</th>
                     </tr>
                   </thead>
@@ -1087,7 +1094,7 @@ export default function TradingTerminalWorkstation() {
                     {(data?.strikes ?? []).map((row) => (
                       <tr key={row.strike} className="hover:bg-accent/30 transition">
                         <td className="py-2.5 px-3 text-left font-bold text-emerald-400">
-                          ₹{row.callLtp.toFixed(2)}
+                          {curSymbol}{row.callLtp.toFixed(2)}
                         </td>
                         <td className="py-2.5 px-3">
                           <span
@@ -1119,7 +1126,7 @@ export default function TradingTerminalWorkstation() {
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-right font-bold text-rose-400">
-                          ₹{row.putLtp.toFixed(2)}
+                          {curSymbol}{row.putLtp.toFixed(2)}
                         </td>
                         <td className="py-2.5 px-3 text-right">
                           <div className="inline-flex gap-1.5">
@@ -1159,6 +1166,8 @@ export default function TradingTerminalWorkstation() {
                 <SensibullGreeksChart
                   chartData={intelligence?.sensibullGreeksChart ?? null}
                   lotSize={cfg.lotSize}
+                  isGlobal={cfg.isGlobal}
+                  currency={curSymbol}
                 />
               </div>
             )}
@@ -1170,6 +1179,7 @@ export default function TradingTerminalWorkstation() {
           <OptionChainAiInsights
             chain={intelligence?.chain ?? null}
             underlyingPrice={data?.spotPrice ?? 22862.9}
+            currency={curSymbol}
           />
         </div>
       </div>
@@ -1181,6 +1191,8 @@ export default function TradingTerminalWorkstation() {
         lotSize={cfg.lotSize}
         selectedContract={selectedContract}
         currentPremium={parseFloat(customPremium) || 145}
+        currency={curSymbol}
+        isGlobal={cfg.isGlobal}
       />
 
       {/* PHASE 8: Continuous F&O + Options Greeks Intelligence & Explainable Candidates */}

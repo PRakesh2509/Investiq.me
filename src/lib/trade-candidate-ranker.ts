@@ -547,22 +547,31 @@ export function rankTradeCandidates(
       scenarioSim.scenarios.reduce((acc, s) => acc + s.netPnl, 0) / scenarioSim.scenarios.length
     ).toFixed(2);
 
+    const isGlobal =
+      ["S&P 500", "NASDAQ 100", "DOW JONES", "SP500", "NASDAQ100", "DOWJONES"].includes(
+        (instrument || "").toUpperCase().replace(/\s+/g, "")
+      ) ||
+      (instrument || "").toUpperCase().includes("S&P") ||
+      (instrument || "").toUpperCase().includes("NASDAQ") ||
+      (instrument || "").toUpperCase().includes("DOW");
+    const curSymbol = isGlobal ? "$" : "₹";
+
     const supportingEvidence: string[] = [
       `${regime.label}: Price action confirms ${raw.direction.toLowerCase()} momentum`,
-      `Expected net P&L after ₹20 brokerage & STT: ₹${expectedNetPnl}`,
+      `Expected net P&L after ${isGlobal ? "$1.50 execution fee" : "₹20 brokerage & STT"}: ${curSymbol}${expectedNetPnl}`,
       `Risk:Reward of 1:${riskReward} with capped 20% max stop-loss`,
       `PCR at ${chain.pcr.toFixed(2)} supports strike open interest positioning`,
     ];
 
     const opposingRisks: string[] = [
-      `Theta decay costs ₹${Math.abs(scenarioSim.aggregateGreeks.netThetaPerDay)}/day on position carry`,
-      `Implied Volatility crush could shave ~₹${scenarioSim.aggregateGreeks.netVegaPerPoint * 3} if market settles`,
+      `Theta decay costs ${curSymbol}${Math.abs(scenarioSim.aggregateGreeks.netThetaPerDay)}/day on position carry`,
+      `Implied Volatility crush could shave ~${curSymbol}${scenarioSim.aggregateGreeks.netVegaPerPoint * 3} if market settles`,
       `Stop-loss is not guaranteed during gap openings or sudden macroeconomic headlines`,
     ];
 
     const invalidationTriggers: string[] = [
       `Spot moves beyond stop-loss level (underlying reverses > 0.8%)`,
-      `India VIX or ATM IV collapses > 3.0% suddenly`,
+      `${isGlobal ? "CBOE VIX" : "India VIX"} or ATM IV collapses > 3.0% suddenly`,
       `Change of regime to ${regime.regime === "TRENDING_BULLISH" ? "TRENDING_BEARISH" : "TRENDING_BULLISH"} on 15M timeframe`,
     ];
 

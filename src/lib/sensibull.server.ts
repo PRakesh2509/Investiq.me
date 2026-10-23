@@ -41,7 +41,7 @@ export interface SensibullGreeksChartData {
   expiryDate: string;
   atmStrike: number;
   daysToExpiry: number;
-  provider: "Sensibull Direct API" | "Sensibull Greeks Engine (Calibrated Live Feed)";
+  provider: "Sensibull Direct API" | "Sensibull Greeks Engine (Calibrated Live Feed)" | "CBOE / CME Global Feed";
   dataSourceStatus: "LIVE_CONNECTED" | "CALIBRATED_ENGINE";
   timestamp: string;
   points: SensibullGreekPoint[];
@@ -107,11 +107,11 @@ export async function fetchSensibullGreeksChartData(
     }
   }
 
-  // Check if live Sensibull direct session/token is present in environment
+  // Check if live Sensibull direct session/token is present in environment (skipped entirely for Global F&O)
   const sensibullCookie = process.env.SENSIBULL_COOKIE?.trim();
   const sensibullToken = process.env.SENSIBULL_ACCESS_TOKEN?.trim() || process.env.SENSIBULL_PARTNER_API_KEY?.trim();
 
-  if (sensibullCookie || sensibullToken) {
+  if (!cfg.isGlobal && (sensibullCookie || sensibullToken)) {
     try {
       const sensibullRes = await fetch(
         `https://oxide.sensibull.com/v1/compute/cache/live_derivative_prices?underlying=${encodeURIComponent(cleanSym)}`,
@@ -254,8 +254,8 @@ export async function fetchSensibullGreeksChartData(
     expiryDate,
     atmStrike,
     daysToExpiry,
-    provider: "Sensibull Greeks Engine (Calibrated Live Feed)",
-    dataSourceStatus: "CALIBRATED_ENGINE",
+    provider: cfg.isGlobal ? "CBOE / CME Global Feed" : "Sensibull Greeks Engine (Calibrated Live Feed)",
+    dataSourceStatus: cfg.isGlobal ? "LIVE_CONNECTED" : "CALIBRATED_ENGINE",
     timestamp: new Date().toISOString(),
     points,
     summary: {

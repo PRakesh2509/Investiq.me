@@ -15,13 +15,16 @@ import type { NormalizedOptionChain } from "@/lib/options-data-provider.server";
 interface OptionChainAiInsightsProps {
   chain: NormalizedOptionChain | null;
   underlyingPrice: number;
+  currency?: string;
 }
 
 export default function OptionChainAiInsights({
   chain,
   underlyingPrice,
+  currency = "₹",
 }: OptionChainAiInsightsProps) {
   const [showPcrDefinition, setShowPcrDefinition] = useState<boolean>(false);
+  const curSymbol = currency || "₹";
 
   if (!chain || !chain.strikes.length) {
     return (
@@ -126,7 +129,7 @@ export default function OptionChainAiInsights({
             PUT SUPPORT FLOOR
           </span>
           <span className="text-sm font-black text-foreground block">
-            ₹{putSupportStrike}
+            {curSymbol}{putSupportStrike.toLocaleString()}
           </span>
           <p className="text-muted-foreground text-[9px] leading-tight">
             Highest concentration of put writing ({maxPutOi.toLocaleString()} contracts).
@@ -139,7 +142,7 @@ export default function OptionChainAiInsights({
             CALL RESISTANCE CEILING
           </span>
           <span className="text-sm font-black text-foreground block">
-            ₹{callResistanceStrike}
+            {curSymbol}{callResistanceStrike.toLocaleString()}
           </span>
           <p className="text-muted-foreground text-[9px] leading-tight">
             Strongest call writing overhead ({maxCallOi.toLocaleString()} contracts).
@@ -151,7 +154,7 @@ export default function OptionChainAiInsights({
       <div className="rounded-xl border border-border bg-background/60 p-2.5 text-[10px] space-y-1.5">
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground font-medium">THEORETICAL MAX PAIN</span>
-          <span className="font-bold text-foreground">₹{maxPain}</span>
+          <span className="font-bold text-foreground">{curSymbol}{maxPain.toLocaleString()}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground font-medium">ATM IMPLIED VOLATILITY</span>

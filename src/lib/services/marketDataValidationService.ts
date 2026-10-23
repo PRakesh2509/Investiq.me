@@ -18,7 +18,7 @@ export interface DataValidationIssue {
   field: string;
   severity: "CRITICAL" | "WARNING" | "INFO";
   message: string;
-  observedValue?: unknown;
+  observedValue?: string | number | boolean | null | Record<string, string | number | boolean | null | undefined>;
 }
 
 export interface MarketDataValidationReport {
