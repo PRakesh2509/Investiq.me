@@ -2,19 +2,27 @@
  * Trade Candidate Service (`tradeCandidateService`)
  *
  * Implements Phase 4, 5 & 6: Explainable Trade Candidate Engine with Lifecycle Tracking.
- * - Multi-criteria ranking and 7-factor explainable setup scoring
+ * - Multi-criteria ranking and explainable setup scoring
  * - Independent hard risk gates via marketRiskService
  * - Full candidate lifecycle: WATCHING -> CONFIRMED -> TARGET_REACHED / STOP_CONDITION_REACHED / INVALIDATED / EXPIRED / NO_TRADE
  * - Deduplication and subsequent price tick tracking
  * - Explicit NO_TRADE and INSUFFICIENT_DATA decisions
+ *
+ * Integrity rules (no fabricated inputs):
+ * - A candidate is only produced from a real, non-simulated option chain with real bid/ask/LTP
+ *   for every leg, real candle-based technicals, and live Greeks. Anything missing yields an
+ *   explicit NO_TRADE decision (never a default price, delta or spread).
+ * - Closed sessions never produce fresh candidates.
+ * - Registry/history are bounded and expire; module memory is only a best-effort cache.
  */
 
 import type { FnoMarketSnapshot } from "./fnoMarketDataService.ts";
 import type { GreeksAnalysisReport } from "./greeksAnalysisService.ts";
 import type { CombinedFnoAnalysisReport } from "./fnoSignalAnalysisService.ts";
-import { marketRiskService, type RiskEvaluationReport } from "./marketRiskService.ts";
+import { marketRiskService } from "./marketRiskService.ts";
 import { tradingSessionService } from "./tradingSessionService.ts";
 import { WORKSTATION_INSTRUMENTS } from "../terminal-workstation.functions.ts";
+import type { NormalizedOptionLeg } from "../options-data-provider.server.ts";
 
 export type CandidateLifecycleStatus =
   | "WATCHING"
@@ -55,8 +63,8 @@ export interface ExplainableTradeCandidate {
   targetLevels: { t1: number; t2: number; t3: number };
   exitConditions: string[];
   riskRewardRatio: number;
-  maxEstimatedLoss: number; // ₹ max loss
-  totalDebitRequired: number; // ₹ margin/capital
+  maxEstimatedLoss: number; // max loss in account currency
+  totalDebitRequired: number; // margin/capital
   positionSizing: {
     recommendedLots: number;
     totalQuantity: number;
@@ -69,11 +77,11 @@ export interface ExplainableTradeCandidate {
     netThetaPerDay: number;
     netVegaPerPoint: number;
     atmIv: number;
-    ivSkew: number;
+    ivSkew: number | null;
   };
   technicalConfirmation: {
     trend: string;
-    rsi14: number;
+    rsi14: number | null;
     emaStatus: string;
     vwapStatus: string;
     summary: string;
@@ -87,6 +95,14 @@ export interface ExplainableTradeCandidate {
   reasonsSupporting: string[];
   reasonsAgainst: string[];
   dataQualityStatus: "LIVE" | "DELAYED" | "STALE" | "MARKET_CLOSED" | "INSUFFICIENT_DATA";
+  /** Which inputs backed this candidate (all REAL by construction; kept for audit). */
+  dataProvenance: {
+    optionChain: "LIVE_BROKER";
+    technicals: "REAL_CANDLES";
+    greeks: "REAL";
+    provider: string;
+    candleLastBarAt: string | null;
+  };
   setupScore: number; // 0 - 100 explainable score
   scoringMethodology: {
     technicalWeight: number;
@@ -138,11 +154,114 @@ export interface CandidateGenerationResult {
   timestamp: string;
 }
 
+const MAX_REGISTRY = 50;
+const MAX_HISTORY = 200;
+/** Intraday setups are not valid indefinitely. */
+const CANDIDATE_MAX_AGE_MS = 4 * 60 * 60 * 1000;
+
+function isGlobalInstrument(instrument: string): boolean {
+  return WORKSTATION_INSTRUMENTS[instrument]?.isGlobal === true;
+}
+
+/** A leg is tradeable only with a real LTP and a real, uncrossed, two-sided quote. */
+function hasRealQuote(leg: NormalizedOptionLeg | undefined): leg is NormalizedOptionLeg & {
+  bid: number;
+  ask: number;
+} {
+  return (
+    leg !== undefined &&
+    Number.isFinite(leg.ltp) &&
+    leg.ltp > 0 &&
+    typeof leg.bid === "number" &&
+    typeof leg.ask === "number" &&
+    leg.bid > 0 &&
+    leg.ask >= leg.bid
+  );
+}
+
+function spreadPctOf(leg: { bid: number; ask: number }): number {
+  const mid = (leg.bid + leg.ask) / 2;
+  return mid > 0 ? ((leg.ask - leg.bid) / mid) * 100 : Number.POSITIVE_INFINITY;
+}
+
+function toCandidateLeg(
+  leg: NormalizedOptionLeg,
+  type: "CE" | "PE",
+  action: "BUY" | "SELL",
+): TradeCandidateLeg {
+  return {
+    strike: leg.strikePrice,
+    type,
+    action,
+    price: leg.ltp,
+    delta: leg.delta,
+    gamma: leg.gamma,
+    theta: leg.theta,
+    vega: leg.vega,
+    iv: leg.impliedVolatility,
+  };
+}
+
 export class TradeCandidateService {
   // In-memory candidate registry (keyed by candidate ID)
   private registry: Map<string, ExplainableTradeCandidate> = new Map();
   // Historical closed candidate log
   private history: ExplainableTradeCandidate[] = [];
+
+  /** Closed/expired candidates, most recent last. */
+  public getHistory(limit = 50, instrument?: string): ExplainableTradeCandidate[] {
+    const list = instrument
+      ? this.history.filter((c) => c.instrument === instrument)
+      : this.history;
+    return list.slice(-Math.max(0, limit));
+  }
+
+  public getActiveCandidates(instrument?: string): ExplainableTradeCandidate[] {
+    return Array.from(this.registry.values()).filter(
+      (c) =>
+        (c.lifecycleStatus === "WATCHING" || c.lifecycleStatus === "CONFIRMED") &&
+        (!instrument || c.instrument === instrument),
+    );
+  }
+
+  /** Test helper: drop all in-memory lifecycle state. */
+  public reset(): void {
+    this.registry.clear();
+    this.history = [];
+  }
+
+  private archive(candidate: ExplainableTradeCandidate): void {
+    this.history.push({ ...candidate });
+    if (this.history.length > MAX_HISTORY) {
+      this.history.splice(0, this.history.length - MAX_HISTORY);
+    }
+  }
+
+  private expireOldCandidates(nowMs: number): void {
+    for (const [id, c] of this.registry) {
+      const active = c.lifecycleStatus === "WATCHING" || c.lifecycleStatus === "CONFIRMED";
+      const age = nowMs - new Date(c.timestamp).getTime();
+      if (active && age > CANDIDATE_MAX_AGE_MS) {
+        c.lifecycleStatus = "EXPIRED";
+        c.lifecycleHistory.push({
+          status: "EXPIRED",
+          timestamp: new Date(nowMs).toISOString(),
+          priceAtChange: c.currentReferencePrice,
+          note: "Setup exceeded its intraday validity window.",
+        });
+        this.archive(c);
+        this.registry.delete(id);
+      } else if (!active) {
+        // Terminal states are kept in history; drop them from the live registry.
+        this.registry.delete(id);
+      }
+    }
+    while (this.registry.size > MAX_REGISTRY) {
+      const oldest = this.registry.keys().next().value;
+      if (oldest === undefined) break;
+      this.registry.delete(oldest);
+    }
+  }
 
   /**
    * Evaluate market conditions and generate or update active explainable candidates
@@ -152,65 +271,111 @@ export class TradeCandidateService {
     greeksReport: GreeksAnalysisReport,
     combinedAnalysis: CombinedFnoAnalysisReport,
     accountCapital: number = 30000,
-    maxRiskPerTradePct: number = 2.0
+    maxRiskPerTradePct: number = 2.0,
   ): CandidateGenerationResult {
-    const session = tradingSessionService.getSessionInfo();
     const { instrument, underlyingPrice, expiryDate, rows, validation } = marketSnapshot;
-    const cfg = WORKSTATION_INSTRUMENTS[instrument] ?? WORKSTATION_INSTRUMENTS["NIFTY 50"];
-    const step = cfg.step || 50;
+    const cfg = WORKSTATION_INSTRUMENTS[instrument];
+    if (!cfg) {
+      throw new Error(`Unknown instrument: ${instrument}`);
+    }
+    const session = tradingSessionService.getSessionInfo(undefined, instrument);
+    const step = cfg.step;
     const lotSize = cfg.lotSize;
+    this.expireOldCandidates(Date.now());
+
+    const noTradeResult = (noTrade: NoTradeDecisionReport): CandidateGenerationResult => ({
+      instrument,
+      underlyingPrice,
+      marketSessionText: session.sessionText,
+      activeCandidates: [],
+      historicalCandidates: this.history.slice(-10),
+      noTradeDecision: noTrade,
+      timestamp: new Date().toISOString(),
+    });
 
     // 1. Mandatory Data Quality Check
-    if (!validation.isValid || validation.freshnessStatus === "STALE" || validation.freshnessStatus === "INSUFFICIENT_DATA") {
-      const noTrade: NoTradeDecisionReport = {
+    if (
+      !validation.isValid ||
+      validation.freshnessStatus === "STALE" ||
+      validation.freshnessStatus === "INSUFFICIENT_DATA"
+    ) {
+      return noTradeResult({
         isNoTrade: true,
         reasonCode: "DATA_STALE_OR_INSUFFICIENT",
         headline: "NO TRADE: Market Data Quality Invalidation",
         summary: `Current market data marked as ${validation.freshnessStatus}. Trading gates prevent candidate generation on stale or unverified feeds.`,
         evidence: validation.issues.map((i) => `${i.field}: ${i.message}`),
-        capitalPreservationMessage: "Capital is preserved 100% in cash. Waiting for verified live broker quotes.",
+        capitalPreservationMessage:
+          "Capital is preserved 100% in cash. Waiting for verified live broker quotes.",
         reevaluationTriggers: ["Wait for fresh live tick updates", "Check broker API credentials"],
         timestamp: new Date().toISOString(),
-      };
-
-      return {
-        instrument,
-        underlyingPrice,
-        marketSessionText: session.sessionText,
-        activeCandidates: [],
-        historicalCandidates: this.history.slice(-10),
-        noTradeDecision: noTrade,
-        timestamp: new Date().toISOString(),
-      };
+      });
     }
 
     // 2. Market Session Check (Outside regular market hours)
-    if (!session.canGenerateFreshCandidates && !session.isMarketOpen) {
-      const noTrade: NoTradeDecisionReport = {
+    if (!session.canGenerateFreshCandidates || !session.isMarketOpen) {
+      return noTradeResult({
         isNoTrade: true,
         reasonCode: "MARKET_CLOSED",
         headline: "NO TRADE: Market Session Closed",
-        summary: `${session.sessionText}. Fresh intraday candidates are frozen until regular market open at 09:15 AM IST.`,
+        summary: `${session.sessionText}. Fresh intraday candidates are frozen until the next regular session.`,
         evidence: [`Current IST Time: ${session.istTimeString}`, `Phase: ${session.phase}`],
         capitalPreservationMessage: "No capital at risk outside regular market session.",
-        reevaluationTriggers: ["Market reopens next trading day at 09:15 AM IST"],
+        reevaluationTriggers: [`Next session: ${session.nextSessionOpensAt}`],
         timestamp: new Date().toISOString(),
-      };
-
-      return {
-        instrument,
-        underlyingPrice,
-        marketSessionText: session.sessionText,
-        activeCandidates: [],
-        historicalCandidates: this.history.slice(-10),
-        noTradeDecision: noTrade,
-        timestamp: new Date().toISOString(),
-      };
+      });
     }
 
-    // 3. Confluence & Edge Threshold Check
-    if (combinedAnalysis.marketBias === "NEUTRAL_RANGEBOUND" || (combinedAnalysis.confluenceScore > 40 && combinedAnalysis.confluenceScore < 60)) {
-      const noTrade: NoTradeDecisionReport = {
+    // 3. Provenance Check: every input must be real. No simulated / missing inputs.
+    const provenanceIssues: string[] = [];
+    if (marketSnapshot.isSimulated) {
+      provenanceIssues.push(
+        `Option chain is a simulated baseline (${marketSnapshot.provider}); no live broker feed.`,
+      );
+    }
+    if (greeksReport.isSimulated) {
+      provenanceIssues.push("Greeks are computed locally, not from a live feed.");
+    }
+    if (greeksReport.freshnessStatus === "STALE") {
+      provenanceIssues.push("Greeks surface is stale (cached provider data).");
+    }
+    if (validation.freshnessStatus === "DELAYED") {
+      provenanceIssues.push(
+        "Option chain is delayed (not real-time); entry triggers need live quotes.",
+      );
+    }
+    if (!combinedAnalysis.technical.available) {
+      provenanceIssues.push(
+        `Technical indicators unavailable: ${combinedAnalysis.technical.unavailableReason ?? "no real candles"}`,
+      );
+    }
+    if (rows.length === 0) {
+      provenanceIssues.push("Option chain has no strikes.");
+    }
+    if (provenanceIssues.length > 0) {
+      return noTradeResult({
+        isNoTrade: true,
+        reasonCode: "DATA_STALE_OR_INSUFFICIENT",
+        headline: "NO TRADE: Inputs Unverified or Unavailable",
+        summary:
+          "Trade candidates require a live broker option chain, real price candles and live Greeks. Missing or simulated inputs are never substituted.",
+        evidence: provenanceIssues,
+        capitalPreservationMessage:
+          "Capital is preserved. No setup is produced from simulated or missing data.",
+        reevaluationTriggers: [
+          "Configure/restore a live broker option-chain feed",
+          "Wait for real intraday candles to become available",
+        ],
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // 4. Confluence & Edge Threshold Check
+    if (
+      combinedAnalysis.marketBias === "NEUTRAL_RANGEBOUND" ||
+      (combinedAnalysis.confluenceScore > 40 && combinedAnalysis.confluenceScore < 60)
+    ) {
+      return noTradeResult({
         isNoTrade: true,
         reasonCode: "RANGEBOUND_CHOP",
         headline: "NO TRADE: Insufficient Directional Confluence",
@@ -226,55 +391,61 @@ export class TradeCandidateService {
           `Breakdown below support ${combinedAnalysis.positioning.highestPutOiStrike}`,
         ],
         timestamp: new Date().toISOString(),
-      };
-
-      return {
-        instrument,
-        underlyingPrice,
-        marketSessionText: session.sessionText,
-        activeCandidates: [],
-        historicalCandidates: this.history.slice(-10),
-        noTradeDecision: noTrade,
-        timestamp: new Date().toISOString(),
-      };
+      });
     }
 
-    // 4. Generate Candidate Setups based on bias
-    const isGlobal =
-      ["S&P 500", "NASDAQ 100", "DOW JONES", "SP500", "NASDAQ100", "DOWJONES"].includes(
-        (instrument || "").toUpperCase().replace(/\s+/g, "")
-      ) ||
-      (instrument || "").toUpperCase().includes("S&P") ||
-      (instrument || "").toUpperCase().includes("NASDAQ") ||
-      (instrument || "").toUpperCase().includes("DOW");
-    const curSymbol = isGlobal ? "$" : "₹";
-
+    // 5. Build candidate from REAL quotes only
+    const curSymbol = isGlobalInstrument(instrument) ? "$" : "₹";
     const isBullish = combinedAnalysis.marketBias.includes("BULLISH");
-    const atmStrike = Math.round(underlyingPrice / step) * step;
-    const selectedStrike = isBullish ? atmStrike : atmStrike;
-
-    const row = rows.find((r) => r.strike === selectedStrike) ?? rows[Math.floor(rows.length / 2)];
+    const selectedStrike = Math.round(underlyingPrice / step) * step;
+    const row = rows.find((r) => r.strike === selectedStrike);
     const leg = isBullish ? row?.call : row?.put;
-    const defaultLtp = isGlobal ? +(underlyingPrice * 0.006).toFixed(2) : (isBullish ? 120.0 : 115.0);
-    const ltp = leg?.ltp ?? defaultLtp;
-    const bid = leg?.bid ?? ltp * 0.99;
-    const ask = leg?.ask ?? ltp * 1.01;
-    const mid = (bid + ask) / 2;
-    const spreadPct = mid > 0 ? ((ask - bid) / mid) * 100 : 0.5;
 
-    // Determine strategy type: if theta burn is elevated or IV high, favor vertical spread
-    const favorSpread = greeksReport.thetaAnalysis.thetaBurnSeverity === "AGGRESSIVE_DECAY" || greeksReport.vegaAnalysis.ivRegime === "VOLATILITY_ELEVATED";
-    const strategyType = isBullish
-      ? favorSpread ? "BULL_CALL_SPREAD" : "LONG_CALL"
-      : favorSpread ? "BEAR_PUT_SPREAD" : "LONG_PUT";
+    if (!hasRealQuote(leg)) {
+      return noTradeResult({
+        isNoTrade: true,
+        reasonCode: "DATA_STALE_OR_INSUFFICIENT",
+        headline: "NO TRADE: No Real Quote for Target Strike",
+        summary: `The ${selectedStrike} ${isBullish ? "CE" : "PE"} has no valid two-sided market (LTP/bid/ask). Prices are never assumed.`,
+        evidence: [
+          row
+            ? `LTP=${leg?.ltp ?? "n/a"}, bid=${leg?.bid ?? "n/a"}, ask=${leg?.ask ?? "n/a"}`
+            : `Strike ${selectedStrike} not present in the chain`,
+        ],
+        capitalPreservationMessage: "No trade without an executable quote.",
+        reevaluationTriggers: ["Wait for a two-sided quote at the target strike"],
+        timestamp: new Date().toISOString(),
+      });
+    }
 
+    const ltp = leg.ltp;
+    let legSpreadPct = spreadPctOf(leg);
+
+    // Strategy: favour a vertical spread when theta burn / IV is elevated, but only when the
+    // short leg also has a real two-sided quote; otherwise stay with the outright long.
+    const favorSpread =
+      greeksReport.thetaAnalysis.thetaBurnSeverity === "AGGRESSIVE_DECAY" ||
+      greeksReport.vegaAnalysis.ivRegime === "VOLATILITY_ELEVATED";
     const otmStrike = isBullish ? selectedStrike + step : selectedStrike - step;
     const otmRow = rows.find((r) => r.strike === otmStrike);
-    const otmLtp = isBullish ? otmRow?.call?.ltp ?? ltp * 0.45 : otmRow?.put?.ltp ?? ltp * 0.45;
+    const otmLeg = isBullish ? otmRow?.call : otmRow?.put;
+    const useSpread = favorSpread && hasRealQuote(otmLeg) && otmLeg.ltp < ltp;
+    const strategyType: ExplainableTradeCandidate["strategyType"] = isBullish
+      ? useSpread
+        ? "BULL_CALL_SPREAD"
+        : "LONG_CALL"
+      : useSpread
+        ? "BEAR_PUT_SPREAD"
+        : "LONG_PUT";
 
-    const netEntryPremium = strategyType.includes("SPREAD") ? +(ltp - otmLtp).toFixed(2) : ltp;
+    if (useSpread && hasRealQuote(otmLeg)) {
+      legSpreadPct = Math.max(legSpreadPct, spreadPctOf(otmLeg));
+    }
+
+    const otmLtp = useSpread && otmLeg ? otmLeg.ltp : 0;
+    const netEntryPremium = useSpread ? +(ltp - otmLtp).toFixed(2) : ltp;
     const stopLossPremium = +(netEntryPremium * 0.75).toFixed(2); // 25% premium stop
-    const targetPremium = +(netEntryPremium * 1.60).toFixed(2); // 60% profit target (1:2.4 R:R)
+    const targetPremium = +(netEntryPremium * 1.6).toFixed(2); // 60% profit target
 
     // Position sizing: allocate within risk budget
     const maxBudget = Math.round(accountCapital * (maxRiskPerTradePct / 100));
@@ -282,7 +453,7 @@ export class TradeCandidateService {
     const riskPerLot = perShareRisk * lotSize;
     const recommendedLots = Math.max(1, Math.min(5, Math.floor(maxBudget / riskPerLot)));
 
-    // 5. Evaluate Hard Risk Gates
+    // 6. Evaluate Hard Risk Gates (spread is the REAL observed bid/ask spread)
     const riskReport = marketRiskService.evaluateRisk({
       instrument,
       strategy: strategyType,
@@ -291,65 +462,39 @@ export class TradeCandidateService {
       stopLossPremium,
       targetPremium,
       lots: recommendedLots,
-      bidAskSpreadPct: spreadPct,
+      bidAskSpreadPct: legSpreadPct,
       daysToExpiry: marketSnapshot.daysToExpiry,
       accountCapital,
       maxRiskPerTradePct,
     });
 
     if (!riskReport.passed) {
-      const noTrade: NoTradeDecisionReport = {
+      return noTradeResult({
         isNoTrade: true,
         reasonCode: "RISK_BUDGET_EXCEEDED",
         headline: "NO TRADE: Hard Risk Gate Violation",
-        summary: `Setup setup identified but rejected by independent risk management: ${riskReport.rejectionReasons.join("; ")}`,
-        evidence: riskReport.riskChecks.filter((c) => !c.passed).map((c) => `${c.name}: ${c.observedValue} (Rule: ${c.rule})`),
-        capitalPreservationMessage: "Risk gates strictly forbid trade execution regardless of AI score.",
-        reevaluationTriggers: ["Wait for bid-ask spread to tighten", "Increase account risk budget or choose next cycle expiry"],
+        summary: `Setup identified but rejected by independent risk management: ${riskReport.rejectionReasons.join("; ")}`,
+        evidence: riskReport.riskChecks
+          .filter((c) => !c.passed)
+          .map((c) => `${c.name}: ${c.observedValue} (Rule: ${c.rule})`),
+        capitalPreservationMessage:
+          "Risk gates strictly forbid trade execution regardless of AI score.",
+        reevaluationTriggers: [
+          "Wait for bid-ask spread to tighten",
+          "Increase account risk budget or choose next cycle expiry",
+        ],
         timestamp: new Date().toISOString(),
-      };
-
-      return {
-        instrument,
-        underlyingPrice,
-        marketSessionText: session.sessionText,
-        activeCandidates: [],
-        historicalCandidates: this.history.slice(-10),
-        noTradeDecision: noTrade,
-        timestamp: new Date().toISOString(),
-      };
+      });
     }
 
-    // 6. Assemble Full Explainable Candidate
+    // 7. Assemble Full Explainable Candidate
     const candidateId = `${instrument.replace(/[^A-Z0-9]/g, "")}_${expiryDate}_${strategyType}_${selectedStrike}`;
     const cleanSym = instrument.replace(/[^A-Z0-9]/g, "");
+    const optionType = isBullish ? "CE" : "PE";
 
-    const legs: TradeCandidateLeg[] = [
-      {
-        strike: selectedStrike,
-        type: isBullish ? "CE" : "PE",
-        action: "BUY",
-        price: ltp,
-        delta: isBullish ? leg?.delta ?? 0.52 : leg?.delta ?? -0.48,
-        gamma: leg?.gamma ?? 0.002,
-        theta: leg?.theta ?? -14.2,
-        vega: leg?.vega ?? 12.5,
-        iv: leg?.impliedVolatility ?? 14.5,
-      },
-    ];
-
-    if (strategyType.includes("SPREAD")) {
-      legs.push({
-        strike: otmStrike,
-        type: isBullish ? "CE" : "PE",
-        action: "SELL",
-        price: otmLtp,
-        delta: isBullish ? 0.35 : -0.35,
-        gamma: 0.0015,
-        theta: 10.5,
-        vega: -8.5,
-        iv: 14.0,
-      });
+    const legs: TradeCandidateLeg[] = [toCandidateLeg(leg, optionType, "BUY")];
+    if (useSpread && otmLeg) {
+      legs.push(toCandidateLeg(otmLeg, optionType, "SELL"));
     }
 
     const reasonsSupporting = [
@@ -364,7 +509,31 @@ export class TradeCandidateService {
       `Time decay burn exposure: ${curSymbol}${greeksReport.thetaAnalysis.atmDailyDecayPerShare} per share per day`,
     ];
 
-    // Check if candidate already exists in registry
+    const w = { technical: 0.3, greeks: 0.25, positioning: 0.25, risk: 0.2 };
+    const wantTrend = isBullish ? "BULLISH" : "BEARISH";
+    const techScore =
+      combinedAnalysis.technical.trend === wantTrend
+        ? 85
+        : combinedAnalysis.technical.trend === "NEUTRAL"
+          ? 50
+          : 25;
+    const pcr = combinedAnalysis.positioning.pcr;
+    const posScore = isBullish ? (pcr >= 1.0 ? 80 : 45) : pcr <= 0.9 ? 80 : 45;
+    const suit = isBullish
+      ? greeksReport.strategySuitability.longCallSuitability
+      : greeksReport.strategySuitability.longPutSuitability;
+    const greeksScore = useSpread
+      ? greeksReport.strategySuitability.spreadSuitability === "SUBOPTIMAL"
+        ? 40
+        : 80
+      : suit === "FAVORABLE"
+        ? 80
+        : suit === "NEUTRAL"
+          ? 55
+          : 30;
+    const rrScore = riskReport.netRiskRewardRatio >= 1.5 ? 85 : 65;
+    const contribution = (score: number, weight: number) => +(score * weight).toFixed(1);
+
     let candidate = this.registry.get(candidateId);
 
     if (!candidate) {
@@ -374,7 +543,7 @@ export class TradeCandidateService {
         instrument,
         expiry: expiryDate,
         strategyType,
-        callPut: isBullish ? "CE" : "PE",
+        callPut: optionType,
         strike: selectedStrike,
         legs,
         entryTrigger: `${cleanSym} sustains ${isBullish ? "above" : "below"} ${curSymbol}${underlyingPrice.toFixed(1)} on 5M closing`,
@@ -387,9 +556,9 @@ export class TradeCandidateService {
         stopLoss: stopLossPremium,
         invalidationCondition: `${cleanSym} spot crosses ${isBullish ? "below" : "above"} ${curSymbol}${(isBullish ? underlyingPrice * 0.994 : underlyingPrice * 1.006).toFixed(1)} or option hits ${curSymbol}${stopLossPremium}`,
         targetLevels: {
-          t1: +(netEntryPremium * 1.30).toFixed(2),
-          t2: +(netEntryPremium * 1.60).toFixed(2),
-          t3: +(netEntryPremium * 2.00).toFixed(2),
+          t1: +(netEntryPremium * 1.3).toFixed(2),
+          t2: +(netEntryPremium * 1.6).toFixed(2),
+          t3: +(netEntryPremium * 2.0).toFixed(2),
         },
         exitConditions: [
           `Target T1 reached: book 50% lots and trail stop-loss to cost`,
@@ -408,9 +577,15 @@ export class TradeCandidateService {
         greeksAndIvContext: {
           netDelta: legs.reduce((acc, l) => acc + (l.action === "BUY" ? l.delta : -l.delta), 0),
           netGamma: legs.reduce((acc, l) => acc + (l.action === "BUY" ? l.gamma : -l.gamma), 0),
-          netThetaPerDay: legs.reduce((acc, l) => acc + (l.action === "BUY" ? l.theta : -l.theta), 0),
-          netVegaPerPoint: legs.reduce((acc, l) => acc + (l.action === "BUY" ? l.vega : -l.vega), 0),
-          atmIv: greeksReport.summary?.atmIv ?? 14.5,
+          netThetaPerDay: legs.reduce(
+            (acc, l) => acc + (l.action === "BUY" ? l.theta : -l.theta),
+            0,
+          ),
+          netVegaPerPoint: legs.reduce(
+            (acc, l) => acc + (l.action === "BUY" ? l.vega : -l.vega),
+            0,
+          ),
+          atmIv: greeksReport.summary.atmIv,
           ivSkew: greeksReport.vegaAnalysis.ivSmileSkew,
         },
         technicalConfirmation: {
@@ -418,7 +593,7 @@ export class TradeCandidateService {
           rsi14: combinedAnalysis.technical.rsi14,
           emaStatus: combinedAnalysis.technical.emaCross,
           vwapStatus: combinedAnalysis.technical.priceVsVwap,
-          summary: `Price is ${combinedAnalysis.technical.priceVsVwap.replace("_", " ")} with ${combinedAnalysis.technical.emaCross.replace("_", " ")}`,
+          summary: `Price vs VWAP: ${combinedAnalysis.technical.priceVsVwap.replace("_", " ")}; EMA 9/21: ${combinedAnalysis.technical.emaCross.replace("_", " ")}`,
         },
         optionsPositioningConfirmation: {
           pcr: combinedAnalysis.positioning.pcr,
@@ -429,17 +604,40 @@ export class TradeCandidateService {
         reasonsSupporting,
         reasonsAgainst,
         dataQualityStatus: validation.freshnessStatus,
+        dataProvenance: {
+          optionChain: "LIVE_BROKER",
+          technicals: "REAL_CANDLES",
+          greeks: "REAL",
+          provider: marketSnapshot.provider,
+          candleLastBarAt: marketSnapshot.barsLastAt,
+        },
         setupScore: combinedAnalysis.confluenceScore,
         scoringMethodology: {
-          technicalWeight: 0.30,
-          greeksWeight: 0.25,
-          positioningWeight: 0.25,
-          riskAdjustedWeight: 0.20,
+          technicalWeight: w.technical,
+          greeksWeight: w.greeks,
+          positioningWeight: w.positioning,
+          riskAdjustedWeight: w.risk,
           scoreFactors: [
-            { name: "Technical Confluence (VWAP + EMA + Trend)", score: combinedAnalysis.technical.trend === "BULLISH" ? 85 : 45, contribution: 25.5 },
-            { name: "Options Positioning & PCR Support", score: combinedAnalysis.positioning.pcr >= 1.0 ? 80 : 50, contribution: 20.0 },
-            { name: "Greeks Suitability & IV Regime", score: 80, contribution: 20.0 },
-            { name: "Risk/Reward & Capital Preservation", score: riskReport.netRiskRewardRatio >= 1.5 ? 85 : 65, contribution: 17.0 },
+            {
+              name: "Technical Confluence (VWAP + EMA + Trend)",
+              score: techScore,
+              contribution: contribution(techScore, w.technical),
+            },
+            {
+              name: "Options Positioning & PCR Support",
+              score: posScore,
+              contribution: contribution(posScore, w.positioning),
+            },
+            {
+              name: "Greeks Suitability & IV Regime",
+              score: greeksScore,
+              contribution: contribution(greeksScore, w.greeks),
+            },
+            {
+              name: "Risk/Reward & Capital Preservation",
+              score: rrScore,
+              contribution: contribution(rrScore, w.risk),
+            },
           ],
         },
         invalidationTriggers: [
@@ -450,16 +648,10 @@ export class TradeCandidateService {
         lifecycleStatus: "CONFIRMED",
         lifecycleHistory: [
           {
-            status: "WATCHING",
-            timestamp: new Date(Date.now() - 60000).toISOString(),
-            priceAtChange: netEntryPremium,
-            note: "Setup identified and entered monitoring queue",
-          },
-          {
             status: "CONFIRMED",
             timestamp: new Date().toISOString(),
             priceAtChange: netEntryPremium,
-            note: "Entry trigger and risk checks passed; candidate confirmed",
+            note: "Entry trigger and risk checks passed on verified live inputs; candidate confirmed",
           },
         ],
         subsequentPriceUpdates: [
@@ -472,20 +664,24 @@ export class TradeCandidateService {
       };
 
       this.registry.set(candidateId, candidate);
+      this.expireOldCandidates(Date.now());
     } else {
       // Update existing candidate on new tick (Phase 6: Lifecycle Monitoring)
       candidate.currentReferencePrice = netEntryPremium;
       candidate.setupScore = combinedAnalysis.confluenceScore;
       candidate.dataQualityStatus = validation.freshnessStatus;
 
-      // Track subsequent tick
-      const priceDelta = (netEntryPremium - candidate.entryZone.min);
+      // Track subsequent tick (bounded)
+      const priceDelta = netEntryPremium - candidate.entryZone.min;
       const unrealizedPnl = Math.round(priceDelta * candidate.positionSizing.totalQuantity);
       candidate.subsequentPriceUpdates.push({
         timestamp: new Date().toISOString(),
         spotPrice: underlyingPrice,
         unrealizedPnlEstimate: unrealizedPnl,
       });
+      if (candidate.subsequentPriceUpdates.length > 120) {
+        candidate.subsequentPriceUpdates.splice(0, candidate.subsequentPriceUpdates.length - 120);
+      }
 
       // Check lifecycle transitions
       if (candidate.lifecycleStatus === "CONFIRMED") {
@@ -497,7 +693,7 @@ export class TradeCandidateService {
             priceAtChange: netEntryPremium,
             note: `Profit Target T2 (${curSymbol}${candidate.targetLevels.t2}) reached successfully.`,
           });
-          this.history.push({ ...candidate });
+          this.archive(candidate);
         } else if (netEntryPremium <= candidate.stopLoss) {
           candidate.lifecycleStatus = "STOP_CONDITION_REACHED";
           candidate.lifecycleHistory.push({
@@ -506,20 +702,16 @@ export class TradeCandidateService {
             priceAtChange: netEntryPremium,
             note: `Stop-loss condition reached at ${curSymbol}${netEntryPremium}. Setup invalidated.`,
           });
-          this.history.push({ ...candidate });
+          this.archive(candidate);
         }
       }
     }
-
-    const activeList = Array.from(this.registry.values()).filter((c) =>
-      c.lifecycleStatus === "WATCHING" || c.lifecycleStatus === "CONFIRMED"
-    );
 
     return {
       instrument,
       underlyingPrice,
       marketSessionText: session.sessionText,
-      activeCandidates: activeList,
+      activeCandidates: this.getActiveCandidates(instrument),
       historicalCandidates: this.history.slice(-10),
       timestamp: new Date().toISOString(),
     };

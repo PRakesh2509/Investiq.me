@@ -5,7 +5,6 @@ import {
   applyRedFlagOverride,
   guardAgainstDataStarvedAvoid,
   computeWeightedTotal,
-  
   type IpoResearch,
   type ScoreLine,
   type Verdict,
@@ -18,7 +17,6 @@ import {
   type GmpPoint,
   deriveFinancialTrends,
   type QuantInputs,
-
   type QuantResult,
   type SubscriptionMultiples,
 } from "./ipo-quant";
@@ -30,7 +28,6 @@ const num = (x: any): number | null => {
   const n = Number(s.replace(/[₹,%x\s]/gi, ""));
   return Number.isFinite(n) ? n : null;
 };
-
 
 function extractQuantInputs(raw: any, ipo: IPO, live: SubscriptionMultiples | null): QuantInputs {
   const q = raw?.quant ?? {};
@@ -47,7 +44,10 @@ function extractQuantInputs(raw: any, ipo: IPO, live: SubscriptionMultiples | nu
     verified: false,
   };
   const subscription =
-    live && [live.qib, live.nii, live.retail, live.overall].some((v) => Number.isFinite(v as number) && (v as number) > 0)
+    live &&
+    [live.qib, live.nii, live.retail, live.overall].some(
+      (v) => Number.isFinite(v as number) && (v as number) > 0,
+    )
       ? live
       : aiSub;
   const financials: FinancialRow[] = (Array.isArray(q.financials) ? q.financials : [])
@@ -62,14 +62,16 @@ function extractQuantInputs(raw: any, ipo: IPO, live: SubscriptionMultiples | nu
     .filter((r: FinancialRow) => r.fy)
     .slice(-5);
   const issueSizeCr =
-    num(q?.issueSizeCr) ?? parseIssueSizeCr(String(raw?.issueSize || ipo.issueSize || ""), priceBandUpper);
+    num(q?.issueSizeCr) ??
+    parseIssueSizeCr(String(raw?.issueSize || ipo.issueSize || ""), priceBandUpper);
   const trend = deriveFinancialTrends(financials);
   return {
     gmpHistory,
     gmpVerified: false,
     subscription,
     financials,
-    financialsVerified: Boolean(q?.financialsVerified) || financials.filter((r) => !r.estimate).length >= 3,
+    financialsVerified:
+      Boolean(q?.financialsVerified) || financials.filter((r) => !r.estimate).length >= 3,
     revenueGrowthPct: num(q?.revenueGrowthPct) ?? trend.revenueGrowthPct,
     patMarginPct: num(q?.patMarginPct) ?? trend.patMarginPct,
     debtToEquity: num(q?.debtToEquity) ?? trend.debtToEquity,
@@ -82,7 +84,6 @@ function extractQuantInputs(raw: any, ipo: IPO, live: SubscriptionMultiples | nu
     priceBandUpper,
   };
 }
-
 
 function verdictFromQuant(quant: QuantResult): Verdict {
   if (quant.composite >= 82) return "STRONG APPLY";
@@ -100,21 +101,35 @@ async function fetchLiveSubscription(company: string): Promise<SubscriptionMulti
       headers: { "User-Agent": ua, Accept: "text/html" },
     });
     const cookie =
-      prime.headers.getSetCookie?.()?.map((c) => c.split(";")[0]).join("; ") ??
-      prime.headers.get("set-cookie")?.split(",").map((c) => c.split(";")[0]).join("; ") ??
+      prime.headers
+        .getSetCookie?.()
+        ?.map((c) => c.split(";")[0])
+        .join("; ") ??
+      prime.headers
+        .get("set-cookie")
+        ?.split(",")
+        .map((c) => c.split(";")[0])
+        .join("; ") ??
       "";
     const res = await fetch("https://www.nseindia.com/api/ipo-current-issue", {
       headers: { "User-Agent": ua, Accept: "application/json", Cookie: cookie },
     });
     if (!res.ok) return null;
     const rows: any[] = await res.json();
-    const norm = (s: string) => s.toLowerCase().replace(/\b(ltd|limited|private|pvt)\b|[^a-z0-9]/g, "");
+    const norm = (s: string) =>
+      s.toLowerCase().replace(/\b(ltd|limited|private|pvt)\b|[^a-z0-9]/g, "");
     const target = norm(company);
     const mine = rows.filter((r) => norm(String(r?.companyName ?? r?.symbol ?? "")) === target);
     if (mine.length === 0) return null;
     const pick = (label: RegExp) => {
       const row = mine.find((r) => label.test(String(r?.category ?? "")));
-      return row ? num(row?.noOfshareBid && row?.noOfshareOffered ? Number(row.noOfshareBid) / Number(row.noOfshareOffered) : row?.subscriptionTimes) : null;
+      return row
+        ? num(
+            row?.noOfshareBid && row?.noOfshareOffered
+              ? Number(row.noOfshareBid) / Number(row.noOfshareOffered)
+              : row?.subscriptionTimes,
+          )
+        : null;
     };
     const out: SubscriptionMultiples = {
       qib: pick(/qib|institutional/i),
@@ -123,12 +138,15 @@ async function fetchLiveSubscription(company: string): Promise<SubscriptionMulti
       overall: pick(/total|overall/i),
       verified: true,
     };
-    return [out.qib, out.nii, out.retail, out.overall].some((v) => Number.isFinite(v as number) && (v as number) > 0) ? out : null;
+    return [out.qib, out.nii, out.retail, out.overall].some(
+      (v) => Number.isFinite(v as number) && (v as number) > 0,
+    )
+      ? out
+      : null;
   } catch {
     return null;
   }
 }
-
 
 const SYSTEM_PROMPT = `You are a senior IPO research analyst with 15+ years of experience, equivalent to a SEBI-registered research analyst (RA) at a top-tier institutional desk (Kotak Institutional Equities / Motilal Oswal / ICICI Securities research). You have reviewed 500+ DRHPs/RHPs. You are skeptical by default, evidence-driven, and you never let hype (GMP, social buzz, "everyone is applying") override fundamentals.
 
@@ -180,9 +198,11 @@ ADDITIONALLY return a "quant" object with the raw NUMERIC inputs for a separate 
 "quant":{"gmpHistory":[{"date":"YYYY-MM-DD","premium":0}],"subscription":{"qib":null,"nii":null,"retail":null,"overall":null},"financials":[{"fy":"FY22","revenueCr":null,"patCr":null,"debtToEquity":null,"promoterHoldingPct":null,"estimate":true}],"financialsVerified":false,"revenueGrowthPct":null,"patMarginPct":null,"debtToEquity":null,"roePct":null,"peRatio":null,"peerPeRatio":null,"valuationVerified":false,"issueSizeCr":null}
 Also return "aboutBusiness" (2-3 sentences on what the company actually does), "moatOneLiner" (max 12 words) and "moatBullets" (exactly 3 bullets on why the company is/isn't profitable and its durable advantages). Give up to 5 financial rows, oldest first. Do NOT decide the final recommendation label yourself — the app computes it from these numbers.`;
 
-
-
-function fallbackResearch(ipo: IPO, reason: string, live: SubscriptionMultiples | null = null): IpoResearch {
+function fallbackResearch(
+  ipo: IPO,
+  reason: string,
+  live: SubscriptionMultiples | null = null,
+): IpoResearch {
   const scores: ScoreLine[] = CATEGORIES.map((c) => ({
     key: c.key,
     label: c.label,
@@ -210,7 +230,10 @@ function fallbackResearch(ipo: IPO, reason: string, live: SubscriptionMultiples 
       { point: "Listed on NSE mainboard issue calendar", evidence: "FACT: NSE public issue feed." },
     ],
     concerns: [
-      { point: "Filing-level financials unverified", evidence: `FACT: analysis engine unavailable (${reason}).` },
+      {
+        point: "Filing-level financials unverified",
+        evidence: `FACT: analysis engine unavailable (${reason}).`,
+      },
     ],
     verdict: verdictFromQuant(quant),
     confidence: quant.confidence,
@@ -238,10 +261,11 @@ function fallbackResearch(ipo: IPO, reason: string, live: SubscriptionMultiples 
     financialTable: inputs.financials,
     aboutBusiness: `Business description for ${ipo.company} could not be retrieved (${reason}). Read the RHP before applying.`,
     moatOneLiner: "Moat assessment unavailable — estimate",
-    moatBullets: ["Competitive-moat data unavailable at analysis time (estimate, not filing-verified)."],
+    moatBullets: [
+      "Competitive-moat data unavailable at analysis time (estimate, not filing-verified).",
+    ],
   };
 }
-
 
 function coerce(raw: any, ipo: IPO, live: SubscriptionMultiples | null): IpoResearch {
   const inputs = extractQuantInputs(raw, ipo, live);
@@ -269,7 +293,10 @@ function coerce(raw: any, ipo: IPO, live: SubscriptionMultiples | null): IpoRese
   verdict = applyRedFlagOverride(verdict, redFlags);
   verdict = guardAgainstDataStarvedAvoid(verdict, redFlags, scores);
   const conf = quant.confidence;
-  const pair = (x: any) => ({ point: String(x?.point ?? ""), evidence: String(x?.evidence ?? "Unverified") });
+  const pair = (x: any) => ({
+    point: String(x?.point ?? ""),
+    evidence: String(x?.evidence ?? "Unverified"),
+  });
 
   return {
     company: String(raw?.company || ipo.company),
@@ -290,14 +317,21 @@ function coerce(raw: any, ipo: IPO, live: SubscriptionMultiples | null): IpoRese
       raw?.outcomeRange ||
         "Fundamentals-based range unavailable; listing-day sentiment is the dominant variance driver.",
     ),
-    deepChecks: (Array.isArray(raw?.deepChecks) ? raw.deepChecks : []).slice(0, 9).map((d: any, i: number) => ({
-      q: String(d?.q || DEEP_CHECK_QUESTIONS[i] || ""),
-      a: String(d?.a || "Unverified."),
-    })),
+    deepChecks: (Array.isArray(raw?.deepChecks) ? raw.deepChecks : [])
+      .slice(0, 9)
+      .map((d: any, i: number) => ({
+        q: String(d?.q || DEEP_CHECK_QUESTIONS[i] || ""),
+        a: String(d?.a || "Unverified."),
+      })),
     dataGaps: (Array.isArray(raw?.dataGaps) ? raw.dataGaps : []).map((g: any) => String(g)),
     aiPowered: true,
-    businessSummary: String(raw?.businessSummary || `${ipo.company} — ${raw?.sector || ipo.sector || "sector unverified"}.`),
-    highlights: (Array.isArray(raw?.highlights) ? raw.highlights : []).slice(0, 5).map((h: any) => String(h)),
+    businessSummary: String(
+      raw?.businessSummary ||
+        `${ipo.company} — ${raw?.sector || ipo.sector || "sector unverified"}.`,
+    ),
+    highlights: (Array.isArray(raw?.highlights) ? raw.highlights : [])
+      .slice(0, 5)
+      .map((h: any) => String(h)),
     valuationSummary: String(raw?.valuationSummary || "Valuation vs peers unverified."),
     finalReview: String(raw?.finalReview || raw?.outcomeRange || "Review the RHP before applying."),
     listingGain: String(raw?.listingGain || "Scenario range unavailable"),
@@ -307,12 +341,15 @@ function coerce(raw: any, ipo: IPO, live: SubscriptionMultiples | null): IpoRese
     gmpHistory: inputs.gmpHistory,
     subscription: inputs.subscription,
     financialTable: inputs.financials,
-    aboutBusiness: String(raw?.aboutBusiness || raw?.businessSummary || "Business description unavailable."),
+    aboutBusiness: String(
+      raw?.aboutBusiness || raw?.businessSummary || "Business description unavailable.",
+    ),
     moatOneLiner: String(raw?.moatOneLiner || "Moat assessment unavailable"),
-    moatBullets: (Array.isArray(raw?.moatBullets) ? raw.moatBullets : []).slice(0, 3).map((b: any) => String(b)),
+    moatBullets: (Array.isArray(raw?.moatBullets) ? raw.moatBullets : [])
+      .slice(0, 3)
+      .map((b: any) => String(b)),
   };
 }
-
 
 export async function researchIpo(ipo: IPO): Promise<IpoResearch> {
   const geminiKey = process.env.GEMINI_API_KEY;
@@ -390,4 +427,3 @@ Set the *Verified flags false and estimate true for anything not filing-verified
   }
   return fallbackResearch(ipo, lastError, live);
 }
-

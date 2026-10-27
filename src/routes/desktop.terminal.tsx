@@ -13,7 +13,8 @@ export const Route = createFileRoute("/desktop/terminal")({
       { property: "og:title", content: "InvestIQ · F&O LIVE" },
       {
         property: "og:description",
-        content: "Institutional trading terminal with live TradingView charts, AI confluence signals, option chain and calculator.",
+        content:
+          "Institutional trading terminal with live TradingView charts, AI confluence signals, option chain and calculator.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -25,4 +26,3 @@ export const Route = createFileRoute("/desktop/terminal")({
 function TerminalPage() {
   return <TradingTerminalWorkstation />;
 }
-

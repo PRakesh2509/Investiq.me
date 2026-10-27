@@ -5,7 +5,10 @@ export function ema(values: number[], period: number): (number | null)[] {
   const out: (number | null)[] = [];
   let prev: number | null = null;
   for (let i = 0; i < values.length; i++) {
-    if (i < period - 1) { out.push(null); continue; }
+    if (i < period - 1) {
+      out.push(null);
+      continue;
+    }
     if (prev === null) {
       const seed = values.slice(0, period).reduce((s, v) => s + v, 0) / period;
       prev = seed;
@@ -34,7 +37,11 @@ export function bollinger(values: number[], period = 20, mult = 2) {
   const upper: (number | null)[] = [];
   const lower: (number | null)[] = [];
   for (let i = 0; i < values.length; i++) {
-    if (i < period - 1) { upper.push(null); lower.push(null); continue; }
+    if (i < period - 1) {
+      upper.push(null);
+      lower.push(null);
+      continue;
+    }
     const slice = values.slice(i - period + 1, i + 1);
     const m = mid[i]!;
     const variance = slice.reduce((s, v) => s + (v - m) ** 2, 0) / period;
@@ -53,7 +60,11 @@ export function vwap(bars: Bar[]): (number | null)[] {
   let cumV = 0;
   for (const b of bars) {
     const d = Math.floor(b.time / 86400);
-    if (d !== day) { day = d; cumPV = 0; cumV = 0; }
+    if (d !== day) {
+      day = d;
+      cumPV = 0;
+      cumV = 0;
+    }
     const tp = (b.high + b.low + b.close) / 3;
     cumPV += tp * (b.volume || 0);
     cumV += b.volume || 0;
@@ -64,13 +75,19 @@ export function vwap(bars: Bar[]): (number | null)[] {
 
 export function rsi(values: number[], period = 14): (number | null)[] {
   const out: (number | null)[] = [];
-  let gain = 0, loss = 0;
+  let gain = 0,
+    loss = 0;
   for (let i = 0; i < values.length; i++) {
-    if (i === 0) { out.push(null); continue; }
+    if (i === 0) {
+      out.push(null);
+      continue;
+    }
     const diff = values[i] - values[i - 1];
-    const g = Math.max(diff, 0), l = Math.max(-diff, 0);
+    const g = Math.max(diff, 0),
+      l = Math.max(-diff, 0);
     if (i <= period) {
-      gain += g; loss += l;
+      gain += g;
+      loss += l;
       if (i === period) {
         const rs = loss === 0 ? 100 : gain / loss;
         out.push(100 - 100 / (1 + rs));
@@ -140,10 +157,8 @@ export function supertrend(bars: Bar[], period = 10, multiplier = 3): Supertrend
     const basicLower = hl2 - multiplier * a;
     const prevClose = i > 0 ? bars[i - 1].close : bars[i].close;
 
-    const finalUpper =
-      basicUpper < prevUpper || prevClose > prevUpper ? basicUpper : prevUpper;
-    const finalLower =
-      basicLower > prevLower || prevClose < prevLower ? basicLower : prevLower;
+    const finalUpper = basicUpper < prevUpper || prevClose > prevUpper ? basicUpper : prevUpper;
+    const finalLower = basicLower > prevLower || prevClose < prevLower ? basicLower : prevLower;
 
     let currentDir: 1 | -1;
     if (prevSupertrend === prevUpper) {
@@ -163,4 +178,3 @@ export function supertrend(bars: Bar[], period = 10, multiplier = 3): Supertrend
 
   return { value: values, direction: directions };
 }
-

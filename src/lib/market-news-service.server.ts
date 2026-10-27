@@ -50,7 +50,8 @@ export function getBaselineEvents(): VerifiedMarketEvent[] {
   return [
     {
       id: "geopolitics-crude-diplomacy-baseline",
-      headline: "Brent Crude trades near $114-$115/bbl as Middle East diplomatic talks ease immediate escalation fears",
+      headline:
+        "Brent Crude trades near $114-$115/bbl as Middle East diplomatic talks ease immediate escalation fears",
       source: "Reuters & Financial Press",
       url: "https://www.reuters.com/business/energy/",
       publishedAt: new Date(now - 45 * 60_000).toISOString(),
@@ -70,7 +71,8 @@ export function getBaselineEvents(): VerifiedMarketEvent[] {
     },
     {
       id: "rbi-mpc-rate-stance-baseline",
-      headline: "RBI MPC maintains vigilant monetary stance as domestic core liquidity supports bank credit growth",
+      headline:
+        "RBI MPC maintains vigilant monetary stance as domestic core liquidity supports bank credit growth",
       source: "Reserve Bank of India (RBI)",
       url: "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx",
       publishedAt: new Date(now - 120 * 60_000).toISOString(),
@@ -90,7 +92,8 @@ export function getBaselineEvents(): VerifiedMarketEvent[] {
     },
     {
       id: "india-vix-fii-positioning-baseline",
-      headline: "India VIX and FII derivatives positioning reflect cautious consolidation near benchmark pivot levels",
+      headline:
+        "India VIX and FII derivatives positioning reflect cautious consolidation near benchmark pivot levels",
       source: "NSE Derivatives Desk & MoneyControl",
       url: "https://www.moneycontrol.com/stocks/fno/marketstats/options/index.php",
       publishedAt: new Date(now - 90 * 60_000).toISOString(),
@@ -155,9 +158,6 @@ export async function getVerifiedMarketNews(forceRefresh = false): Promise<Verif
 
   try {
     const feedPromises = liveFeeds.map(async (feed) => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3500);
-
       try {
         const res = await fetch(feed.url, {
           headers: {
@@ -165,15 +165,13 @@ export async function getVerifiedMarketNews(forceRefresh = false): Promise<Verif
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             Accept: "application/rss+xml, application/xml, text/xml, */*",
           },
-          signal: controller.signal,
+          signal: AbortSignal.timeout(3500),
         });
-        clearTimeout(timeout);
 
         if (!res.ok) return [];
         const xml = await res.text();
         return parseRssItems(xml, feed.source, feed.defaultCategory);
       } catch {
-        clearTimeout(timeout);
         return [];
       }
     });
@@ -249,7 +247,7 @@ function cleanRssText(s: string): string {
 function parseRssItems(
   xml: string,
   feedSourceName: string,
-  defaultCategory: MacroCategory
+  defaultCategory: MacroCategory,
 ): VerifiedMarketEvent[] {
   const items: VerifiedMarketEvent[] = [];
   const itemMatches = xml.match(/<item>([\s\S]*?)<\/item>/g) || [];
@@ -288,12 +286,18 @@ function parseRssItems(
       }
 
       const rawLink = linkMatch ? linkMatch[1].trim() : "https://news.google.com";
-      const rawDate = pubDateMatch ? new Date(pubDateMatch[1]).toISOString() : new Date().toISOString();
+      // An unparsable pubDate must not throw (it used to drop the whole feed).
+      const parsedDate = pubDateMatch ? new Date(pubDateMatch[1].trim()) : new Date();
+      const rawDate = (Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate).toISOString();
       const rawDesc = descMatch ? cleanRssText(descMatch[1]) : headline;
 
       // Build fact summary: take up to 2 sentences or clean preview
       let factSummary = rawDesc;
-      if (!factSummary || factSummary.length < 20 || factSummary.toLowerCase().startsWith(headline.toLowerCase().slice(0, 30))) {
+      if (
+        !factSummary ||
+        factSummary.length < 20 ||
+        factSummary.toLowerCase().startsWith(headline.toLowerCase().slice(0, 30))
+      ) {
         factSummary = `${headline}. Reported by ${publisher} regarding market conditions and trade implications.`;
       } else if (factSummary.length > 250) {
         factSummary = factSummary.slice(0, 247).trimEnd() + "…";
@@ -302,7 +306,14 @@ function parseRssItems(
       const category = categorizeHeadline(headline, defaultCategory);
 
       // Unique deterministic id based on headline
-      const hashId = Buffer.from(headline.slice(0, 32).toLowerCase().replace(/[^a-z0-9]/g, "")).toString("base64").replace(/[+/=]/g, "").slice(0, 16);
+      const hashId = btoa(
+        headline
+          .slice(0, 32)
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, ""),
+      )
+        .replace(/[+/=]/g, "")
+        .slice(0, 16);
 
       items.push({
         id: `news-${hashId || Date.now()}`,
@@ -332,7 +343,7 @@ function parseRssItems(
  */
 function categorizeHeadline(
   title: string,
-  defaultCat: MacroCategory = "GLOBAL_MACRO"
+  defaultCat: MacroCategory = "GLOBAL_MACRO",
 ): {
   type: MacroCategory;
   label: string;
@@ -385,8 +396,10 @@ function categorizeHeadline(
         exposure: "HIGH",
         sectors: ["Paints", "Aviation", "Auto", "OMCs", "Chemicals"],
         instruments: ["NIFTY 50", "BANK NIFTY", "BPCL", "INDIGO", "ASIANPAINT"],
-        bullish: "Softening crude prices and diplomatic dialogue reduce India's import bill and retail inflation pressure.",
-        bearish: "Failure in tentative talks or unexpected proxy strikes could trigger sudden energy supply spikes.",
+        bullish:
+          "Softening crude prices and diplomatic dialogue reduce India's import bill and retail inflation pressure.",
+        bearish:
+          "Failure in tentative talks or unexpected proxy strikes could trigger sudden energy supply spikes.",
       };
     }
 
@@ -396,8 +409,10 @@ function categorizeHeadline(
       exposure: "HIGH",
       sectors: ["Energy", "Aviation", "Paints", "Auto", "Metals"],
       instruments: ["ONGC", "OIL", "BPCL", "INDIGO", "NIFTY 50"],
-      bullish: "Domestic upstream exploration & production firms (ONGC, Oil India) benefit from elevated crude realization.",
-      bearish: "Higher crude prices widen India's trade deficit, pressure the Rupee (USD/INR), and compress downstream margins.",
+      bullish:
+        "Domestic upstream exploration & production firms (ONGC, Oil India) benefit from elevated crude realization.",
+      bearish:
+        "Higher crude prices widen India's trade deficit, pressure the Rupee (USD/INR), and compress downstream margins.",
     };
   }
 
@@ -462,8 +477,10 @@ function categorizeHeadline(
       exposure: "HIGH",
       sectors: ["Financials", "Large Caps", "Index Heavyweights"],
       instruments: ["NIFTY 50", "BANK NIFTY", "FIN NIFTY"],
-      bullish: "Resilient domestic mutual fund SIP inflows (>₹22,000 Cr/mo) provide continuous structural absorption.",
-      bearish: "Heavy foreign portfolio selling or elevated VIX surges can trigger rapid index gamma unwinding.",
+      bullish:
+        "Resilient domestic mutual fund SIP inflows (>₹22,000 Cr/mo) provide continuous structural absorption.",
+      bearish:
+        "Heavy foreign portfolio selling or elevated VIX surges can trigger rapid index gamma unwinding.",
     };
   }
 
@@ -486,8 +503,10 @@ function categorizeHeadline(
       exposure: "HIGH",
       sectors: ["Capital Markets", "Broking", "Financial Services"],
       instruments: ["NIFTY 50", "BANK NIFTY", "BSE", "MCX"],
-      bullish: "Standardized market frameworks enhance retail trader safety and concentrate institutional depth.",
-      bearish: "Increased margin requirements or trading restrictions can temporarily temper retail derivative turnover.",
+      bullish:
+        "Standardized market frameworks enhance retail trader safety and concentrate institutional depth.",
+      bearish:
+        "Increased margin requirements or trading restrictions can temporarily temper retail derivative turnover.",
     };
   }
 
@@ -511,8 +530,10 @@ function categorizeHeadline(
       exposure: "MEDIUM",
       sectors: ["Financials", "IT Services", "Auto", "Pharma"],
       instruments: ["NIFTY 50", "TCS", "INFY", "HDFCBANK"],
-      bullish: "Healthy quarterly operational numbers and robust return on equity support underlying index valuations.",
-      bearish: "Selective margin compression in discretionary sectors can prompt localized stock de-ratings.",
+      bullish:
+        "Healthy quarterly operational numbers and robust return on equity support underlying index valuations.",
+      bearish:
+        "Selective margin compression in discretionary sectors can prompt localized stock de-ratings.",
     };
   }
 
@@ -523,13 +544,15 @@ function categorizeHeadline(
       defaultCat === "GEOPOLITICS_ENERGY"
         ? "Crude Oil & Geopolitics"
         : defaultCat === "CENTRAL_BANKS_INFLATION"
-        ? "Monetary & RBI/Fed"
-        : "Global Macro & Currency",
+          ? "Monetary & RBI/Fed"
+          : "Global Macro & Currency",
     exposure: "MEDIUM",
     sectors: ["IT Services", "Metals", "Exporters"],
     instruments: ["NIFTY 50", "USD/INR", "NIFTY IT"],
-    bullish: "Stable emerging market macro fundamentals attract patient global capital allocations.",
-    bearish: "Global currency fluctuations and bond yield shifts can prompt periodic portfolio rebalancing.",
+    bullish:
+      "Stable emerging market macro fundamentals attract patient global capital allocations.",
+    bearish:
+      "Global currency fluctuations and bond yield shifts can prompt periodic portfolio rebalancing.",
   };
 }
 
@@ -544,7 +567,7 @@ function deduplicateAndSort(events: VerifiedMarketEvent[]): VerifiedMarketEvent[
 
   // Sort by publishedAt descending first
   const sorted = [...events].sort(
-    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
   );
 
   for (const e of sorted) {

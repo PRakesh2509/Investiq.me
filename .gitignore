@@ -35,3 +35,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Lockfile: bun.lock is canonical (Lovable uses bun). Do not commit npm lockfiles.
+package-lock.json

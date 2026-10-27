@@ -69,7 +69,7 @@ export class MarketRiskService {
     premium: number,
     lotSize: number,
     lots: number,
-    isSpread: boolean = false
+    isSpread: boolean = false,
   ): TransactionCostBreakdown {
     const totalShares = lots * lotSize;
     const premiumTurnover = premium * totalShares;
@@ -125,7 +125,10 @@ export class MarketRiskService {
     const checks: RiskCheckItem[] = [];
     const rejectionReasons: string[] = [];
 
-    const cfg = WORKSTATION_INSTRUMENTS[input.instrument] ?? WORKSTATION_INSTRUMENTS["NIFTY 50"];
+    const cfg = WORKSTATION_INSTRUMENTS[input.instrument];
+    if (!cfg) {
+      throw new Error(`Unknown instrument: ${input.instrument}`);
+    }
     const lotSize = cfg.lotSize;
     const maxRiskPct = input.maxRiskPerTradePct ?? 2.0;
     const maxAllowedRiskBudget = Math.round(input.accountCapital * (maxRiskPct / 100));
@@ -137,7 +140,9 @@ export class MarketRiskService {
     const perShareRisk = Math.max(0.1, input.entryPremium - input.stopLossPremium);
     const capitalAtRisk = Math.round(perShareRisk * totalQty + costs.totalEstimatedCost);
     const capitalAllocated = Math.round(input.entryPremium * totalQty);
-    const capitalAllocatedPct = +(input.accountCapital > 0 ? (capitalAllocated / input.accountCapital) * 100 : 0).toFixed(1);
+    const capitalAllocatedPct = +(
+      input.accountCapital > 0 ? (capitalAllocated / input.accountCapital) * 100 : 0
+    ).toFixed(1);
 
     // 1. Capital Preservation Gate (Max ₹ at risk vs Budget)
     const capitalPassed = capitalAtRisk <= maxAllowedRiskBudget * 1.05; // 5% tolerance
@@ -151,7 +156,9 @@ export class MarketRiskService {
       mitigation: "Reduce lot count or select a tighter stop-loss strike",
     });
     if (!capitalPassed) {
-      rejectionReasons.push(`Risk amount ₹${capitalAtRisk} exceeds maximum risk budget of ₹${maxAllowedRiskBudget}`);
+      rejectionReasons.push(
+        `Risk amount ₹${capitalAtRisk} exceeds maximum risk budget of ₹${maxAllowedRiskBudget}`,
+      );
     }
 
     // 2. Bid-Ask Spread Cap (Illiquidity Gate)
@@ -166,11 +173,13 @@ export class MarketRiskService {
       mitigation: "Avoid illiquid OTM strikes; focus on ATM or liquid monthly series",
     });
     if (!spreadPassed) {
-      rejectionReasons.push(`Bid-ask spread (${input.bidAskSpreadPct.toFixed(2)}%) exceeds liquidity threshold (2.5%)`);
+      rejectionReasons.push(
+        `Bid-ask spread (${input.bidAskSpreadPct.toFixed(2)}%) exceeds liquidity threshold (2.5%)`,
+      );
     }
 
     // 3. Expiry Afternoon Decay Trap Check
-    const session = tradingSessionService.getSessionInfo();
+    const session = tradingSessionService.getSessionInfo(undefined, input.instrument);
     const isExpiryDay = input.daysToExpiry <= 0.5;
     const isExpiryAfternoonNaked = isExpiryDay && session.isExpiryAfternoon && !isSpread;
     const expiryPassed = !isExpiryAfternoonNaked;
@@ -185,7 +194,9 @@ export class MarketRiskService {
       mitigation: "Deploy defined-risk vertical debit/credit spreads or roll to next weekly cycle",
     });
     if (!expiryPassed) {
-      rejectionReasons.push("Naked long options are prohibited on expiry day afternoon due to extreme theta burn");
+      rejectionReasons.push(
+        "Naked long options are prohibited on expiry day afternoon due to extreme theta burn",
+      );
     }
 
     // 4. Macro / Geopolitical High-Risk Gate
@@ -196,11 +207,18 @@ export class MarketRiskService {
       passed: macroPassed,
       severity: "HIGH",
       rule: "Naked directional exposure prohibited during active high-impact macroeconomic event risk",
-      observedValue: input.isHighMacroEventRisk ? "HIGH_EVENT_RISK" : "NORMAL",
+      observedValue:
+        input.isHighMacroEventRisk === undefined
+          ? "NOT_EVALUATED (no event-risk feed supplied)"
+          : input.isHighMacroEventRisk
+            ? "HIGH_EVENT_RISK"
+            : "NORMAL",
       mitigation: "Use hedged spread structures or stay in cash until post-event resolution",
     });
     if (!macroPassed) {
-      rejectionReasons.push("Active high-impact event risk blocks fresh unhedged directional trades");
+      rejectionReasons.push(
+        "Active high-impact event risk blocks fresh unhedged directional trades",
+      );
     }
 
     // Net Risk/Reward after transaction costs
@@ -220,7 +238,9 @@ export class MarketRiskService {
       mitigation: "Seek wider profit target or tighter entry zone",
     });
     if (!rrPassed) {
-      rejectionReasons.push(`Net R:R after costs (1:${netRiskRewardRatio}) falls below minimum threshold (1:1.25)`);
+      rejectionReasons.push(
+        `Net R:R after costs (1:${netRiskRewardRatio}) falls below minimum threshold (1:1.25)`,
+      );
     }
 
     const failedCriticalCount = checks.filter((c) => !c.passed && c.severity === "CRITICAL").length;

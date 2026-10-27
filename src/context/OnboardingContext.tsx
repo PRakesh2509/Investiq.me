@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 export type KycStatus = "pending" | "verified";
 
@@ -125,7 +118,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         };
         setState((prev) => {
           const total = order.qty * order.price;
-          let holdings = [...prev.holdings];
+          const holdings = [...prev.holdings];
           const idx = holdings.findIndex((h) => h.symbol === order.symbol);
           if (order.side === "BUY") {
             if (idx >= 0) {
@@ -154,10 +147,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
           }
           return {
             ...prev,
-            cashBalance:
-              order.side === "BUY"
-                ? prev.cashBalance - total
-                : prev.cashBalance + total,
+            cashBalance: order.side === "BUY" ? prev.cashBalance - total : prev.cashBalance + total,
             holdings,
             orders: [order, ...prev.orders],
           };
@@ -168,9 +158,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     [state],
   );
 
-  return (
-    <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>
-  );
+  return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;
 }
 
 export function useOnboarding() {

@@ -1,6 +1,59 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { getFallbackEtfHoldings } from "./etf-holdings-fallback";
+import { fetchYahooChart, getInstrumentQuote } from "./market-data-provider.server.ts";
+import {
+  TtlCache,
+  fetchJsonWithRetry,
+  fetchWithRetry,
+  isAllowedYahooInterval,
+  isAllowedYahooRange,
+  isValidSymbol,
+  parseSymbolList,
+  safeErrorMessage,
+} from "./provider-utils.ts";
+import {
+  parseYahooNews,
+  parseYahooSummary,
+  parseYahooTimeseries,
+  rawFmt,
+  rawNum,
+  type YahooNewsItem,
+  type YahooSummary,
+} from "./provider-parsers.ts";
+
+const YAHOO_UA = { "User-Agent": "Mozilla/5.0 InvestIQ" } as const;
+
+const SymbolSchema = z.string().min(1).max(32).refine(isValidSymbol, { message: "Invalid symbol" });
+
+const summaryCache = new TtlCache<YahooSummary | null>(150);
+const SUMMARY_TTL_MS = 10 * 60_000;
+const timeseriesCache = new TtlCache<ReturnType<typeof parseYahooTimeseries>>(60);
+const newsCache = new TtlCache<YahooNewsItem[]>(60);
+const NEWS_TTL_MS = 2 * 60_000;
+
+/** Cached quoteSummary fetch. Returns null when Yahoo has nothing (or is unreachable). */
+async function fetchSummary(symbol: string, modules: string): Promise<YahooSummary | null> {
+  const key = `${symbol}|${modules}`;
+  const hit = summaryCache.get(key, SUMMARY_TTL_MS);
+  if (hit !== undefined) return hit;
+  try {
+    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
+      symbol,
+    )}?modules=${modules}`;
+    const res = await fetchJsonWithRetry(
+      url,
+      { headers: YAHOO_UA },
+      { timeoutMs: 6000, retries: 1 },
+    );
+    if (!res.ok) return null;
+    const parsed = parseYahooSummary(res.json);
+    summaryCache.set(key, parsed);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 // Fetch chart from Yahoo Finance (no auth required).
 // Symbols must include exchange suffix, e.g. RELIANCE.NS, TCS.NS, INFY.NS.
@@ -8,88 +61,55 @@ export const getYahooChart = createServerFn({ method: "GET" })
   .validator((data) =>
     z
       .object({
-        symbol: z.string().min(1),
-        interval: z.string().default("5m"),
-        range: z.string().default("1d"),
+        symbol: SymbolSchema,
+        interval: z.string().refine(isAllowedYahooInterval, "Unsupported interval").default("5m"),
+        range: z.string().refine(isAllowedYahooRange, "Unsupported range").default("1d"),
       })
       .parse(data),
   )
   .handler(async ({ data }) => {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-      data.symbol,
-    )}?interval=${data.interval}&range=${data.range}`;
-    try {
-      const res = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 InvestIQ" },
-      });
-      if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` };
-      const json = (await res.json()) as any;
-      const r = json?.chart?.result?.[0];
-      if (!r) return { ok: false as const, error: "no data" };
-      const ts: number[] = r.timestamp ?? [];
-      const q = r.indicators?.quote?.[0] ?? {};
-      const closes: (number | null)[] = q.close ?? [];
-      const volumes: (number | null)[] = q.volume ?? [];
-      const points = ts
-        .map((t, i) => ({
-          t: t * 1000,
-          price: closes[i],
-          volume: typeof volumes[i] === "number" ? (volumes[i] as number) : 0,
-        }))
-        .filter((p): p is { t: number; price: number; volume: number } => typeof p.price === "number");
-      const meta = r.meta ?? {};
-      return {
-        ok: true as const,
-        currency: meta.currency ?? "INR",
-        previousClose: meta.chartPreviousClose ?? points[0]?.price ?? 0,
-        regularMarketPrice: meta.regularMarketPrice ?? points[points.length - 1]?.price ?? 0,
-        dayHigh: meta.regularMarketDayHigh ?? 0,
-        dayLow: meta.regularMarketDayLow ?? 0,
-        fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ?? 0,
-        fiftyTwoWeekLow: meta.fiftyTwoWeekLow ?? 0,
-        regularMarketVolume: meta.regularMarketVolume ?? 0,
-        points,
-      };
-    } catch (e) {
-      return { ok: false as const, error: (e as Error).message };
-    }
+    const r = await fetchYahooChart(data.symbol, data.interval, data.range);
+    if (!r) return { ok: false as const, error: "no data" };
+    const { meta, points: rawPoints } = r.chart;
+    const points = rawPoints.map((p) => ({ t: p.time * 1000, price: p.close, volume: p.volume }));
+    return {
+      ok: true as const,
+      currency: meta.currency ?? "INR",
+      previousClose: meta.chartPreviousClose ?? points[0]?.price ?? 0,
+      regularMarketPrice: meta.regularMarketPrice ?? points[points.length - 1]?.price ?? 0,
+      dayHigh: meta.regularMarketDayHigh ?? 0,
+      dayLow: meta.regularMarketDayLow ?? 0,
+      fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ?? 0,
+      fiftyTwoWeekLow: meta.fiftyTwoWeekLow ?? 0,
+      regularMarketVolume: meta.regularMarketVolume ?? 0,
+      points,
+      isStale: r.stale,
+    };
   });
 
-// Batch quote by fanning out to v8 chart per symbol.
+// Batch quote by fanning out to the (cached) v8 chart per symbol.
 export const getYahooQuotes = createServerFn({ method: "POST" })
-  .validator((data) => z.object({ symbols: z.string().min(1) }).parse(data))
+  .validator((data) => z.object({ symbols: z.string().min(1).max(4000) }).parse(data))
   .handler(async ({ data }) => {
-    const symbols = data.symbols.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 120);
+    const symbols = parseSymbolList(data.symbols, 120);
+    if (symbols.length === 0) return { ok: false as const, error: "no valid symbols" };
+
     const fetchOne = async (sym: string) => {
-      try {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-          sym,
-        )}?interval=1d&range=5d`;
-        const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 InvestIQ" } });
-        if (!res.ok) return null;
-        const json = (await res.json()) as any;
-        const r = json?.chart?.result?.[0];
-        if (!r) return null;
-        const meta = r.meta ?? {};
-        const price = Number(meta.regularMarketPrice ?? 0);
-        const prev = Number(meta.previousClose ?? meta.chartPreviousClose ?? price);
-        const change = price - prev;
-        const changePct = prev ? (change / prev) * 100 : 0;
-        return {
-          symbol: sym,
-          name: meta.longName ?? meta.shortName ?? sym,
-          price,
-          change,
-          changePct,
-          volume: Number(meta.regularMarketVolume ?? 0),
-          marketCap: 0,
-          pe: 0,
-          high52: Number(meta.fiftyTwoWeekHigh ?? 0),
-          low52: Number(meta.fiftyTwoWeekLow ?? 0),
-        };
-      } catch {
-        return null;
-      }
+      const q = await getInstrumentQuote({ yahooSymbol: sym });
+      if (!q) return null;
+      return {
+        symbol: sym,
+        name: q.name ?? sym,
+        price: q.price,
+        change: q.change,
+        changePct: q.changePct,
+        volume: q.volume,
+        marketCap: 0,
+        pe: 0,
+        high52: q.high52 ?? 0,
+        low52: q.low52 ?? 0,
+        freshnessStatus: q.freshnessStatus,
+      };
     };
     try {
       const results: Awaited<ReturnType<typeof fetchOne>>[] = [];
@@ -103,14 +123,13 @@ export const getYahooQuotes = createServerFn({ method: "POST" })
         quotes: results.filter((q): q is NonNullable<typeof q> => q !== null && q.price > 0),
       };
     } catch (e) {
-      return { ok: false as const, error: (e as Error).message };
+      return { ok: false as const, error: safeErrorMessage(e) };
     }
   });
 
-
 // Fundamentals via Yahoo quoteSummary — fetches statistics, financials, price.
 export const getYahooFundamentals = createServerFn({ method: "GET" })
-  .validator((data) => z.object({ symbol: z.string().min(1) }).parse(data))
+  .validator((data) => z.object({ symbol: SymbolSchema }).parse(data))
   .handler(async ({ data }) => {
     const modules = [
       "summaryDetail",
@@ -119,55 +138,44 @@ export const getYahooFundamentals = createServerFn({ method: "GET" })
       "price",
       "assetProfile",
     ].join(",");
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
-      data.symbol,
-    )}?modules=${modules}`;
-    try {
-      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 InvestIQ" } });
-      if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` };
-      const json = (await res.json()) as any;
-      const r = json?.quoteSummary?.result?.[0];
-      if (!r) return { ok: false as const, error: "no data" };
-      const sd = r.summaryDetail ?? {};
-      const ks = r.defaultKeyStatistics ?? {};
-      const fd = r.financialData ?? {};
-      const px = r.price ?? {};
-      const ap = r.assetProfile ?? {};
-      const val = (o: any): number => (typeof o === "object" && o !== null ? Number(o.raw ?? 0) : Number(o ?? 0));
-      const fmt = (o: any): string => (typeof o === "object" && o !== null ? String(o.fmt ?? "") : String(o ?? ""));
-      return {
-        ok: true as const,
-        name: px.longName ?? px.shortName ?? data.symbol,
-        sector: ap.sector ?? "",
-        industry: ap.industry ?? "",
-        summary: ap.longBusinessSummary ?? "",
-        marketCap: val(px.marketCap),
-        marketCapFmt: fmt(px.marketCap),
-        peTTM: val(sd.trailingPE) || val(ks.trailingPE),
-        pbRatio: val(ks.priceToBook),
-        debtToEquity: val(fd.debtToEquity),
-        roe: val(fd.returnOnEquity) * 100, // decimal → %
-        epsTTM: val(ks.trailingEps) || val(fd.epsTrailingTwelveMonths),
-        dividendYield: val(sd.dividendYield) * 100,
-        bookValue: val(ks.bookValue),
-        priceToSales: val(sd.priceToSalesTrailing12Months),
-        profitMargin: val(fd.profitMargins) * 100,
-        revenueGrowth: val(fd.revenueGrowth) * 100,
-        earningsGrowth: val(fd.earningsGrowth) * 100,
-        fiftyTwoWeekHigh: val(sd.fiftyTwoWeekHigh),
-        fiftyTwoWeekLow: val(sd.fiftyTwoWeekLow),
-        currency: px.currency ?? "INR",
-        recommendationKey: fd.recommendationKey ?? "",
-        targetMean: val(fd.targetMeanPrice),
-      };
-    } catch (e) {
-      return { ok: false as const, error: (e as Error).message };
-    }
+    const r = await fetchSummary(data.symbol, modules);
+    if (!r) return { ok: false as const, error: "no data" };
+    const sd = r.summaryDetail ?? {};
+    const ks = r.defaultKeyStatistics ?? {};
+    const fd = r.financialData ?? {};
+    const px = r.price ?? {};
+    const ap = r.assetProfile ?? {};
+    const str = (v: unknown, fallback = ""): string => (typeof v === "string" && v ? v : fallback);
+    return {
+      ok: true as const,
+      name: str(px.longName, str(px.shortName, data.symbol)),
+      sector: str(ap.sector),
+      industry: str(ap.industry),
+      summary: str(ap.longBusinessSummary),
+      marketCap: rawNum(px.marketCap),
+      marketCapFmt: rawFmt(px.marketCap),
+      peTTM: rawNum(sd.trailingPE) || rawNum(ks.trailingPE),
+      pbRatio: rawNum(ks.priceToBook),
+      debtToEquity: rawNum(fd.debtToEquity),
+      roe: rawNum(fd.returnOnEquity) * 100, // decimal → %
+      epsTTM: rawNum(ks.trailingEps) || rawNum(fd.epsTrailingTwelveMonths),
+      dividendYield: rawNum(sd.dividendYield) * 100,
+      bookValue: rawNum(ks.bookValue),
+      priceToSales: rawNum(sd.priceToSalesTrailing12Months),
+      profitMargin: rawNum(fd.profitMargins) * 100,
+      revenueGrowth: rawNum(fd.revenueGrowth) * 100,
+      earningsGrowth: rawNum(fd.earningsGrowth) * 100,
+      fiftyTwoWeekHigh: rawNum(sd.fiftyTwoWeekHigh),
+      fiftyTwoWeekLow: rawNum(sd.fiftyTwoWeekLow),
+      currency: str(px.currency, "INR"),
+      recommendationKey: str(fd.recommendationKey),
+      targetMean: rawNum(fd.targetMeanPrice),
+    };
   });
 
 // Quarterly + yearly income statement via fundamentals-timeseries (no crumb needed).
 export const getYahooFinancials = createServerFn({ method: "GET" })
-  .validator((data) => z.object({ symbol: z.string().min(1) }).parse(data))
+  .validator((data) => z.object({ symbol: SymbolSchema }).parse(data))
   .handler(async ({ data }) => {
     const types = [
       "quarterlyTotalRevenue",
@@ -175,78 +183,101 @@ export const getYahooFinancials = createServerFn({ method: "GET" })
       "annualTotalRevenue",
       "annualNetIncome",
     ].join(",");
-    const url = `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(
-      data.symbol,
-    )}?symbol=${encodeURIComponent(data.symbol)}&type=${types}&period1=1420070400&period2=1900000000`;
-    try {
-      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 InvestIQ" } });
-      if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` };
-      const json = (await res.json()) as any;
-      const results: any[] = json?.timeseries?.result ?? [];
-      const byType: Record<string, any[]> = {};
-      for (const r of results) {
-        const t = r?.meta?.type?.[0];
-        if (!t) continue;
-        byType[t] = (r[t] ?? []).filter(Boolean);
+    let byType = timeseriesCache.get(data.symbol, SUMMARY_TTL_MS);
+    if (!byType) {
+      const url = `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(
+        data.symbol,
+      )}?symbol=${encodeURIComponent(data.symbol)}&type=${types}&period1=1420070400&period2=1900000000`;
+      try {
+        const res = await fetchJsonWithRetry(
+          url,
+          { headers: YAHOO_UA },
+          { timeoutMs: 6000, retries: 1 },
+        );
+        if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` };
+        byType = parseYahooTimeseries(res.json);
+        timeseriesCache.set(data.symbol, byType);
+      } catch (e) {
+        return { ok: false as const, error: safeErrorMessage(e) };
       }
-      const merge = (revKey: string, niKey: string) => {
-        const revs = byType[revKey] ?? [];
-        const nis = byType[niKey] ?? [];
-        const map = new Map<string, { date: string; ts: number; revenue: number; profit: number }>();
-        const val = (o: any): number =>
-          typeof o?.reportedValue === "object" ? Number(o.reportedValue.raw ?? 0) : 0;
-        for (const row of revs) {
-          const d = row?.asOfDate as string;
-          if (!d) continue;
-          map.set(d, { date: d, ts: new Date(d).getTime(), revenue: val(row), profit: 0 });
-        }
-        for (const row of nis) {
-          const d = row?.asOfDate as string;
-          if (!d) continue;
-          const cur = map.get(d) ?? { date: d, ts: new Date(d).getTime(), revenue: 0, profit: 0 };
-          cur.profit = val(row);
-          map.set(d, cur);
-        }
-        return Array.from(map.values())
-          .filter((x) => x.revenue > 0 || x.profit !== 0)
-          .sort((a, b) => a.ts - b.ts);
-      };
-      const quarterly = merge("quarterlyTotalRevenue", "quarterlyNetIncome");
-      const yearly = merge("annualTotalRevenue", "annualNetIncome");
-      return { ok: true as const, quarterly, yearly };
-    } catch (e) {
-      return { ok: false as const, error: (e as Error).message };
     }
+    const series = byType;
+    const merge = (revKey: string, niKey: string) => {
+      const revs = series[revKey] ?? [];
+      const nis = series[niKey] ?? [];
+      const map = new Map<string, { date: string; ts: number; revenue: number; profit: number }>();
+      const val = (o: Record<string, unknown>): number => rawNum(o.reportedValue);
+      for (const row of revs) {
+        const d = typeof row.asOfDate === "string" ? row.asOfDate : "";
+        if (!d) continue;
+        map.set(d, { date: d, ts: new Date(d).getTime(), revenue: val(row), profit: 0 });
+      }
+      for (const row of nis) {
+        const d = typeof row.asOfDate === "string" ? row.asOfDate : "";
+        if (!d) continue;
+        const cur = map.get(d) ?? { date: d, ts: new Date(d).getTime(), revenue: 0, profit: 0 };
+        cur.profit = val(row);
+        map.set(d, cur);
+      }
+      return Array.from(map.values())
+        .filter((x) => x.revenue > 0 || x.profit !== 0)
+        .sort((a, b) => a.ts - b.ts);
+    };
+    const quarterly = merge("quarterlyTotalRevenue", "quarterlyNetIncome");
+    const yearly = merge("annualTotalRevenue", "annualNetIncome");
+    return { ok: true as const, quarterly, yearly };
   });
 
+function parseGoogleNewsRss(xml: string, count: number): YahooNewsItem[] {
+  const matches = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, count);
+  return matches.map((m) => {
+    const rawTitle = m[1].match(/<title>([\s\S]*?)<\/title>/)?.[1] || "";
+    const link = m[1].match(/<link>([\s\S]*?)<\/link>/)?.[1] || "";
+    const pubDate = m[1].match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || "";
+    const source = m[1].match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] || "Financial News";
+    const title = rawTitle
+      .replace(/<!\[CDATA\[|\]\]>/g, "")
+      .replace(/\s*-\s*[^-\n]+$/, "")
+      .trim();
+    const published = pubDate ? new Date(pubDate).getTime() : Date.now();
+    return {
+      title: title || rawTitle,
+      publisher: source,
+      link,
+      providerPublishTime: Number.isFinite(published) ? published : Date.now(),
+      thumbnail: "",
+    };
+  });
+}
 
 // News: Yahoo Finance news search (with Google News RSS fallback).
 export const getYahooNews = createServerFn({ method: "GET" })
   .validator((data) =>
-    z.object({ query: z.string().min(1), count: z.number().min(1).max(20).default(10) }).parse(data),
+    z
+      .object({
+        query: z.string().trim().min(1).max(80),
+        count: z.number().int().min(1).max(20).default(10),
+      })
+      .parse(data),
   )
   .handler(async ({ data }) => {
+    const cacheKey = `${data.query}|${data.count}`;
+    const cached = newsCache.get(cacheKey, NEWS_TTL_MS);
+    if (cached) return { ok: true as const, items: cached };
+
     const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(
       data.query,
     )}&quotesCount=0&newsCount=${data.count}`;
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3500);
-      const res = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 InvestIQ" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
+      const res = await fetchJsonWithRetry(
+        url,
+        { headers: YAHOO_UA },
+        { timeoutMs: 3500, retries: 1 },
+      );
       if (res.ok) {
-        const json = (await res.json()) as any;
-        const items = (json?.news ?? []).map((n: any) => ({
-          title: String(n.title ?? ""),
-          publisher: String(n.publisher ?? ""),
-          link: String(n.link ?? ""),
-          providerPublishTime: Number(n.providerPublishTime ?? 0) * 1000,
-          thumbnail: n.thumbnail?.resolutions?.[0]?.url ?? "",
-        }));
+        const items = parseYahooNews(res.json);
         if (items.length > 0) {
+          newsCache.set(cacheKey, items);
           return { ok: true as const, items };
         }
       }
@@ -260,34 +291,22 @@ export const getYahooNews = createServerFn({ method: "GET" })
       const gUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
         cleanQ + " stock when:2d",
       )}&hl=en-IN&gl=IN&ceid=IN:en`;
-      const res = await fetch(gUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      const res = await fetchWithRetry(
+        gUrl,
+        {
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
         },
-      });
+        { timeoutMs: 5000, retries: 1 },
+      );
       if (res.ok) {
-        const xml = await res.text();
-        const matches = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, data.count);
-        const items = matches.map((m) => {
-          const rawTitle = m[1].match(/<title>([\s\S]*?)<\/title>/)?.[1] || "";
-          const link = m[1].match(/<link>([\s\S]*?)<\/link>/)?.[1] || "";
-          const pubDate = m[1].match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || "";
-          const source = m[1].match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] || "Financial News";
-          const title = rawTitle.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/\s*-\s*[^-\n]+$/, "").trim();
-          return {
-            title: title || rawTitle,
-            publisher: source,
-            link,
-            providerPublishTime: pubDate ? new Date(pubDate).getTime() : Date.now(),
-            thumbnail: "",
-          };
-        });
+        const items = parseGoogleNewsRss(await res.text(), data.count);
         if (items.length > 0) {
+          newsCache.set(cacheKey, items);
           return { ok: true as const, items };
         }
       }
     } catch (e) {
-      return { ok: false as const, error: (e as Error).message };
+      return { ok: false as const, error: safeErrorMessage(e) };
     }
 
     return { ok: true as const, items: [] };
@@ -297,65 +316,55 @@ export const getYahooNews = createServerFn({ method: "GET" })
 // Note: only ETFs & mutual funds carry a `holdings` module; indices and single
 // stocks return empty. Callers should show a friendly message in that case.
 export const getYahooHoldings = createServerFn({ method: "GET" })
-  .validator((data) => z.object({ symbol: z.string().min(1) }).parse(data))
+  .validator((data) => z.object({ symbol: SymbolSchema }).parse(data))
   .handler(async ({ data }) => {
     const fallback = getFallbackEtfHoldings(data.symbol);
-    const modules = "topHoldings,fundProfile,assetProfile,price";
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
-      data.symbol,
-    )}?modules=${modules}`;
     try {
-      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 InvestIQ" } });
-      if (!res.ok) return fallback ?? { ok: false as const, error: `HTTP ${res.status}` };
-      const json = (await res.json()) as any;
-      const r = json?.quoteSummary?.result?.[0];
+      const r = await fetchSummary(data.symbol, "topHoldings,fundProfile,assetProfile,price");
       if (!r) return fallback ?? { ok: false as const, error: "no data" };
-      const val = (o: any): number =>
-        typeof o === "object" && o !== null ? Number(o.raw ?? 0) : Number(o ?? 0);
-      const th = r.topHoldings ?? {};
-      const sectorWeightings: { name: string; pct: number }[] = (th.sectorWeightings ?? [])
-        .map((row: any) => {
-          const key = Object.keys(row).find((k) => k !== "maxAge");
-          if (!key) return null;
-          return { name: key, pct: val(row[key]) * 100 };
-        })
-        .filter(Boolean);
-      const rawHoldings: { symbol: string; name: string; pct: number }[] = (th.holdings ?? []).map(
-        (h: any) => ({
-          symbol: String(h.symbol ?? ""),
-          name: String(h.holdingName ?? ""),
-          pct: val(h.holdingPercent) * 100,
-        }),
-      );
-      // Fan out to fetch each holding's sector (assetProfile) — Yahoo doesn't
-      // include per-holding sector in topHoldings. Cap concurrency to be nice.
-      const holdings = await Promise.all(
-        rawHoldings.map(async (h) => {
-          if (!h.symbol) return { ...h, sector: "" };
-          try {
-            const u = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
-              h.symbol,
-            )}?modules=assetProfile`;
-            const rr = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0 InvestIQ" } });
-            if (!rr.ok) return { ...h, sector: "" };
-            const jj = (await rr.json()) as any;
-            const sec = jj?.quoteSummary?.result?.[0]?.assetProfile?.sector ?? "";
-            return { ...h, sector: String(sec) };
-          } catch {
-            return { ...h, sector: "" };
-          }
-        }),
-      );
+      const th = r.topHoldings;
+      const sectorWeightings: { name: string; pct: number }[] = [];
+      for (const row of th?.sectorWeightings ?? []) {
+        const key = Object.keys(row).find((k) => k !== "maxAge");
+        if (key) sectorWeightings.push({ name: key, pct: rawNum(row[key]) * 100 });
+      }
+      const rawHoldings = (th?.holdings ?? []).slice(0, 25).map((h) => ({
+        symbol: typeof h.symbol === "string" ? h.symbol : "",
+        name: typeof h.holdingName === "string" ? h.holdingName : "",
+        pct: rawNum(h.holdingPercent) * 100,
+      }));
+      // Yahoo doesn't include per-holding sector in topHoldings, so fetch each holding's
+      // assetProfile (cached, small batches) to stay polite to the upstream.
+      const holdings: { symbol: string; name: string; pct: number; sector: string }[] = [];
+      const CHUNK = 8;
+      for (let i = 0; i < rawHoldings.length; i += CHUNK) {
+        const batch = rawHoldings.slice(i, i + CHUNK);
+        holdings.push(
+          ...(await Promise.all(
+            batch.map(async (h) => {
+              if (!h.symbol || !isValidSymbol(h.symbol)) return { ...h, sector: "" };
+              const s = await fetchSummary(h.symbol, "assetProfile");
+              const sec = s?.assetProfile?.sector;
+              return { ...h, sector: typeof sec === "string" ? sec : "" };
+            }),
+          )),
+        );
+      }
       const price = r.price ?? {};
       if (sectorWeightings.length === 0 && holdings.length === 0 && fallback) return fallback;
+      const name =
+        typeof price.longName === "string"
+          ? price.longName
+          : typeof price.shortName === "string"
+            ? price.shortName
+            : data.symbol;
       return {
         ok: true as const,
-        name: price.longName ?? price.shortName ?? data.symbol,
+        name,
         sectorWeightings,
         holdings,
       };
-
     } catch (e) {
-      return fallback ?? { ok: false as const, error: (e as Error).message };
+      return fallback ?? { ok: false as const, error: safeErrorMessage(e) };
     }
   });

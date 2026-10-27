@@ -1,12 +1,23 @@
 import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { BarChart3, LayoutDashboard, LineChart, Bell, Search, CalendarClock, Wallet, CandlestickChart, PanelLeftClose, PanelLeftOpen, Calculator } from "lucide-react";
+import {
+  BarChart3,
+  LayoutDashboard,
+  LineChart,
+  Bell,
+  Search,
+  CalendarClock,
+  Wallet,
+  CandlestickChart,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Calculator,
+} from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useAdmin } from "@/context/AdminContext";
 import { NIFTY_UNIVERSE } from "@/lib/nifty-universe";
 import { toast } from "sonner";
 import AvgPriceCalculator from "@/components/AvgPriceCalculator";
 const logoAsset = { url: "/investiq-logo.png" };
-
 
 export const Route = createFileRoute("/desktop")({
   component: DesktopLayout,
@@ -16,12 +27,10 @@ const nav = [
   { to: "/desktop", label: "Home", icon: LayoutDashboard, exact: true },
   { to: "/desktop/charts", label: "Stocks", icon: LineChart },
   { to: "/desktop/terminal", label: "F&O LIVE", icon: CandlestickChart },
-  
+
   { to: "/desktop/funds", label: "Mutual Funds", icon: Wallet },
   { to: "/desktop/ipos", label: "IPO Tracker", icon: CalendarClock },
 ];
-
-
 
 function resolveSearch(input: string): string | null {
   const q = input.trim().toUpperCase();
@@ -41,13 +50,14 @@ function resolveSearch(input: string): string | null {
 function DesktopLayout() {
   const loc = useLocation();
   const navigate = useNavigate();
-  const { isAdmin, login } = useAdmin();
+  const { isAdmin, loginDetailed } = useAdmin();
   const clicks = useRef<number[]>([]);
   const [modal, setModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [calcOpen, setCalcOpen] = useState(false);
   const [u, setU] = useState("");
   const [p, setP] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
   const [query, setQuery] = useState("");
   const suggestions = useMemo(() => {
     const q = query.trim().toUpperCase();
@@ -79,15 +89,32 @@ function DesktopLayout() {
     }
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (login(u, p)) {
-      toast.success("Admin authenticated");
-      setModal(false);
-      setU(""); setP("");
-      navigate({ to: "/desktop/admin" });
-    } else {
-      toast.error("Invalid credentials");
+    if (signingIn) return;
+    setSigningIn(true);
+    try {
+      const result = await loginDetailed(u, p);
+      if (result.ok) {
+        toast.success("Admin authenticated");
+        setModal(false);
+        setU("");
+        setP("");
+        navigate({ to: "/desktop/admin" });
+      } else if (result.status === 401) {
+        setP("");
+        toast.error("Invalid credentials");
+      } else if (result.status === 429) {
+        toast.error("Too many sign-in attempts — please wait a few minutes and try again");
+      } else if (result.status === 503) {
+        toast.error("Admin sign-in is not configured on the server");
+      } else if (result.status === 0) {
+        toast.error(`Network error: ${result.error}`);
+      } else {
+        toast.error(result.error || "Sign-in failed");
+      }
+    } finally {
+      setSigningIn(false);
     }
   };
 
@@ -101,9 +128,17 @@ function DesktopLayout() {
           title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
           className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border bg-surface/60 text-muted-foreground transition hover:bg-accent hover:text-foreground"
         >
-          {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+          {sidebarOpen ? (
+            <PanelLeftClose className="h-4 w-4" />
+          ) : (
+            <PanelLeftOpen className="h-4 w-4" />
+          )}
         </button>
-        <Link to="/" className="flex items-center gap-3 transition hover:opacity-80" title="Back to home">
+        <Link
+          to="/"
+          className="flex items-center gap-3 transition hover:opacity-80"
+          title="Back to home"
+        >
           <img
             src={logoAsset.url}
             alt="InvestIQ logo"
@@ -112,18 +147,26 @@ function DesktopLayout() {
 
           <span className="font-display text-lg font-semibold">
             <span className="text-gradient">Invest</span>IQ
-            <span className="ml-2 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-primary">F&amp;O Live</span>
+            <span className="ml-2 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-primary">
+              F&amp;O Live
+            </span>
           </span>
         </Link>
         <div className="flex flex-1 items-center justify-center px-8">
           <form
-            onSubmit={(e) => { e.preventDefault(); runSearch(query); }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              runSearch(query);
+            }}
             className="relative w-full max-w-md"
           >
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={query}
-              onChange={(e) => { setQuery(e.target.value); setShowSuggest(true); }}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setShowSuggest(true);
+              }}
               onFocus={() => setShowSuggest(true)}
               onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
               placeholder="Search stocks (e.g. INFY, Reliance, TCS)"
@@ -135,11 +178,16 @@ function DesktopLayout() {
                   <button
                     key={s.symbol}
                     type="button"
-                    onMouseDown={(e) => { e.preventDefault(); runSearch(s.symbol); }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      runSearch(s.symbol);
+                    }}
                     className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-accent"
                   >
                     <span className="font-medium">{s.symbol}</span>
-                    <span className="truncate text-xs text-muted-foreground">{s.name} · {s.sector}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {s.name} · {s.sector}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -222,7 +270,6 @@ function DesktopLayout() {
           )}
         </aside>
 
-
         {/* Main */}
         <main className="min-w-0 flex-1 px-8 py-8">
           <Outlet />
@@ -235,7 +282,10 @@ function DesktopLayout() {
               <div className="iq-ticker-track">
                 {Array.from({ length: 2 }).map((_, k) => (
                   <span key={k} className="inline-flex gap-12 whitespace-nowrap">
-                    <span>⚠ Investments are subject to market risk. Read all scheme related documents carefully.</span>
+                    <span>
+                      ⚠ Investments are subject to market risk. Read all scheme related documents
+                      carefully.
+                    </span>
                     <span>InvestIQ is not a SEBI-registered investment advisor.</span>
                     <span>Past performance is not indicative of future returns.</span>
                     <span>© 2026 InvestIQ · For research & educational use only.</span>
@@ -260,6 +310,8 @@ function DesktopLayout() {
               autoFocus
               value={u}
               onChange={(e) => setU(e.target.value)}
+              autoComplete="username"
+              disabled={signingIn}
               className="mt-1 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-primary"
             />
             <label className="mt-3 block text-xs font-medium">Password</label>
@@ -267,21 +319,25 @@ function DesktopLayout() {
               type="password"
               value={p}
               onChange={(e) => setP(e.target.value)}
+              autoComplete="current-password"
+              disabled={signingIn}
               className="mt-1 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-primary"
             />
             <div className="mt-5 flex gap-2">
               <button
                 type="button"
                 onClick={() => setModal(false)}
-                className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm hover:bg-accent"
+                disabled={signingIn}
+                className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm hover:bg-accent disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 rounded-lg bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-glow"
+                disabled={signingIn}
+                className="flex-1 rounded-lg bg-gradient-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-glow disabled:opacity-60"
               >
-                Sign in
+                {signingIn ? "Signing in…" : "Sign in"}
               </button>
             </div>
           </form>

@@ -7,7 +7,18 @@ import { NIFTY_UNIVERSE, NIFTY_YAHOO_SYMBOLS } from "@/lib/nifty-universe";
 import { getYahooQuotes } from "@/lib/yahoo.functions";
 import { getIndianStockQuotes, LiveStockQuote } from "@/lib/indian-stocks.functions";
 import { useRecentViewed } from "@/lib/recent-viewed";
-import { ArrowDownRight, ArrowUpRight, ExternalLink, RefreshCw, Clock, Search, Sparkles, Briefcase, Zap, ShieldCheck } from "lucide-react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  ExternalLink,
+  RefreshCw,
+  Clock,
+  Search,
+  Sparkles,
+  Briefcase,
+  Zap,
+  ShieldCheck,
+} from "lucide-react";
 import { getDhanHoldings } from "@/lib/dhan.functions";
 import { IndianStocksLiveWatch } from "@/components/IndianStocksLiveWatch";
 import { DhanConnectModal } from "@/components/DhanConnectModal";
@@ -43,7 +54,9 @@ function DesktopDashboard() {
   const heroSuggest = useMemo(() => {
     const q = heroQuery.trim().toUpperCase();
     if (!q) return [];
-    return NIFTY_UNIVERSE.filter((s) => s.symbol.includes(q) || s.name.toUpperCase().includes(q)).slice(0, 6);
+    return NIFTY_UNIVERSE.filter(
+      (s) => s.symbol.includes(q) || s.name.toUpperCase().includes(q),
+    ).slice(0, 6);
   }, [heroQuery]);
   const runHeroSearch = (sym: string) => {
     const s = (sym || heroQuery).trim().toUpperCase().replace(/\.NS$/, "");
@@ -95,9 +108,7 @@ function DesktopDashboard() {
           changePct: q.changePct,
           volume: q.volume,
         }));
-        mapped.sort(
-          (a, b) => order.indexOf(a.name) - order.indexOf(b.name),
-        );
+        mapped.sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
         setIndices(mapped);
       }
     } finally {
@@ -106,25 +117,39 @@ function DesktopDashboard() {
     }
   }, [fetchIndianQuotes, fetchQuotes, fetchHoldings]);
 
-
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
   useEffect(() => {
     if (!live) return;
-    const id = window.setInterval(() => { void load(); }, 10_000);
+    const id = window.setInterval(() => {
+      void load();
+    }, 10_000);
     return () => window.clearInterval(id);
   }, [live, load]);
 
   const gainers = useMemo(
-    () => [...quotes].filter((q) => q.changePct > 0).sort((a, b) => b.changePct - a.changePct).slice(0, 5),
+    () =>
+      [...quotes]
+        .filter((q) => q.changePct > 0)
+        .sort((a, b) => b.changePct - a.changePct)
+        .slice(0, 5),
     [quotes],
   );
   const losers = useMemo(
-    () => [...quotes].filter((q) => q.changePct < 0).sort((a, b) => a.changePct - b.changePct).slice(0, 5),
+    () =>
+      [...quotes]
+        .filter((q) => q.changePct < 0)
+        .sort((a, b) => a.changePct - b.changePct)
+        .slice(0, 5),
     [quotes],
   );
 
   const sectors = useMemo(() => {
-    const bySector = new Map<string, { up: number; down: number; avgPct: number; total: number; sum: number }>();
+    const bySector = new Map<
+      string,
+      { up: number; down: number; avgPct: number; total: number; sum: number }
+    >();
     for (const q of quotes) {
       const sec = NIFTY_UNIVERSE.find((s) => s.symbol === q.symbol)?.sector ?? "Other";
       const cur = bySector.get(sec) ?? { up: 0, down: 0, avgPct: 0, total: 0, sum: 0 };
@@ -135,7 +160,13 @@ function DesktopDashboard() {
       bySector.set(sec, cur);
     }
     return Array.from(bySector.entries())
-      .map(([sec, v]) => ({ sector: sec, up: v.up, down: v.down, total: v.total, avgPct: v.total ? v.sum / v.total : 0 }))
+      .map(([sec, v]) => ({
+        sector: sec,
+        up: v.up,
+        down: v.down,
+        total: v.total,
+        avgPct: v.total ? v.sum / v.total : 0,
+      }))
       .sort((a, b) => b.avgPct - a.avgPct);
   }, [quotes]);
 
@@ -143,7 +174,6 @@ function DesktopDashboard() {
 
   return (
     <div className="space-y-6">
-
       <div className="flex items-end justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -161,7 +191,12 @@ function DesktopDashboard() {
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} className="accent-primary" />
+            <input
+              type="checkbox"
+              checked={live}
+              onChange={(e) => setLive(e.target.checked)}
+              className="accent-primary"
+            />
             Auto-refresh
           </label>
           <button
@@ -202,7 +237,11 @@ function DesktopDashboard() {
                   to="/desktop/charts"
                   search={{ symbol: sym }}
                   className={`group relative rounded-xl border bg-background/50 p-3 transition hover:bg-accent ${
-                    q ? (pos ? "border-success/30 hover:border-success/60" : "border-destructive/30 hover:border-destructive/60") : "border-border"
+                    q
+                      ? pos
+                        ? "border-success/30 hover:border-success/60"
+                        : "border-destructive/30 hover:border-destructive/60"
+                      : "border-border"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -224,7 +263,11 @@ function DesktopDashboard() {
                           pos ? "text-success" : "text-destructive"
                         }`}
                       >
-                        {pos ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                        {pos ? (
+                          <ArrowUpRight className="h-3 w-3" />
+                        ) : (
+                          <ArrowDownRight className="h-3 w-3" />
+                        )}
                         {pos ? "+" : ""}
                         {q.changePct.toFixed(2)}%
                       </span>
@@ -236,7 +279,6 @@ function DesktopDashboard() {
           </div>
         )}
       </div>
-
 
       {/* Indices strip (live) */}
       <div className="grid grid-cols-4 gap-3 rounded-2xl border border-border bg-surface/50 p-4">
@@ -252,25 +294,19 @@ function DesktopDashboard() {
           const pos = i.changePct >= 0;
           return (
             <div key={i.symbol} className="rounded-xl border border-border bg-background/50 p-3">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{i.symbol}</p>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                {i.symbol}
+              </p>
               <p className="mt-1 font-display text-lg font-semibold">
-                {i.price > 0
-                  ? i.price.toLocaleString("en-IN", { maximumFractionDigits: 2 })
-                  : "—"}
+                {i.price > 0 ? i.price.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}
               </p>
               <p className={`text-xs ${pos ? "text-success" : "text-destructive"}`}>
-                {i.price > 0
-                  ? `${pos ? "+" : ""}${i.changePct.toFixed(2)}%`
-                  : "Loading…"}
+                {i.price > 0 ? `${pos ? "+" : ""}${i.changePct.toFixed(2)}%` : "Loading…"}
               </p>
             </div>
           );
         })}
       </div>
-
-
-
-
 
       {/* DhanHQ Connected Portfolio */}
       {dhanData?.ok && dhanData?.holdings?.length > 0 && (
@@ -305,11 +341,17 @@ function DesktopDashboard() {
             </div>
             <div className="flex items-center gap-4 text-right">
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Current Value</p>
-                <p className="font-display text-lg font-bold">{formatINR(dhanData.summary.totalCurrent)}</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Current Value
+                </p>
+                <p className="font-display text-lg font-bold">
+                  {formatINR(dhanData.summary.totalCurrent)}
+                </p>
               </div>
               <div className="border-l border-border pl-4">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Total P&amp;L</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Total P&amp;L
+                </p>
                 <p
                   className={`font-display text-lg font-bold ${
                     dhanData.summary.totalPnl >= 0 ? "text-success" : "text-destructive"
@@ -354,8 +396,12 @@ function DesktopDashboard() {
                     Qty: {h.quantity} · Avg {formatINR(h.averagePrice)}
                   </p>
                   <div className="mt-2 flex items-baseline justify-between">
-                    <span className="font-display text-xs font-medium">{formatINR(h.currentPrice)}</span>
-                    <span className={`text-[11px] font-semibold ${pos ? "text-success" : "text-destructive"}`}>
+                    <span className="font-display text-xs font-medium">
+                      {formatINR(h.currentPrice)}
+                    </span>
+                    <span
+                      className={`text-[11px] font-semibold ${pos ? "text-success" : "text-destructive"}`}
+                    >
                       {pos ? "+" : ""}
                       {h.pnlPct.toFixed(1)}%
                     </span>
@@ -390,7 +436,9 @@ function DesktopDashboard() {
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h2 className="font-display text-lg font-semibold">Trending sectors</h2>
-            <p className="text-xs text-muted-foreground">Average % change across tracked Nifty constituents</p>
+            <p className="text-xs text-muted-foreground">
+              Average % change across tracked Nifty constituents
+            </p>
           </div>
         </div>
         {sectors.length === 0 ? (
@@ -409,7 +457,9 @@ function DesktopDashboard() {
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium group-hover:text-primary">{s.sector}</p>
-                    <p className={`text-sm font-semibold ${pos ? "text-success" : "text-destructive"}`}>
+                    <p
+                      className={`text-sm font-semibold ${pos ? "text-success" : "text-destructive"}`}
+                    >
                       {pos ? "+" : ""}
                       {s.avgPct.toFixed(2)}%
                     </p>
@@ -465,7 +515,11 @@ function MoverCard({ title, quotes, up }: { title: string; quotes: LiveQuote[]; 
     <div className="rounded-2xl border border-border bg-surface/60 p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-display text-sm font-semibold">{title}</h3>
-        {up ? <ArrowUpRight className="h-4 w-4 text-success" /> : <ArrowDownRight className="h-4 w-4 text-destructive" />}
+        {up ? (
+          <ArrowUpRight className="h-4 w-4 text-success" />
+        ) : (
+          <ArrowDownRight className="h-4 w-4 text-destructive" />
+        )}
       </div>
       {quotes.length === 0 ? (
         <p className="py-6 text-center text-xs text-muted-foreground">Waiting for live data…</p>
@@ -484,7 +538,9 @@ function MoverCard({ title, quotes, up }: { title: string; quotes: LiveQuote[]; 
                 </div>
                 <div className="text-right">
                   <p className="text-sm">{formatINR(s.price)}</p>
-                  <p className={`text-xs font-semibold ${s.changePct >= 0 ? "text-success" : "text-destructive"}`}>
+                  <p
+                    className={`text-xs font-semibold ${s.changePct >= 0 ? "text-success" : "text-destructive"}`}
+                  >
                     {s.changePct >= 0 ? "+" : ""}
                     {s.changePct.toFixed(2)}%
                   </p>

@@ -42,7 +42,9 @@ export function IndianStocksLiveWatch({
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [selectedSector, setSelectedSector] = useState("All");
-  const [sortField, setSortField] = useState<"changePct" | "price" | "volume" | "symbol">("changePct");
+  const [sortField, setSortField] = useState<"changePct" | "price" | "volume" | "symbol">(
+    "changePct",
+  );
   const [sortAsc, setSortAsc] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 20;
@@ -87,7 +89,13 @@ export function IndianStocksLiveWatch({
   };
 
   const formatVol = (v: number) =>
-    v >= 1e7 ? `${(v / 1e7).toFixed(2)} Cr` : v >= 1e5 ? `${(v / 1e5).toFixed(2)} L` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : String(v);
+    v >= 1e7
+      ? `${(v / 1e7).toFixed(2)} Cr`
+      : v >= 1e5
+        ? `${(v / 1e5).toFixed(2)} L`
+        : v >= 1e3
+          ? `${(v / 1e3).toFixed(1)}K`
+          : String(v);
 
   return (
     <div className="rounded-2xl border border-border bg-surface/60 p-5 shadow-sm">
@@ -188,7 +196,9 @@ export function IndianStocksLiveWatch({
             {currentItems.length === 0 ? (
               <tr>
                 <td colSpan={7} className="py-8 text-center text-xs text-muted-foreground">
-                  {loading ? "Streaming live Indian stock prices..." : "No stocks matching your criteria."}
+                  {loading
+                    ? "Streaming live Indian stock prices..."
+                    : "No stocks matching your criteria."}
                 </td>
               </tr>
             ) : (
@@ -198,10 +208,7 @@ export function IndianStocksLiveWatch({
                 const dayPct = daySpan > 0 ? ((q.price - q.low) / daySpan) * 100 : 50;
 
                 return (
-                  <tr
-                    key={q.symbol}
-                    className="group transition hover:bg-accent/40"
-                  >
+                  <tr key={q.symbol} className="group transition hover:bg-accent/40">
                     <td className="py-3 pl-2 pr-4">
                       <div className="flex items-center gap-2">
                         <Link
@@ -232,7 +239,11 @@ export function IndianStocksLiveWatch({
                             : "border border-destructive/30 bg-destructive/10 text-destructive"
                         }`}
                       >
-                        {pos ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                        {pos ? (
+                          <ArrowUpRight className="h-3 w-3" />
+                        ) : (
+                          <ArrowDownRight className="h-3 w-3" />
+                        )}
                         {pos ? "+" : ""}
                         {q.changePct.toFixed(2)}%
                       </span>
@@ -308,7 +319,8 @@ export function IndianStocksLiveWatch({
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-3 text-xs">
           <p className="text-muted-foreground">
-            Showing {(page - 1) * pageSize + 1} to {Math.min(filtered.length, page * pageSize)} of {filtered.length} Indian stocks
+            Showing {(page - 1) * pageSize + 1} to {Math.min(filtered.length, page * pageSize)} of{" "}
+            {filtered.length} Indian stocks
           </p>
           <div className="flex items-center gap-1.5">
             <button

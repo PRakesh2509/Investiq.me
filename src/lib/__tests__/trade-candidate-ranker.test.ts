@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  rankTradeCandidates,
-  type RiskConstraintsConfig,
-} from "../trade-candidate-ranker.ts";
-import type { NormalizedOptionChain } from "../options-data-provider.server.ts";
+import { rankTradeCandidates, type RiskConstraintsConfig } from "../trade-candidate-ranker.ts";
+import type {
+  NormalizedOptionChain,
+  NormalizedOptionRow,
+} from "../options-data-provider.server.ts";
 
 function createMockOptionChain(): NormalizedOptionChain {
   const strikes = [24800, 24900, 25000, 25100, 25200];
-  const rows = strikes.map((strike) => {
+  const baseRows = strikes.map((strike) => {
     const isAtm = strike === 25000;
     return {
       strike,
@@ -87,16 +87,11 @@ function createMockOptionChain(): NormalizedOptionChain {
         isItm: strike > 25000,
         isAtm,
       },
-      ce: null as any,
-      pe: null as any,
     };
   });
 
   // Link ce/pe aliases
-  rows.forEach((r) => {
-    r.ce = r.call;
-    r.pe = r.put;
-  });
+  const rows: NormalizedOptionRow[] = baseRows.map((r) => ({ ...r, ce: r.call, pe: r.put }));
 
   return {
     symbol: "NIFTY 50",
@@ -161,5 +156,9 @@ test("rankTradeCandidates triggers explicit NO TRADE decision during high event 
   assert.equal(result.noTradeDecision.isNoTrade, true);
   assert.ok(result.noTradeDecision.capitalPreservationMessage.length > 0);
   assert.ok(result.noTradeDecision.reevaluationTriggers.length > 0);
-  assert.equal(result.topRecommendation, null, "No candidate should be recommended during NO TRADE");
+  assert.equal(
+    result.topRecommendation,
+    null,
+    "No candidate should be recommended during NO TRADE",
+  );
 });

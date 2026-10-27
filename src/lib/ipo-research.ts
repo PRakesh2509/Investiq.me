@@ -1,7 +1,6 @@
 import type { IPO } from "./ipos";
 import type { FinancialRow, GmpPoint, QuantResult, SubscriptionMultiples } from "./ipo-quant";
 
-
 export type Verdict = "STRONG APPLY" | "APPLY" | "APPLY WITH CAUTION" | "AVOID";
 export type Confidence = "High" | "Medium" | "Low";
 
@@ -55,7 +54,6 @@ export interface IpoResearch {
   moatBullets: string[];
 }
 
-
 export const CATEGORIES: Array<{ key: string; label: string; weight: number }> = [
   { key: "business", label: "Business & Industry", weight: 15 },
   { key: "promoters", label: "Promoters & Management", weight: 12 },
@@ -98,7 +96,8 @@ export function applyRedFlagOverride(verdict: Verdict, redFlags: string[]): Verd
     /auditor resign|customer concentration|investigat|pledg|litigation|fraud/i.test(f),
   );
   if (hard.length >= 2) return "AVOID";
-  if (hard.length === 1 && (verdict === "STRONG APPLY" || verdict === "APPLY")) return "APPLY WITH CAUTION";
+  if (hard.length === 1 && (verdict === "STRONG APPLY" || verdict === "APPLY"))
+    return "APPLY WITH CAUTION";
   return verdict;
 }
 
@@ -121,18 +120,24 @@ export function guardAgainstDataStarvedAvoid(
 ): Verdict {
   if (verdict !== "AVOID") return verdict;
   const hard = redFlags.filter((f) =>
-    /auditor resign|customer concentration|investigat|pledg|litigation|fraud|negative (ocf|cash)/i.test(f),
+    /auditor resign|customer concentration|investigat|pledg|litigation|fraud|negative (ocf|cash)/i.test(
+      f,
+    ),
   );
   if (hard.length >= 1) return "AVOID";
-  const unverified = scores.filter((s) => /unverified|not available|no data/i.test(s.rationale)).length;
+  const unverified = scores.filter((s) =>
+    /unverified|not available|no data/i.test(s.rationale),
+  ).length;
   if (unverified >= 4) return "APPLY WITH CAUTION";
   return verdict;
 }
 
-
 const RULE = "━━━━━━━━━━━━━━━━━━━━";
 const esc = (s: string) =>
-  String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
 /** Telegram card following the user's mandated OUTPUT FORMAT, verbatim in order. */
 export function formatResearchForTelegram(r: IpoResearch, ipo: IPO): string {
@@ -167,12 +172,12 @@ export function formatResearchForTelegram(r: IpoResearch, ipo: IPO): string {
   L.push(`Expected returns: ${esc(r.expectedReturns || "—")}`);
   L.push(`${esc(r.finalReview || "—")}`);
   L.push(``);
-  L.push(`<i>Dates: ${ipo.openDate || "—"} → ${ipo.closeDate || "—"} · Listing ${ipo.listingDate || "—"}</i>`);
+  L.push(
+    `<i>Dates: ${ipo.openDate || "—"} → ${ipo.closeDate || "—"} · Listing ${ipo.listingDate || "—"}</i>`,
+  );
   L.push(`<i>Information only, not SEBI-registered advice.</i>`);
   return L.join("\n");
 }
-
-
 
 /** Telegram hard-limits a message at 4096 chars — split on section rules. */
 export function splitForTelegram(text: string, limit = 3800): string[] {

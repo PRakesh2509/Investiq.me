@@ -75,7 +75,8 @@ export function detectMarketRegime(input: RegimeDetectionInput): RegimeDetection
       regime: "INSUFFICIENT_DATA",
       label: "Insufficient Market Data",
       confidence: 30,
-      description: "Essential price structure or technical inputs are missing. No automated trade evaluation permitted.",
+      description:
+        "Essential price structure or technical inputs are missing. No automated trade evaluation permitted.",
       evidence: ["Missing essential indicator feeds (EMA9, EMA21, or RSI)"],
       persistenceCount: 1,
       suggestedStrategyFamily: "CASH_PRESERVATION",
@@ -89,13 +90,14 @@ export function detectMarketRegime(input: RegimeDetectionInput): RegimeDetection
     evidence.push(
       highImpactEventsCount >= 3
         ? `Cluster of ${highImpactEventsCount} high-impact macroeconomic/geopolitical events creates elevated uncertainty`
-        : `Scheduled high-impact event active with elevated IV (${atmIv.toFixed(1)}%) & VIX (${indiaVix.toFixed(1)})`
+        : `Scheduled high-impact event active with elevated IV (${atmIv.toFixed(1)}%) & VIX (${indiaVix.toFixed(1)})`,
     );
     return {
       regime: "EVENT_DRIVEN",
       label: "Event-Driven Volatility Regime",
       confidence: 88,
-      description: "Binary catalyst or high-impact macroeconomic event in progress. Premiums carry high event-crush risk.",
+      description:
+        "Binary catalyst or high-impact macroeconomic event in progress. Premiums carry high event-crush risk.",
       evidence,
       persistenceCount: previousRegime === "EVENT_DRIVEN" ? persistenceCount + 1 : 1,
       suggestedStrategyFamily: "DEFINED_RISK_SPREADS_OR_HEDGES",
@@ -107,13 +109,16 @@ export function detectMarketRegime(input: RegimeDetectionInput): RegimeDetection
   // 2. High Volatility Breakout Check
   const isLargeIntradayMove = Math.abs(changePct) >= 1.25;
   if (isLargeIntradayMove && (atmIv > 18 || indiaVix > 16)) {
-    evidence.push(`Substantial intraday expansion (${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%) with IV surge`);
+    evidence.push(
+      `Substantial intraday expansion (${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%) with IV surge`,
+    );
     evidence.push(`Spot ${spotPrice.toFixed(1)} breaking outer volatility bands`);
     return {
       regime: "HIGH_VOLATILITY_BREAKOUT",
       label: "High-Volatility Breakout",
       confidence: 82,
-      description: "Aggressive directional momentum with expanding volatility bands. Trend acceleration favored.",
+      description:
+        "Aggressive directional momentum with expanding volatility bands. Trend acceleration favored.",
       evidence,
       persistenceCount: previousRegime === "HIGH_VOLATILITY_BREAKOUT" ? persistenceCount + 1 : 1,
       suggestedStrategyFamily: "MOMENTUM_OPTIONS_BUYING",
@@ -130,7 +135,8 @@ export function detectMarketRegime(input: RegimeDetectionInput): RegimeDetection
       regime: "VOLATILITY_CONTRACTION",
       label: "Volatility Contraction (Squeeze)",
       confidence: 80,
-      description: "Extremely low implied volatility and narrow price range. Cheap option purchasing with breakout alert.",
+      description:
+        "Extremely low implied volatility and narrow price range. Cheap option purchasing with breakout alert.",
       evidence,
       persistenceCount: previousRegime === "VOLATILITY_CONTRACTION" ? persistenceCount + 1 : 1,
       suggestedStrategyFamily: "CALENDAR_SPREADS_OR_STRADDLE_BUY",
@@ -155,7 +161,8 @@ export function detectMarketRegime(input: RegimeDetectionInput): RegimeDetection
       regime: "TRENDING_BULLISH",
       label: "Trending Bullish Regime",
       confidence: Math.min(92, 70 + (isPcrBullish ? 12 : 5) + (changePct > 0.5 ? 8 : 0)),
-      description: "Market in structured upward trend. Buying ATM/slight ITM Calls or Bull Call Spreads is favored.",
+      description:
+        "Market in structured upward trend. Buying ATM/slight ITM Calls or Bull Call Spreads is favored.",
       evidence,
       persistenceCount: previousRegime === "TRENDING_BULLISH" ? persistenceCount + 1 : 1,
       suggestedStrategyFamily: "BULL_CALL_SPREAD_OR_LONG_CALL",
@@ -174,13 +181,15 @@ export function detectMarketRegime(input: RegimeDetectionInput): RegimeDetection
     evidence.push(`9EMA (₹${ema9.toFixed(1)}) < 21EMA (₹${ema21.toFixed(1)}) downward slope`);
     if (vwap) evidence.push(`Spot trading below intraday VWAP (₹${vwap.toFixed(1)})`);
     evidence.push(`RSI(14) at ${rsi.toFixed(1)} confirms bearish trend persistence`);
-    if (isPcrBearish) evidence.push(`PCR at ${pcr.toFixed(2)} signifies call writer overhead dominance`);
+    if (isPcrBearish)
+      evidence.push(`PCR at ${pcr.toFixed(2)} signifies call writer overhead dominance`);
 
     return {
       regime: "TRENDING_BEARISH",
       label: "Trending Bearish Regime",
       confidence: Math.min(92, 70 + (isPcrBearish ? 12 : 5) + (changePct < -0.5 ? 8 : 0)),
-      description: "Market in structured downward distribution. Buying ATM Puts or Bear Put Spreads is favored.",
+      description:
+        "Market in structured downward distribution. Buying ATM Puts or Bear Put Spreads is favored.",
       evidence,
       persistenceCount: previousRegime === "TRENDING_BEARISH" ? persistenceCount + 1 : 1,
       suggestedStrategyFamily: "BEAR_PUT_SPREAD_OR_LONG_PUT",
@@ -198,7 +207,8 @@ export function detectMarketRegime(input: RegimeDetectionInput): RegimeDetection
     regime: "RANGE_BOUND",
     label: "Range-Bound Consolidation",
     confidence: 76,
-    description: "No clear directional breakout. Mean-reversion or credit spreads favored over naked options buying.",
+    description:
+      "No clear directional breakout. Mean-reversion or credit spreads favored over naked options buying.",
     evidence,
     persistenceCount: previousRegime === "RANGE_BOUND" ? persistenceCount + 1 : 1,
     suggestedStrategyFamily: "IRON_CONDOR_OR_CREDIT_SPREAD",

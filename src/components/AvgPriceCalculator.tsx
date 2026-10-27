@@ -72,19 +72,21 @@ export default function AvgPriceCalculator({ open, onClose }: Props) {
     return Number.isFinite(n) && n >= 0 ? n : NaN;
   };
 
-  const parsed = useMemo(() => ({
-    eq: num(f.existingQty),
-    ca: num(f.currentAvg),
-    nq: num(f.newQty),
-    cp: num(f.currentPrice),
-    mp: num(f.marketPrice),
-  }), [f]);
+  const parsed = useMemo(
+    () => ({
+      eq: num(f.existingQty),
+      ca: num(f.currentAvg),
+      nq: num(f.newQty),
+      cp: num(f.currentPrice),
+      mp: num(f.marketPrice),
+    }),
+    [f],
+  );
 
   const ready = [parsed.eq, parsed.ca, parsed.nq, parsed.cp].every((v) => !Number.isNaN(v));
   const totalUnits = ready ? parsed.eq + parsed.nq : 0;
-  const newAvg = ready && totalUnits > 0
-    ? (parsed.eq * parsed.ca + parsed.nq * parsed.cp) / totalUnits
-    : 0;
+  const newAvg =
+    ready && totalUnits > 0 ? (parsed.eq * parsed.ca + parsed.nq * parsed.cp) / totalUnits : 0;
   const totalCost = ready ? totalUnits * newAvg : 0;
   const netChange = ready ? parsed.nq * parsed.cp - parsed.nq * parsed.ca : 0;
   const hasMp = !Number.isNaN(parsed.mp);
@@ -100,15 +102,26 @@ export default function AvgPriceCalculator({ open, onClose }: Props) {
     setF((s) => ({ ...s, [k]: e.target.value }));
 
   const Field = ({
-    label, value, onChange, placeholder, type = "number", step,
+    label,
+    value,
+    onChange,
+    placeholder,
+    type = "number",
+    step,
   }: {
-    label: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    placeholder: string; type?: string; step?: string;
+    label: string;
+    value: string;
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    placeholder: string;
+    type?: string;
+    step?: string;
   }) => {
     const invalid = type === "number" && value !== "" && Number.isNaN(num(value));
     return (
       <label className="block">
-        <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+        <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
         <input
           type={type}
           step={step}
@@ -183,15 +196,44 @@ export default function AvgPriceCalculator({ open, onClose }: Props) {
 
         {/* Body */}
         <div className="space-y-4 px-5 py-5">
-          <Field label={L.name} value={f.name} onChange={update("name")} placeholder={L.namePh} type="text" />
+          <Field
+            label={L.name}
+            value={f.name}
+            onChange={update("name")}
+            placeholder={L.namePh}
+            type="text"
+          />
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label={L.existing} value={f.existingQty} onChange={update("existingQty")} placeholder={L.existingPh} step="0.0001" />
-            <Field label={L.avg} value={f.currentAvg} onChange={update("currentAvg")} placeholder={L.avgPh} step="0.0001" />
-            <Field label={L.newQty} value={f.newQty} onChange={update("newQty")} placeholder={L.newQtyPh} step="0.0001" />
-            <Field label={L.price} value={f.currentPrice} onChange={update("currentPrice")} placeholder={L.pricePh} step="0.0001" />
+            <Field
+              label={L.existing}
+              value={f.existingQty}
+              onChange={update("existingQty")}
+              placeholder={L.existingPh}
+              step="0.0001"
+            />
+            <Field
+              label={L.avg}
+              value={f.currentAvg}
+              onChange={update("currentAvg")}
+              placeholder={L.avgPh}
+              step="0.0001"
+            />
+            <Field
+              label={L.newQty}
+              value={f.newQty}
+              onChange={update("newQty")}
+              placeholder={L.newQtyPh}
+              step="0.0001"
+            />
+            <Field
+              label={L.price}
+              value={f.currentPrice}
+              onChange={update("currentPrice")}
+              placeholder={L.pricePh}
+              step="0.0001"
+            />
           </div>
-
 
           {/* Results */}
           <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
@@ -204,10 +246,15 @@ export default function AvgPriceCalculator({ open, onClose }: Props) {
               <div className="space-y-3">
                 <div className="flex items-baseline justify-between">
                   <span className="text-xs text-muted-foreground">{L.avgResult}</span>
-                  <span className="font-display text-2xl font-bold tabular-nums text-primary">{inr(newAvg, isMf ? 4 : 2)}</span>
+                  <span className="font-display text-2xl font-bold tabular-nums text-primary">
+                    {inr(newAvg, isMf ? 4 : 2)}
+                  </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 border-t border-border pt-3 text-sm">
-                  <Row label={L.totalLabel} value={`${totalUnits.toLocaleString("en-IN", { maximumFractionDigits: 4 })} ${L.unitSuffix}`} />
+                  <Row
+                    label={L.totalLabel}
+                    value={`${totalUnits.toLocaleString("en-IN", { maximumFractionDigits: 4 })} ${L.unitSuffix}`}
+                  />
                   <Row label="Total Cost Basis" value={inr(totalCost)} />
                   <Row
                     label="Net Additional Cost"
@@ -216,13 +263,18 @@ export default function AvgPriceCalculator({ open, onClose }: Props) {
                   />
                   <Row
                     label={isMf ? "NAV Change" : "Avg Change"}
-                    value={(newAvg - parsed.ca >= 0 ? "+" : "") + (newAvg - parsed.ca).toFixed(isMf ? 4 : 2)}
+                    value={
+                      (newAvg - parsed.ca >= 0 ? "+" : "") +
+                      (newAvg - parsed.ca).toFixed(isMf ? 4 : 2)
+                    }
                     color={newAvg - parsed.ca < 0 ? "text-success" : "text-destructive"}
                   />
                 </div>
               </div>
             ) : (
-              <p className="text-center text-xs text-muted-foreground">Fill all four fields to see results</p>
+              <p className="text-center text-xs text-muted-foreground">
+                Fill all four fields to see results
+              </p>
             )}
           </div>
 
@@ -246,8 +298,14 @@ export default function AvgPriceCalculator({ open, onClose }: Props) {
                 />
                 <div className="col-span-2 flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">P&L %</span>
-                  <span className={`inline-flex items-center gap-1 font-semibold tabular-nums ${pl >= 0 ? "text-success" : "text-destructive"}`}>
-                    {pl >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                  <span
+                    className={`inline-flex items-center gap-1 font-semibold tabular-nums ${pl >= 0 ? "text-success" : "text-destructive"}`}
+                  >
+                    {pl >= 0 ? (
+                      <TrendingUp className="h-3.5 w-3.5" />
+                    ) : (
+                      <TrendingDown className="h-3.5 w-3.5" />
+                    )}
                     {plPct.toFixed(2)}%
                   </span>
                 </div>
@@ -258,14 +316,24 @@ export default function AvgPriceCalculator({ open, onClose }: Props) {
 
         {/* Footer */}
         <div className="border-t border-border bg-surface/40 px-5 py-3">
-          <p className="text-center text-[11px] text-muted-foreground">Educational tool. Not investment advice.</p>
+          <p className="text-center text-[11px] text-muted-foreground">
+            Educational tool. Not investment advice.
+          </p>
         </div>
       </div>
     </div>
   );
 }
 
-function Row({ label, value, color = "text-foreground" }: { label: string; value: string; color?: string }) {
+function Row({
+  label,
+  value,
+  color = "text-foreground",
+}: {
+  label: string;
+  value: string;
+  color?: string;
+}) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-xs text-muted-foreground">{label}</span>

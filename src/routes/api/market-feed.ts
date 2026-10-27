@@ -10,6 +10,7 @@ export const Route = createFileRoute("/api/market-feed")({
       GET: async () => {
         const { getAccessToken, fetchMarketFeedUri, MissingEnvError, UpstoxAuthError } =
           await import("@/lib/upstox.server");
+        const { safeErrorMessage } = await import("@/lib/provider-utils");
         try {
           const uri = await fetchMarketFeedUri(getAccessToken());
           return Response.json({ ok: true, uri }, { headers: { "cache-control": "no-store" } });
@@ -17,9 +18,10 @@ export const Route = createFileRoute("/api/market-feed")({
           const err = e as Error;
           const tokenExpired = err instanceof UpstoxAuthError;
           const missing = err instanceof MissingEnvError ? err.missing : undefined;
-          console.error("[market-feed]", err.message);
+          const message = safeErrorMessage(err, "market feed unavailable");
+          console.error("[market-feed]", message);
           return Response.json(
-            { ok: false, error: err.message, tokenExpired, missing },
+            { ok: false, error: message, tokenExpired, missing },
             { status: tokenExpired ? 401 : 500 },
           );
         }

@@ -6,12 +6,16 @@ const KEY = "investiq_disclaimer_v1";
 export function useDisclaimerAcknowledged() {
   const [ack, setAck] = useState(false);
   useEffect(() => {
-    try { setAck(localStorage.getItem(KEY) === "1"); } catch {}
+    try {
+      setAck(localStorage.getItem(KEY) === "1");
+    } catch {}
   }, []);
   return {
     acknowledged: ack,
     accept: () => {
-      try { localStorage.setItem(KEY, "1"); } catch {}
+      try {
+        localStorage.setItem(KEY, "1");
+      } catch {}
       setAck(true);
     },
   };
@@ -38,10 +42,13 @@ export function DisclaimerModal({
           <div>
             <h2 className="font-display text-lg font-semibold">Important disclaimer</h2>
             <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              InvestIQ is <span className="font-medium text-foreground">not a SEBI (Securities
-              and Exchange Board of India) registered</span> portal. This is an educational
-              platform only. Please consult a SEBI-registered financial advisor before making any
-              investment decisions. All stock market investments carry risk of loss.
+              InvestIQ is{" "}
+              <span className="font-medium text-foreground">
+                not a SEBI (Securities and Exchange Board of India) registered
+              </span>{" "}
+              portal. This is an educational platform only. Please consult a SEBI-registered
+              financial advisor before making any investment decisions. All stock market investments
+              carry risk of loss.
             </p>
           </div>
         </div>

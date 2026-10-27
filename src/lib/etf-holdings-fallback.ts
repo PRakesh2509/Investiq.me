@@ -21,11 +21,21 @@ const nifty50: EtfProfile = {
   ],
   holdings: [
     { symbol: "HDFCBANK.NS", name: "HDFC Bank", pct: 12.3, sector: "Financial Services" },
-    { symbol: "RELIANCE.NS", name: "Reliance Industries", pct: 9.7, sector: "Oil Gas & Consumable Fuels" },
+    {
+      symbol: "RELIANCE.NS",
+      name: "Reliance Industries",
+      pct: 9.7,
+      sector: "Oil Gas & Consumable Fuels",
+    },
     { symbol: "ICICIBANK.NS", name: "ICICI Bank", pct: 8.1, sector: "Financial Services" },
     { symbol: "INFY.NS", name: "Infosys", pct: 5.1, sector: "Information Technology" },
     { symbol: "BHARTIARTL.NS", name: "Bharti Airtel", pct: 4.8, sector: "Telecom" },
-    { symbol: "TCS.NS", name: "Tata Consultancy Services", pct: 3.9, sector: "Information Technology" },
+    {
+      symbol: "TCS.NS",
+      name: "Tata Consultancy Services",
+      pct: 3.9,
+      sector: "Information Technology",
+    },
     { symbol: "ITC.NS", name: "ITC", pct: 3.7, sector: "Consumer Goods" },
     { symbol: "LT.NS", name: "Larsen & Toubro", pct: 3.6, sector: "Construction" },
   ],
@@ -59,7 +69,12 @@ const psuBank: EtfProfile = {
     { symbol: "BANKBARODA.NS", name: "Bank of Baroda", pct: 14.4, sector: "Public Sector Banks" },
     { symbol: "PNB.NS", name: "Punjab National Bank", pct: 12.7, sector: "Public Sector Banks" },
     { symbol: "CANBK.NS", name: "Canara Bank", pct: 10.3, sector: "Public Sector Banks" },
-    { symbol: "UNIONBANK.NS", name: "Union Bank of India", pct: 8.9, sector: "Public Sector Banks" },
+    {
+      symbol: "UNIONBANK.NS",
+      name: "Union Bank of India",
+      pct: 8.9,
+      sector: "Public Sector Banks",
+    },
   ],
 };
 
@@ -67,7 +82,12 @@ const it: EtfProfile = {
   name: "Nifty IT ETF",
   sectorWeightings: [{ name: "Information Technology", pct: 100 }],
   holdings: [
-    { symbol: "TCS.NS", name: "Tata Consultancy Services", pct: 27.6, sector: "Information Technology" },
+    {
+      symbol: "TCS.NS",
+      name: "Tata Consultancy Services",
+      pct: 27.6,
+      sector: "Information Technology",
+    },
     { symbol: "INFY.NS", name: "Infosys", pct: 25.8, sector: "Information Technology" },
     { symbol: "HCLTECH.NS", name: "HCL Technologies", pct: 9.4, sector: "Information Technology" },
     { symbol: "TECHM.NS", name: "Tech Mahindra", pct: 7.1, sector: "Information Technology" },
@@ -95,7 +115,10 @@ const metal: EtfProfile = {
 
 const gold: EtfProfile = {
   name: "Gold ETF",
-  sectorWeightings: [{ name: "Gold", pct: 99.5 }, { name: "Cash & Receivables", pct: 0.5 }],
+  sectorWeightings: [
+    { name: "Gold", pct: 99.5 },
+    { name: "Cash & Receivables", pct: 0.5 },
+  ],
   holdings: [
     { symbol: "GOLD", name: "Physical Gold / Gold Bullion", pct: 99.5, sector: "Gold" },
     { symbol: "CASH", name: "Cash & Receivables", pct: 0.5, sector: "Cash & Receivables" },
@@ -104,7 +127,10 @@ const gold: EtfProfile = {
 
 const silver: EtfProfile = {
   name: "Silver ETF",
-  sectorWeightings: [{ name: "Silver", pct: 99.4 }, { name: "Cash & Receivables", pct: 0.6 }],
+  sectorWeightings: [
+    { name: "Silver", pct: 99.4 },
+    { name: "Cash & Receivables", pct: 0.6 },
+  ],
   holdings: [
     { symbol: "SILVER", name: "Physical Silver / Silver Bullion", pct: 99.4, sector: "Silver" },
     { symbol: "CASH", name: "Cash & Receivables", pct: 0.6, sector: "Cash & Receivables" },
@@ -156,7 +182,12 @@ const midcap: EtfProfile = {
   ],
   holdings: [
     { symbol: "INDHOTEL.NS", name: "Indian Hotels", pct: 3.1, sector: "Consumer Services" },
-    { symbol: "PERSISTENT.NS", name: "Persistent Systems", pct: 2.9, sector: "Information Technology" },
+    {
+      symbol: "PERSISTENT.NS",
+      name: "Persistent Systems",
+      pct: 2.9,
+      sector: "Information Technology",
+    },
     { symbol: "CUMMINSIND.NS", name: "Cummins India", pct: 2.6, sector: "Capital Goods" },
     { symbol: "BHARATFORG.NS", name: "Bharat Forge", pct: 2.4, sector: "Automobile" },
     { symbol: "LUPIN.NS", name: "Lupin", pct: 2.3, sector: "Healthcare" },
@@ -243,7 +274,10 @@ function profileFor(base: string): EtfProfile | null {
 }
 
 export function getFallbackEtfHoldings(symbol: string) {
-  const base = symbol.toUpperCase().replace(/\.(NS|BO)$/u, "").replace(/[^A-Z0-9]/gu, "");
+  const base = symbol
+    .toUpperCase()
+    .replace(/\.(NS|BO)$/u, "")
+    .replace(/[^A-Z0-9]/gu, "");
   const profile = profileFor(base);
   if (!profile) return null;
   return {

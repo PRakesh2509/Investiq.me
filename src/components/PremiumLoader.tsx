@@ -12,12 +12,7 @@ export function PremiumLoader({
   label?: string;
   compact?: boolean;
 }) {
-  const chips = [
-    "Streaming Live Ticks",
-    "Aggregating OHLC",
-    "Computing EMA",
-    "AI Deep Analysis",
-  ];
+  const chips = ["Streaming Live Ticks", "Aggregating OHLC", "Computing EMA", "AI Deep Analysis"];
   const lines = [
     "Rendering Chart • Reading Order Flow",
     "Validating Signals • Fetching Data",
@@ -55,13 +50,24 @@ export function PremiumLoader({
     >
       <div className="relative w-full">
         <span className="absolute right-0 top-0 inline-flex items-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary" style={{ animation: "iq-pulse-dot 1s ease-in-out infinite" }} />
+          <span
+            className="h-1.5 w-1.5 rounded-full bg-primary"
+            style={{ animation: "iq-pulse-dot 1s ease-in-out infinite" }}
+          />
           Building
         </span>
         <svg width="100%" height="70" viewBox="0 0 110 60" className="mt-4">
           {/* faint grid */}
           {[10, 25, 40, 55].map((y) => (
-            <line key={y} x1="0" y1={y} x2="110" y2={y} stroke="oklch(0.75 0.13 82 / 15%)" strokeWidth="0.5" />
+            <line
+              key={y}
+              x1="0"
+              y1={y}
+              x2="110"
+              y2={y}
+              stroke="oklch(0.75 0.13 82 / 15%)"
+              strokeWidth="0.5"
+            />
           ))}
           {candles.map((c, i) => {
             const color = c.bull ? "#10B981" : "#EF4444";
@@ -75,7 +81,14 @@ export function PremiumLoader({
                   animation: `iq-candle-pop 320ms ease ${c.delay}ms both`,
                 }}
               >
-                <line x1={c.x + 3} y1={c.high} x2={c.x + 3} y2={c.low} stroke={color} strokeWidth="1" />
+                <line
+                  x1={c.x + 3}
+                  y1={c.high}
+                  x2={c.x + 3}
+                  y2={c.low}
+                  stroke={color}
+                  strokeWidth="1"
+                />
                 <rect x={c.x} y={y} width="6" height={h} fill={color} rx="1" />
               </g>
             );
@@ -88,7 +101,10 @@ export function PremiumLoader({
             strokeWidth="1.6"
             strokeLinecap="round"
             strokeDasharray="240"
-            style={{ animation: "iq-ema-draw 1400ms ease 400ms both", filter: "drop-shadow(0 0 4px #F5B62E)" }}
+            style={{
+              animation: "iq-ema-draw 1400ms ease 400ms both",
+              filter: "drop-shadow(0 0 4px #F5B62E)",
+            }}
           />
         </svg>
       </div>
@@ -114,9 +130,14 @@ export function PremiumLoader({
 
       <p className="min-h-[1.25rem] text-center text-xs text-muted-foreground">
         <span className="text-primary">▸</span> {lines[line]}
-        <span className="ml-0.5 inline-block h-3 w-[2px] translate-y-[2px] bg-primary" style={{ animation: "iq-pulse-dot 0.8s ease-in-out infinite" }} />
+        <span
+          className="ml-0.5 inline-block h-3 w-[2px] translate-y-[2px] bg-primary"
+          style={{ animation: "iq-pulse-dot 0.8s ease-in-out infinite" }}
+        />
       </p>
-      <p className="-mt-2 text-center text-[11px] uppercase tracking-widest text-primary/80">{label}</p>
+      <p className="-mt-2 text-center text-[11px] uppercase tracking-widest text-primary/80">
+        {label}
+      </p>
     </div>
   );
 }

@@ -10,10 +10,17 @@
  * 6. Paper Trading Execution Support
  */
 
-import type { NormalizedOptionChain, NormalizedOptionStrike } from "./options-data-provider.server.ts";
+import type {
+  NormalizedOptionChain,
+  NormalizedOptionStrike,
+} from "./options-data-provider.server.ts";
 import { calculateTradeScore, type TradeScoringResult } from "./trade-scoring-service.ts";
 import { detectMarketRegime, type RegimeDetectionResult } from "./regime-detection.ts";
-import { simulateStrategyScenarios, type OptionLeg, type StrategyScenarioReport } from "./scenario-simulator.ts";
+import {
+  simulateStrategyScenarios,
+  type OptionLeg,
+  type StrategyScenarioReport,
+} from "./scenario-simulator.ts";
 
 export type StrategyType = "LONG_CALL" | "LONG_PUT" | "BULL_CALL_SPREAD" | "BEAR_PUT_SPREAD";
 
@@ -169,10 +176,12 @@ export function rankTradeCandidates(
         isNoTrade: true,
         reasonCode: "DATA_STALE_OR_INSUFFICIENT",
         headline: "NO TRADE RECOMMENDED: INSUFFICIENT OPTION CHAIN DATA",
-        summary: "The options chain has fewer than 5 active strikes. Liquidity and pricing cannot be validated safely.",
+        summary:
+          "The options chain has fewer than 5 active strikes. Liquidity and pricing cannot be validated safely.",
         evidence: ["Insufficient strike quotes available", "Data coverage below minimum threshold"],
         marketRegime: regime.label,
-        capitalPreservationMessage: "Capital preservation is prioritized. Do not enter trades without validated market depth.",
+        capitalPreservationMessage:
+          "Capital preservation is prioritized. Do not enter trades without validated market depth.",
         reevaluationTriggers: ["Wait for full option chain feed reconnection"],
         timestamp: new Date().toISOString(),
       },
@@ -269,7 +278,8 @@ export function rankTradeCandidates(
       },
     ],
     title: `${instrument} ATM Put Buy (${atmStrike.strike} PE)`,
-    summary: "Directional short-delta setup capturing intraday breakdown below VWAP and bearish follow-through.",
+    summary:
+      "Directional short-delta setup capturing intraday breakdown below VWAP and bearish follow-through.",
   });
 
   // Candidate 3: Bull Call Spread (Buy ATM Call, Sell OTM Call)
@@ -324,7 +334,8 @@ export function rankTradeCandidates(
         },
       ],
       title: `${instrument} Bull Call Spread (${atmStrike.strike} CE / ${otmCallStrike.strike} CE)`,
-      summary: "Defined-risk vertical debit spread mitigating theta decay and capping volatility exposure.",
+      summary:
+        "Defined-risk vertical debit spread mitigating theta decay and capping volatility exposure.",
     });
   }
 
@@ -380,7 +391,8 @@ export function rankTradeCandidates(
         },
       ],
       title: `${instrument} Bear Put Spread (${atmStrike.strike} PE / ${otmPutStrike.strike} PE)`,
-      summary: "Defined-risk vertical debit spread with reduced vega sensitivity and limited downside capital risk.",
+      summary:
+        "Defined-risk vertical debit spread with reduced vega sensitivity and limited downside capital risk.",
     });
   }
 
@@ -513,7 +525,10 @@ export function rankTradeCandidates(
     let regimeAligned = true;
     if (regime.regime === "TRENDING_BULLISH" && raw.direction === "BEARISH") regimeAligned = false;
     if (regime.regime === "TRENDING_BEARISH" && raw.direction === "BULLISH") regimeAligned = false;
-    if (regime.regime === "RANGE_BOUND" && (raw.strategy === "LONG_CALL" || raw.strategy === "LONG_PUT")) {
+    if (
+      regime.regime === "RANGE_BOUND" &&
+      (raw.strategy === "LONG_CALL" || raw.strategy === "LONG_PUT")
+    ) {
       regimeAligned = false;
     }
     riskGateChecks.push({
@@ -549,7 +564,7 @@ export function rankTradeCandidates(
 
     const isGlobal =
       ["S&P 500", "NASDAQ 100", "DOW JONES", "SP500", "NASDAQ100", "DOWJONES"].includes(
-        (instrument || "").toUpperCase().replace(/\s+/g, "")
+        (instrument || "").toUpperCase().replace(/\s+/g, ""),
       ) ||
       (instrument || "").toUpperCase().includes("S&P") ||
       (instrument || "").toUpperCase().includes("NASDAQ") ||
@@ -579,10 +594,10 @@ export function rankTradeCandidates(
       scoreResult.dataQuality === "LIVE_VERIFIED"
         ? 100
         : scoreResult.dataQuality === "PARTIAL_INPUTS"
-        ? 75
-        : scoreResult.dataQuality === "STALE"
-        ? 50
-        : 25;
+          ? 75
+          : scoreResult.dataQuality === "STALE"
+            ? 50
+            : 25;
 
     evaluatedCandidates.push({
       id: `candidate-${raw.strategy.toLowerCase()}-${Date.now()}`,
@@ -639,7 +654,11 @@ export function rankTradeCandidates(
   // 6. Check for NO TRADE Condition (Phase 7 Critical Requirement)
   let noTradeDecision: NoTradeDecision | null = null;
 
-  if (passingCandidates.length === 0 || regime.regime === "EVENT_DRIVEN" || regime.regime === "INSUFFICIENT_DATA") {
+  if (
+    passingCandidates.length === 0 ||
+    regime.regime === "EVENT_DRIVEN" ||
+    regime.regime === "INSUFFICIENT_DATA"
+  ) {
     let reasonCode: NoTradeDecision["reasonCode"] = "LOW_EDGE_CONFLUENCE";
     let headline = "NO TRADE RECOMMENDED: RISK THRESHOLDS NOT MET";
     let summary =

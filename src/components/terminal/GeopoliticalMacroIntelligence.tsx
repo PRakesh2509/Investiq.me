@@ -37,7 +37,8 @@ function getEventFreshness(isoString: string): {
   if (diffMinutes < 60) {
     return {
       label: "⚡ JUST IN",
-      badgeClass: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 animate-pulse font-extrabold",
+      badgeClass:
+        "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 animate-pulse font-extrabold",
       ageText: `${Math.max(1, diffMinutes)}m ago`,
       isToday: true,
     };
@@ -178,7 +179,8 @@ export default function GeopoliticalMacroIntelligence({
               </span>
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Real-time Middle East geopolitics, Brent crude, RBI, US Fed, and macro impact on Indian F&amp;O indices.
+              Real-time Middle East geopolitics, Brent crude, RBI, US Fed, and macro impact on
+              Indian F&amp;O indices.
             </p>
           </div>
         </div>
@@ -190,8 +192,8 @@ export default function GeopoliticalMacroIntelligence({
                 compositeMacroScore > 0.15
                   ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
                   : compositeMacroScore < -0.15
-                  ? "bg-rose-500/15 text-rose-400 border-rose-500/30"
-                  : "bg-surface text-foreground border-border"
+                    ? "bg-rose-500/15 text-rose-400 border-rose-500/30"
+                    : "bg-surface text-foreground border-border"
               }`}
             >
               REGIME: {macroRegime}
@@ -238,8 +240,18 @@ export default function GeopoliticalMacroIntelligence({
               {headlineSummary}
             </p>
             <div className="pt-2 border-t border-border/40 flex flex-wrap items-center justify-between gap-2 text-[10px] text-muted-foreground">
-              <span>Primary Sector Exposure: <strong className="text-foreground">{indiaMarketImpact.primarySectorExposure.join(", ")}</strong></span>
-              <span>Observed Index Impact: <strong className="text-foreground">{indiaMarketImpact.affectedInstruments.join(", ")}</strong></span>
+              <span>
+                Primary Sector Exposure:{" "}
+                <strong className="text-foreground">
+                  {indiaMarketImpact.primarySectorExposure.join(", ")}
+                </strong>
+              </span>
+              <span>
+                Observed Index Impact:{" "}
+                <strong className="text-foreground">
+                  {indiaMarketImpact.affectedInstruments.join(", ")}
+                </strong>
+              </span>
             </div>
           </div>
 
@@ -284,7 +296,10 @@ export default function GeopoliticalMacroIntelligence({
             <div className="p-8 text-center text-muted-foreground bg-background/30 rounded-xl border border-dashed border-border">
               <p className="text-xs">No events match the selected category or time filter.</p>
               <button
-                onClick={() => { setSelectedCategory("ALL"); setTodayOnly(false); }}
+                onClick={() => {
+                  setSelectedCategory("ALL");
+                  setTodayOnly(false);
+                }}
                 className="mt-2 text-[11px] text-primary hover:underline"
               >
                 Reset filters
@@ -309,7 +324,9 @@ export default function GeopoliticalMacroIntelligence({
                             <CheckCircle2 className="h-2.5 w-2.5" />
                             {evt.source}
                           </span>
-                          <span className={`inline-flex items-center text-[9px] px-1.5 py-0.5 rounded border ${freshness.badgeClass}`}>
+                          <span
+                            className={`inline-flex items-center text-[9px] px-1.5 py-0.5 rounded border ${freshness.badgeClass}`}
+                          >
                             {freshness.label}
                           </span>
                         </div>
@@ -340,7 +357,10 @@ export default function GeopoliticalMacroIntelligence({
                     <div className="flex flex-wrap items-center gap-1 text-[9px]">
                       <span className="text-muted-foreground">Sectors:</span>
                       {evt.affectedSectors.map((sec) => (
-                        <span key={sec} className="bg-background px-1.5 py-0.2 rounded border border-border text-foreground font-semibold">
+                        <span
+                          key={sec}
+                          className="bg-background px-1.5 py-0.2 rounded border border-border text-foreground font-semibold"
+                        >
                           {sec}
                         </span>
                       ))}
@@ -358,12 +378,20 @@ export default function GeopoliticalMacroIntelligence({
                     {/* Dual Implications: Bullish vs Bearish */}
                     <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/50 text-[10px]">
                       <div className="space-y-0.5">
-                        <span className="text-emerald-400 font-bold block text-[9px]">▲ BULLISH FACTOR</span>
-                        <p className="text-muted-foreground line-clamp-2 text-[9px] font-sans leading-tight">{evt.bullishScenario}</p>
+                        <span className="text-emerald-400 font-bold block text-[9px]">
+                          ▲ BULLISH FACTOR
+                        </span>
+                        <p className="text-muted-foreground line-clamp-2 text-[9px] font-sans leading-tight">
+                          {evt.bullishScenario}
+                        </p>
                       </div>
                       <div className="space-y-0.5">
-                        <span className="text-rose-400 font-bold block text-[9px]">▼ BEARISH RISK</span>
-                        <p className="text-muted-foreground line-clamp-2 text-[9px] font-sans leading-tight">{evt.bearishScenario}</p>
+                        <span className="text-rose-400 font-bold block text-[9px]">
+                          ▼ BEARISH RISK
+                        </span>
+                        <p className="text-muted-foreground line-clamp-2 text-[9px] font-sans leading-tight">
+                          {evt.bearishScenario}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -393,7 +421,8 @@ export default function GeopoliticalMacroIntelligence({
           <div className="text-[10px] text-muted-foreground bg-background/40 p-2.5 rounded-lg border border-border/50 flex flex-wrap items-center justify-between gap-2">
             <span className="flex items-center gap-1">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-              Source Verification Protocol: Real-time RSS ingestion from validated public wires with deduplication &amp; 24h freshness filter.
+              Source Verification Protocol: Real-time RSS ingestion from validated public wires with
+              deduplication &amp; 24h freshness filter.
             </span>
             <span className="font-bold text-foreground">Zero AI Hallucinations Enforced</span>
           </div>

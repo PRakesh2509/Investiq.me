@@ -63,12 +63,18 @@ describe("TradeScoringService — 7-Factor Model", () => {
     const res = calculateTradeScore(input);
 
     assert.equal(res.factorBreakdown.length, 7, "Must contain all 7 factor breakdowns");
-    assert.ok(res.overallScore >= 65 && res.overallScore <= 98, `Overall score should be high, got ${res.overallScore}`);
+    assert.ok(
+      res.overallScore >= 65 && res.overallScore <= 98,
+      `Overall score should be high, got ${res.overallScore}`,
+    );
     assert.equal(res.marketBias, "BULLISH");
     assert.equal(res.dataQuality, "LIVE_VERIFIED");
     assert.ok(res.confidenceLevel >= 75);
     assert.ok(res.supportingBullishFactors.length > 0);
-    assert.ok(res.allHardRiskPassed, "All hard risk checks should pass for standard DTE and spread");
+    assert.ok(
+      res.allHardRiskPassed,
+      "All hard risk checks should pass for standard DTE and spread",
+    );
     assert.ok(res.explanation.includes("Score:"));
   });
 
@@ -84,11 +90,17 @@ describe("TradeScoringService — 7-Factor Model", () => {
 
     assert.ok(
       res.dataQuality === "PARTIAL_INPUTS" || res.dataQuality === "INSUFFICIENT_DATA",
-      `Expected dataQuality to flag missing inputs, got ${res.dataQuality}`
+      `Expected dataQuality to flag missing inputs, got ${res.dataQuality}`,
     );
-    assert.ok(res.confidenceLevel < 70, `Confidence should be reduced due to missing factors, got ${res.confidenceLevel}`);
+    assert.ok(
+      res.confidenceLevel < 70,
+      `Confidence should be reduced due to missing factors, got ${res.confidenceLevel}`,
+    );
     const missingFactors = res.factorBreakdown.filter((f) => f.status === "MISSING_DATA");
-    assert.ok(missingFactors.length >= 3, `Should identify multiple missing factors, got ${missingFactors.length}`);
+    assert.ok(
+      missingFactors.length >= 3,
+      `Should identify multiple missing factors, got ${missingFactors.length}`,
+    );
   });
 
   test("Expiry day gamma risk triggers a failed hard risk check without breaking score calculation", () => {
@@ -122,6 +134,10 @@ describe("TradeScoringService — 7-Factor Model", () => {
     assert.ok(spreadRisk, "Should have spread risk check");
     assert.equal(spreadRisk.passed, false, "3.2% spread should fail 2.5% tolerance");
 
-    assert.equal(res.allHardRiskPassed, false, "allHardRiskPassed should be false when critical checks fail");
+    assert.equal(
+      res.allHardRiskPassed,
+      false,
+      "allHardRiskPassed should be false when critical checks fail",
+    );
   });
 });

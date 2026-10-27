@@ -99,11 +99,7 @@ export async function growwEnrichedHoldings() {
   };
 }
 
-export async function growwOptionChain(
-  underlying: string,
-  expiryDate: string,
-  _exchange = "NSE",
-) {
+export async function growwOptionChain(underlying: string, expiryDate: string, _exchange = "NSE") {
   return await getDhanOptionChain(underlying, expiryDate);
 }
 

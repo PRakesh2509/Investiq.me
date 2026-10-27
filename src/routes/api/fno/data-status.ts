@@ -1,49 +1,64 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { tradingSessionService } from "@/lib/services/tradingSessionService";
-import { getSensibullAuthorizationStatus, getDhanProviderStatus } from "@/lib/options-data-provider.server";
-import { marketDataValidationService } from "@/lib/services/marketDataValidationService";
+import { fnoMarketDataService } from "@/lib/services/fnoMarketDataService";
+import {
+  getSensibullAuthorizationStatus,
+  getDhanProviderStatus,
+} from "@/lib/options-data-provider.server";
+import {
+  badRequest,
+  okJson,
+  parseInstrumentParam,
+  serverError,
+} from "@/lib/services/fnoApiHelpers";
 
 export const Route = createFileRoute("/api/fno/data-status")({
   server: {
     handlers: {
-      GET: async () => {
+      GET: async ({ request }) => {
         try {
-          const session = tradingSessionService.getSessionInfo();
+          const url = new URL(request.url);
+          const inst = parseInstrumentParam(url.searchParams.get("instrument"));
+          if (!inst.ok) return badRequest(inst.error);
+
+          const session = tradingSessionService.getSessionInfo(undefined, inst.value);
           const sensibull = getSensibullAuthorizationStatus();
           const dhan = getDhanProviderStatus();
 
-          const sampleValidation = marketDataValidationService.validateQuote({
-            instrument: "NIFTY 50",
-            spotPrice: 22862.9,
-            timestamp: Date.now(),
-            bid: 120.0,
-            ask: 120.5,
-            volume: 10000,
-            openInterest: 50000,
-          });
+          // Real validation of the live snapshot (never a hand-built sample quote).
+          let validation = null;
+          let dataQuality = null;
+          let snapshotError: string | null = null;
+          try {
+            const snapshot = await fnoMarketDataService.getMarketSnapshot(inst.value);
+            validation = snapshot.validation;
+            dataQuality = {
+              chain: snapshot.dataSource,
+              isSimulated: snapshot.isSimulated,
+              provider: snapshot.provider,
+              candles: { source: snapshot.barsSource, lastBarAt: snapshot.barsLastAt },
+            };
+          } catch (err) {
+            snapshotError = err instanceof Error ? err.message.slice(0, 200) : "snapshot failed";
+          }
 
-          return Response.json(
-            {
-              ok: true,
-              data: {
-                session,
-                providers: {
-                  dhan,
-                  sensibull,
-                },
-                validation: sampleValidation,
-                timestamp: new Date().toISOString(),
+          return okJson({
+            ok: true,
+            data: {
+              instrument: inst.value,
+              session,
+              providers: {
+                dhan,
+                sensibull,
               },
+              validation,
+              dataQuality,
+              snapshotError,
+              timestamp: new Date().toISOString(),
             },
-            { headers: { "cache-control": "no-store, max-age=0" } }
-          );
+          });
         } catch (e) {
-          const err = e as Error;
-          console.error("[api/fno/data-status]", err.message);
-          return Response.json(
-            { ok: false, error: err.message },
-            { status: 500, headers: { "cache-control": "no-store" } }
-          );
+          return serverError("api/fno/data-status", e);
         }
       },
     },

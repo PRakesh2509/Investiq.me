@@ -1,0 +1,34 @@
+// Cloudflare Workers config for InvestIQ (production: investiq-me.rakeshpavuluri999.workers.dev).
+//
+// `main` and `assets` are intentionally NOT set here: `vite build` runs Nitro (cloudflare-module
+// preset), which merges this file with the real build output into .output/server/wrangler.json
+// (main = index.mjs, assets = ../public) and writes .wrangler/deploy/config.json so that
+// `wrangler deploy` / `wrangler dev` run from the repo root pick that generated config up.
+// Always `npm run build` before deploying.
+//
+// Secrets are never stored here. Set them with `wrangler secret put <NAME>` (see README.md).
+// `vars` is deliberately empty; PROD_URL is optional (defaults to the workers.dev URL).
+{
+  "name": "investiq-me",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  // Cron Triggers run in UTC. Keep in sync with src/lib/cron-schedule.ts (unit-tested).
+  // IST = UTC+5:30:
+  //   15 3  * * 1-5     08:45 IST  pre-market brief
+  //   15 6  * * 1-5     11:45 IST  RSI picks + mutual funds + IPO digests
+  //   15 10 * * 1-5     15:45 IST  post-market summary
+  //   */10 3-10 * * 1-5 news headline, 08:30-16:20 IST
+  //   */15 3-10 * * 1-5 AI F&O trade alerts (hook skips outside 09:15-15:30 IST)
+  "triggers": {
+    "crons": [
+      "15 3 * * 1-5",
+      "15 6 * * 1-5",
+      "15 10 * * 1-5",
+      "*/10 3-10 * * 1-5",
+      "*/15 3-10 * * 1-5"
+    ]
+  }
+}
