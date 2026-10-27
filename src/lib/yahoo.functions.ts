@@ -220,7 +220,7 @@ export const getYahooFinancials = createServerFn({ method: "GET" })
   });
 
 
-// News: Yahoo Finance news search (unofficial, no auth).
+// News: Yahoo Finance news search (with Google News RSS fallback).
 export const getYahooNews = createServerFn({ method: "GET" })
   .validator((data) =>
     z.object({ query: z.string().min(1), count: z.number().min(1).max(20).default(10) }).parse(data),
@@ -230,20 +230,67 @@ export const getYahooNews = createServerFn({ method: "GET" })
       data.query,
     )}&quotesCount=0&newsCount=${data.count}`;
     try {
-      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 InvestIQ" } });
-      if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` };
-      const json = (await res.json()) as any;
-      const items = (json?.news ?? []).map((n: any) => ({
-        title: String(n.title ?? ""),
-        publisher: String(n.publisher ?? ""),
-        link: String(n.link ?? ""),
-        providerPublishTime: Number(n.providerPublishTime ?? 0) * 1000,
-        thumbnail: n.thumbnail?.resolutions?.[0]?.url ?? "",
-      }));
-      return { ok: true as const, items };
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 InvestIQ" },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const json = (await res.json()) as any;
+        const items = (json?.news ?? []).map((n: any) => ({
+          title: String(n.title ?? ""),
+          publisher: String(n.publisher ?? ""),
+          link: String(n.link ?? ""),
+          providerPublishTime: Number(n.providerPublishTime ?? 0) * 1000,
+          thumbnail: n.thumbnail?.resolutions?.[0]?.url ?? "",
+        }));
+        if (items.length > 0) {
+          return { ok: true as const, items };
+        }
+      }
+    } catch {
+      // Fall through to Google News RSS fallback
+    }
+
+    // Google News RSS fallback for resilient stock news delivery
+    try {
+      const cleanQ = data.query.replace(/\.(NS|BO)$/i, "");
+      const gUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
+        cleanQ + " stock when:2d",
+      )}&hl=en-IN&gl=IN&ceid=IN:en`;
+      const res = await fetch(gUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      });
+      if (res.ok) {
+        const xml = await res.text();
+        const matches = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, data.count);
+        const items = matches.map((m) => {
+          const rawTitle = m[1].match(/<title>([\s\S]*?)<\/title>/)?.[1] || "";
+          const link = m[1].match(/<link>([\s\S]*?)<\/link>/)?.[1] || "";
+          const pubDate = m[1].match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || "";
+          const source = m[1].match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] || "Financial News";
+          const title = rawTitle.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/\s*-\s*[^-\n]+$/, "").trim();
+          return {
+            title: title || rawTitle,
+            publisher: source,
+            link,
+            providerPublishTime: pubDate ? new Date(pubDate).getTime() : Date.now(),
+            thumbnail: "",
+          };
+        });
+        if (items.length > 0) {
+          return { ok: true as const, items };
+        }
+      }
     } catch (e) {
       return { ok: false as const, error: (e as Error).message };
     }
+
+    return { ok: true as const, items: [] };
   });
 
 // Sector allocation & top holdings via Yahoo Finance quoteSummary (ETFs / funds).

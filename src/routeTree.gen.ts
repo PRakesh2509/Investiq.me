@@ -30,6 +30,7 @@ import { Route as DesktopOptionChainRouteImport } from './routes/desktop.option-
 import { Route as DesktopTerminalRouteImport } from './routes/desktop.terminal'
 import { Route as ApiFnoAnalysisRouteImport } from './routes/api/fno/analysis'
 import { Route as ApiFnoCandidateHistoryRouteImport } from './routes/api/fno/candidate-history'
+import { Route as ApiFnoContinuousBackendRouteImport } from './routes/api/fno/continuous-backend'
 import { Route as ApiFnoDataStatusRouteImport } from './routes/api/fno/data-status'
 import { Route as ApiFnoGreeksRouteImport } from './routes/api/fno/greeks'
 import { Route as ApiFnoMarketSnapshotRouteImport } from './routes/api/fno/market-snapshot'
@@ -155,6 +156,11 @@ const ApiFnoAnalysisRoute = ApiFnoAnalysisRouteImport.update({
 const ApiFnoCandidateHistoryRoute = ApiFnoCandidateHistoryRouteImport.update({
   id: '/api/fno/candidate-history',
   path: '/api/fno/candidate-history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFnoContinuousBackendRoute = ApiFnoContinuousBackendRouteImport.update({
+  id: '/api/fno/continuous-backend',
+  path: '/api/fno/continuous-backend',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiFnoDataStatusRoute = ApiFnoDataStatusRouteImport.update({
@@ -291,6 +297,7 @@ export interface FileRoutesByFullPath {
   '/desktop/': typeof DesktopIndexRoute
   '/api/fno/analysis': typeof ApiFnoAnalysisRoute
   '/api/fno/candidate-history': typeof ApiFnoCandidateHistoryRoute
+  '/api/fno/continuous-backend': typeof ApiFnoContinuousBackendRoute
   '/api/fno/data-status': typeof ApiFnoDataStatusRoute
   '/api/fno/greeks': typeof ApiFnoGreeksRoute
   '/api/fno/market-snapshot': typeof ApiFnoMarketSnapshotRoute
@@ -334,6 +341,7 @@ export interface FileRoutesByTo {
   '/desktop': typeof DesktopIndexRoute
   '/api/fno/analysis': typeof ApiFnoAnalysisRoute
   '/api/fno/candidate-history': typeof ApiFnoCandidateHistoryRoute
+  '/api/fno/continuous-backend': typeof ApiFnoContinuousBackendRoute
   '/api/fno/data-status': typeof ApiFnoDataStatusRoute
   '/api/fno/greeks': typeof ApiFnoGreeksRoute
   '/api/fno/market-snapshot': typeof ApiFnoMarketSnapshotRoute
@@ -379,6 +387,7 @@ export interface FileRoutesById {
   '/desktop/': typeof DesktopIndexRoute
   '/api/fno/analysis': typeof ApiFnoAnalysisRoute
   '/api/fno/candidate-history': typeof ApiFnoCandidateHistoryRoute
+  '/api/fno/continuous-backend': typeof ApiFnoContinuousBackendRoute
   '/api/fno/data-status': typeof ApiFnoDataStatusRoute
   '/api/fno/greeks': typeof ApiFnoGreeksRoute
   '/api/fno/market-snapshot': typeof ApiFnoMarketSnapshotRoute
@@ -425,6 +434,7 @@ export interface FileRouteTypes {
     | '/desktop/'
     | '/api/fno/analysis'
     | '/api/fno/candidate-history'
+    | '/api/fno/continuous-backend'
     | '/api/fno/data-status'
     | '/api/fno/greeks'
     | '/api/fno/market-snapshot'
@@ -468,6 +478,7 @@ export interface FileRouteTypes {
     | '/desktop'
     | '/api/fno/analysis'
     | '/api/fno/candidate-history'
+    | '/api/fno/continuous-backend'
     | '/api/fno/data-status'
     | '/api/fno/greeks'
     | '/api/fno/market-snapshot'
@@ -512,6 +523,7 @@ export interface FileRouteTypes {
     | '/desktop/'
     | '/api/fno/analysis'
     | '/api/fno/candidate-history'
+    | '/api/fno/continuous-backend'
     | '/api/fno/data-status'
     | '/api/fno/greeks'
     | '/api/fno/market-snapshot'
@@ -548,6 +560,7 @@ export interface RootRouteChildren {
   ApiTestTradeRoute: typeof ApiTestTradeRoute
   ApiFnoAnalysisRoute: typeof ApiFnoAnalysisRoute
   ApiFnoCandidateHistoryRoute: typeof ApiFnoCandidateHistoryRoute
+  ApiFnoContinuousBackendRoute: typeof ApiFnoContinuousBackendRoute
   ApiFnoDataStatusRoute: typeof ApiFnoDataStatusRoute
   ApiFnoGreeksRoute: typeof ApiFnoGreeksRoute
   ApiFnoMarketSnapshotRoute: typeof ApiFnoMarketSnapshotRoute
@@ -716,6 +729,13 @@ declare module '@tanstack/react-router' {
       path: '/api/fno/candidate-history'
       fullPath: '/api/fno/candidate-history'
       preLoaderRoute: typeof ApiFnoCandidateHistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/fno/continuous-backend': {
+      id: '/api/fno/continuous-backend'
+      path: '/api/fno/continuous-backend'
+      fullPath: '/api/fno/continuous-backend'
+      preLoaderRoute: typeof ApiFnoContinuousBackendRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/fno/data-status': {
@@ -912,6 +932,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTestTradeRoute: ApiTestTradeRoute,
   ApiFnoAnalysisRoute: ApiFnoAnalysisRoute,
   ApiFnoCandidateHistoryRoute: ApiFnoCandidateHistoryRoute,
+  ApiFnoContinuousBackendRoute: ApiFnoContinuousBackendRoute,
   ApiFnoDataStatusRoute: ApiFnoDataStatusRoute,
   ApiFnoGreeksRoute: ApiFnoGreeksRoute,
   ApiFnoMarketSnapshotRoute: ApiFnoMarketSnapshotRoute,

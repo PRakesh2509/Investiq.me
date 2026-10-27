@@ -169,12 +169,12 @@ export const getAiTradeScore = createServerFn({ method: "POST" })
  */
 export const getMarketIntelligence = createServerFn({ method: "GET" })
   .validator((d: { forceRefresh?: boolean } = {}) => d)
-  .handler(async (): Promise<{
+  .handler(async ({ data }): Promise<{
     macroReport: MacroIntelligenceReport;
     newsEvents: VerifiedNewsItem[];
   }> => {
-    const newsEvents = await getVerifiedMarketNews();
-    const macroReport = await analyzeMacroIntelligence(newsEvents);
+    const newsEvents = await getVerifiedMarketNews(data?.forceRefresh);
+    const macroReport = await analyzeMacroIntelligence(newsEvents, "NIFTY 50", data?.forceRefresh);
 
     return {
       macroReport,
@@ -192,6 +192,7 @@ export const getFnoWorkstationIntelligence = createServerFn({ method: "POST" })
       spotPrice: number;
       changePct: number;
       intendedDirection: "CALL" | "PUT";
+      forceRefresh?: boolean;
     }) => d
   )
   .handler(async ({ data }): Promise<FnoIntelligenceData> => {
@@ -210,8 +211,8 @@ export const getFnoWorkstationIntelligence = createServerFn({ method: "POST" })
           canStreamLiveData: true,
         }
       : getSensibullAuthorizationStatus();
-    const newsEvents = await getVerifiedMarketNews();
-    const macroReport = await analyzeMacroIntelligence(newsEvents);
+    const newsEvents = await getVerifiedMarketNews(data.forceRefresh);
+    const macroReport = await analyzeMacroIntelligence(newsEvents, data.instrument, data.forceRefresh);
 
     const atmStrike = chain.strikes.find((s) => s.isAtm) ?? chain.strikes[Math.floor(chain.strikes.length / 2)];
     const isUp = data.changePct >= 0;

@@ -4,8 +4,7 @@ import { getFnoSignals } from "@/lib/fno-engine.functions";
 import type { Signal } from "@/lib/fno-engine";
 import { SkeletonCard } from "@/components/Skeleton";
 import { RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
-import ContinuousFnoIntelligencePanel from "@/components/terminal/ContinuousFnoIntelligencePanel";
-import { getContinuousFnoIntelligence, type ContinuousFnoData } from "@/lib/fno-continuous-engine.functions";
+
 
 const fmt = (n: number, cur: string) =>
   cur === "INR"
@@ -22,9 +21,7 @@ export default function FnoView({
   currency: string;
 }) {
   const fetchFn = useServerFn(getFnoSignals);
-  const fetchContinuousFno = useServerFn(getContinuousFnoIntelligence);
   const [signals, setSignals] = useState<Signal[]>([]);
-  const [continuousData, setContinuousData] = useState<ContinuousFnoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [ts, setTs] = useState<number>(0);
 
@@ -33,11 +30,6 @@ export default function FnoView({
     try {
       const r = await fetchFn({ data: { market } });
       if (r.ok) { setSignals(r.signals); setTs(r.generatedAt); }
-      if (market === "india") {
-        fetchContinuousFno({ data: { instrument: "NIFTY 50" } })
-          .then((res) => { if (res) setContinuousData(res); })
-          .catch(() => {});
-      }
     } finally { setLoading(false); }
   };
 
@@ -77,14 +69,6 @@ export default function FnoView({
         bounded backtest window — <span className="font-semibold">not a promise of accuracy</span>.
         Use position sizing and a stop-loss.
       </div>
-
-      {market === "india" && (
-        <ContinuousFnoIntelligencePanel
-          data={continuousData}
-          isLoading={loading}
-          onRefresh={load}
-        />
-      )}
 
       {loading && signals.length === 0 ? (
         <div className="grid grid-cols-2 gap-4">
