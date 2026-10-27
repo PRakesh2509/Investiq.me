@@ -7,14 +7,7 @@ import {
   getAppliedIpos,
   type AppliedIpoRecord,
 } from "@/lib/applied-ipos";
-import {
-  X,
-  Plus,
-  Minus,
-  TrendingUp,
-  CheckCircle2,
-  Trash2,
-} from "lucide-react";
+import { X, Plus, Minus, TrendingUp, CheckCircle2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export function TrackApplicationModal({
@@ -31,11 +24,7 @@ export function TrackApplicationModal({
   if (!isOpen || !ipo) return null;
 
   return (
-    <TrackApplicationModalContent
-      ipo={ipo}
-      onClose={onClose}
-      onAppliedChange={onAppliedChange}
-    />
+    <TrackApplicationModalContent ipo={ipo} onClose={onClose} onAppliedChange={onAppliedChange} />
   );
 }
 
@@ -186,9 +175,7 @@ function TrackApplicationModalContent({
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Number of Lots
             </label>
-            <span className="text-xs text-muted-foreground">
-              {ipo.lotSize} shares per lot
-            </span>
+            <span className="text-xs text-muted-foreground">{ipo.lotSize} shares per lot</span>
           </div>
 
           {/* Stepper Input */}
@@ -269,37 +256,42 @@ function TrackApplicationModalContent({
             </p>
 
             <p className="text-[11px] text-muted-foreground">
-              Based on {lots} lot{lots > 1 ? "s" : ""} ({totalShares} shares) × ₹{gmpPerShare} current GMP premium.
+              Based on {lots} lot{lots > 1 ? "s" : ""} ({totalShares} shares) × ₹{gmpPerShare}{" "}
+              current GMP premium.
             </p>
           </div>
 
           {/* Capital Required & Scenario Details */}
           <div className="grid grid-cols-2 gap-2.5 text-xs">
             <div className="rounded-xl border border-border bg-surface/60 p-3">
-              <span className="text-[10px] text-muted-foreground uppercase font-medium">Capital Required</span>
+              <span className="text-[10px] text-muted-foreground uppercase font-medium">
+                Capital Required
+              </span>
               <p className="mt-0.5 font-display text-base font-bold text-foreground">
                 {formatINR(totalInvestment)}
               </p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                Blocked via UPI / ASBA
-              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Blocked via UPI / ASBA</p>
             </div>
 
             <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
-              <span className="text-[10px] text-primary uppercase font-medium">Upside Momentum</span>
+              <span className="text-[10px] text-primary uppercase font-medium">
+                Upside Momentum
+              </span>
               <p className="mt-0.5 font-display text-base font-bold text-primary">
                 +{formatINR(upsideProfit)}
               </p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                At +{upsideGainPct}% gain
-              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">At +{upsideGainPct}% gain</p>
             </div>
           </div>
 
           {/* Downside Scenario Disclaimer */}
           <div className="flex items-center justify-between rounded-lg border border-border/80 bg-background/50 px-3 py-2 text-[11px] text-muted-foreground">
             <span>Downside Buffer ({downsideGainPct}%):</span>
-            <span className={downsideProfit >= 0 ? "text-muted-foreground" : "text-destructive font-medium"}>
+            <span
+              className={
+                downsideProfit >= 0 ? "text-muted-foreground" : "text-destructive font-medium"
+              }
+            >
               {formatINR(downsideProfit)}
             </span>
           </div>

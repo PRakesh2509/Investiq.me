@@ -9,6 +9,9 @@ import { createFileRoute } from "@tanstack/react-router";
  * Auth: `x-api-key: <key>` or `Authorization: Bearer <key>`
  * (checked against the OPTION_CHAIN_API_KEY secret; comma-separated list allowed).
  * CORS is open so any external site can call it with the key.
+ *
+ * Data comes from the authorized Upstox feed only; the response carries `dataSource`,
+ * `isSimulated` and `freshnessStatus` so consumers can tell how current it is.
  */
 
 const CORS: Record<string, string> = {
@@ -19,8 +22,7 @@ const CORS: Record<string, string> = {
   "cache-control": "no-store",
 };
 
-const json = (body: unknown, status = 200) =>
-  Response.json(body, { status, headers: CORS });
+const json = (body: unknown, status = 200) => Response.json(body, { status, headers: CORS });
 
 function presentedKey(request: Request): string {
   const header = request.headers.get("x-api-key");
@@ -29,6 +31,14 @@ function presentedKey(request: Request): string {
   if (/^bearer\s+/i.test(auth)) return auth.replace(/^bearer\s+/i, "").trim();
   const url = new URL(request.url);
   return (url.searchParams.get("api_key") ?? "").trim();
+}
+
+/** Length-independent, constant-time-ish comparison (avoids early exit on first mismatch). */
+function safeEqual(a: string, b: string): boolean {
+  let diff = a.length ^ b.length;
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return diff === 0;
 }
 
 export const Route = createFileRoute("/api/public/option-chain")({
@@ -44,22 +54,32 @@ export const Route = createFileRoute("/api/public/option-chain")({
           MissingEnvError,
           UpstoxAuthError,
         } = await import("@/lib/upstox.server");
+        const {
+          classifyFreshness,
+          isMarketOpenAt,
+          isValidExpiry,
+          isValidInstrumentKey,
+          pickNearestExpiry,
+          safeErrorMessage,
+        } = await import("@/lib/provider-utils");
 
         const allowed = (process.env["OPTION_CHAIN_API_KEY"] ?? "")
           .split(",")
           .map((k) => k.trim())
           .filter(Boolean);
         if (!allowed.length) {
-          return json({ ok: false, error: "API key not configured" }, 200);
+          return json({ ok: false, error: "API key not configured" }, 503);
         }
         const key = presentedKey(request);
-        if (!key || !allowed.includes(key)) {
+        // Evaluate every candidate so timing does not reveal which entry matched.
+        const keyOk = allowed.reduce((ok, k) => safeEqual(k, key) || ok, false);
+        if (!key || !keyOk) {
           return json({ ok: false, error: "Invalid or missing API key" }, 401);
         }
 
         try {
           const url = new URL(request.url);
-          const symbol = (url.searchParams.get("symbol") ?? "").trim().toUpperCase();
+          const symbol = (url.searchParams.get("symbol") ?? "").trim().toUpperCase().slice(0, 32);
           let instrumentKey = url.searchParams.get("instrument_key") ?? "";
 
           if (!instrumentKey && symbol) {
@@ -68,7 +88,7 @@ export const Route = createFileRoute("/api/public/option-chain")({
               return json(
                 {
                   ok: false,
-                  error: `Unknown symbol "${symbol}"`,
+                  error: `Unknown symbol "${symbol.replace(/[^A-Z0-9 &._-]/g, "")}"`,
                   supported: INDEX_UNDERLYINGS.map((u) => u.label),
                 },
                 400,
@@ -86,25 +106,54 @@ export const Route = createFileRoute("/api/public/option-chain")({
               400,
             );
           }
+          if (!isValidInstrumentKey(instrumentKey)) {
+            return json({ ok: false, error: "invalid instrument_key" }, 400);
+          }
+          const requested = url.searchParams.get("expiry");
+          if (requested && !isValidExpiry(requested)) {
+            return json({ ok: false, error: "invalid expiry (expected YYYY-MM-DD)" }, 400);
+          }
 
           const token = getAccessToken();
           const expiries = await fetchExpiries(instrumentKey, token);
           const today = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
-          const requested = url.searchParams.get("expiry");
-          const expiry = requested || expiries.find((e) => e >= today) || expiries[0];
+          const expiry = requested || pickNearestExpiry(expiries, today);
           if (!expiry) {
             return json({ ok: false, error: "No expiries available for this instrument" }, 404);
           }
 
           const chain = await fetchOptionChain(instrumentKey, expiry, token);
-          return json({ ok: true, expiries, chain });
+          const now = Date.now();
+          const marketOpen = isMarketOpenAt(new Date(now), false);
+          const freshnessStatus = chain.stale
+            ? marketOpen
+              ? "STALE"
+              : "MARKET_CLOSED"
+            : classifyFreshness({
+                asOfMs: chain.generatedAt,
+                nowMs: now,
+                marketOpen,
+                feed: "realtime",
+              });
+          return json({
+            ok: true,
+            expiries,
+            chain,
+            dataSource: "upstox",
+            isSimulated: false,
+            freshnessStatus,
+          });
         } catch (e) {
+          if (e instanceof RangeError) {
+            return json({ ok: false, error: e.message }, 400);
+          }
           const err = e as Error;
           const tokenExpired = err instanceof UpstoxAuthError;
           const missing = err instanceof MissingEnvError ? err.missing : undefined;
-          console.error("[public/option-chain]", err.message);
+          const message = safeErrorMessage(err, "option chain unavailable");
+          console.error("[public/option-chain]", message);
           return json(
-            { ok: false, error: err.message, tokenExpired, missing },
+            { ok: false, error: message, tokenExpired, missing },
             tokenExpired ? 401 : 500,
           );
         }

@@ -2,16 +2,36 @@
  * DhanHQ API v2 Client (Server-only)
  * Docs: https://dhanhq.co/docs/v2/
  *
- * Full data provider for InvestIQ:
+ * Primary authorized data provider for InvestIQ:
  * - Live Marketfeed Quotes, LTP, and OHLC
  * - Historical & Intraday 1m/5m/15m/60m/1D Candles (Equities & Indices)
  * - User Portfolio Holdings & Positions
  * - Fund Limits & Margins
- * - Option Chain & Greeks
+ * - Option Chain (+ expiry list)
+ *
+ * Resilience: every request has a hard timeout, read-only calls are retried with backoff on
+ * 429/5xx, and hot read paths sit behind small module-level TTL caches (best-effort only; Workers
+ * isolates are ephemeral). Tokens are never placed in thrown/returned messages.
  */
 import dhanScripMap from "./dhan-scrip-map.json" with { type: "json" };
-import fs from "fs";
-import path from "path";
+import {
+  TtlCache,
+  allowMockData,
+  fetchJsonWithRetry,
+  type JsonObject,
+  safeErrorMessage,
+} from "./provider-utils.ts";
+import {
+  parseDhanCandles,
+  parseDhanExpiryList,
+  parseDhanHoldings,
+  parseDhanMarketFeed,
+  parseDhanOptionChain,
+  type DhanCandle,
+  type DhanQuoteRow,
+  type DhanRawHolding,
+  type ParsedDhanChain,
+} from "./provider-parsers.ts";
 
 const DHAN_BASE = "https://api.dhan.co";
 
@@ -48,6 +68,7 @@ export const DHAN_INDEX_MAP: Record<string, DhanInstrumentTarget> = {
   "^CNXIT": { id: 29, segment: "IDX_I", instrument: "INDEX" },
   CNXIT: { id: 29, segment: "IDX_I", instrument: "INDEX" },
   MIDCPNIFTY: { id: 44, segment: "IDX_I", instrument: "INDEX" },
+  MIDCAPNIFTY: { id: 44, segment: "IDX_I", instrument: "INDEX" },
   "NIFTY MID SELECT": { id: 44, segment: "IDX_I", instrument: "INDEX" },
 };
 
@@ -69,8 +90,22 @@ export function getDhanCredentials(): DhanCredentials | null {
   return null;
 }
 
+/** Normalises a user-facing symbol ("RELIANCE.NS", "nifty 50") to its Dhan lookup key. */
+function cleanSymbolKey(symbol: string): string {
+  return symbol
+    .replace(/\.NS$/i, "")
+    .replace(/\.BO$/i, "")
+    .replace(/[^A-Z0-9&-]/gi, "")
+    .toUpperCase();
+}
+
+/** Display key used for result maps: same stripping as before (suffix removed, upper-cased). */
+function displayKey(symbol: string): string {
+  return symbol.replace(/\.NS$/i, "").replace(/\.BO$/i, "").toUpperCase();
+}
+
 export function getDhanInstrument(symbol: string): DhanInstrumentTarget | null {
-  const clean = symbol.replace(/\.NS$/i, "").replace(/\.BO$/i, "").replace(/[^A-Z0-9&-]/g, "").toUpperCase();
+  const clean = cleanSymbolKey(symbol);
   if (DHAN_INDEX_MAP[clean]) {
     return DHAN_INDEX_MAP[clean];
   }
@@ -89,64 +124,159 @@ export function getDhanSecurityId(symbol: string): number | null {
   return target?.id ?? null;
 }
 
+/* ----------------------------------- HTTP plumbing ------------------------------------ */
+
+function authHeaders(creds: DhanCredentials): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "client-id": creds.clientId,
+    "access-token": creds.accessToken,
+  };
+}
+
+/** Read-only POST (market-feed / charts / option chain): safe to retry. */
+function dhanPost(path: string, creds: DhanCredentials, body: unknown, timeoutMs = 6000) {
+  return fetchJsonWithRetry(
+    `${DHAN_BASE}${path}`,
+    { method: "POST", headers: authHeaders(creds), body: JSON.stringify(body) },
+    { timeoutMs, retries: 2, idempotent: true },
+  );
+}
+
+function dhanGet(path: string, creds: DhanCredentials, timeoutMs = 6000) {
+  return fetchJsonWithRetry(
+    `${DHAN_BASE}${path}`,
+    { method: "GET", headers: authHeaders(creds) },
+    { timeoutMs, retries: 2 },
+  );
+}
+
+const quoteCache = new TtlCache<DhanQuoteRow[]>(100);
+const candleCache = new TtlCache<DhanCandle[]>(120);
+const chainCache = new TtlCache<ParsedDhanChain>(40);
+const expiryCache = new TtlCache<string[]>(40);
+
+const QUOTE_TTL_MS = 3_000;
+const CHAIN_TTL_MS = 10_000; // Dhan rate-limits the option chain to ~1 request / 3s per underlying
+const EXPIRY_TTL_MS = 10 * 60_000;
+
 export async function testDhanConnection(
   creds: DhanCredentials,
 ): Promise<{ ok: boolean; message?: string }> {
   try {
-    const res = await fetch(`${DHAN_BASE}/v2/marketfeed/ltp`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "client-id": creds.clientId,
-        "access-token": creds.accessToken,
+    const res = await fetchJsonWithRetry(
+      `${DHAN_BASE}/v2/marketfeed/ltp`,
+      {
+        method: "POST",
+        headers: authHeaders(creds),
+        body: JSON.stringify({ NSE_EQ: [2885] }), // RELIANCE
       },
-      body: JSON.stringify({
-        NSE_EQ: [2885], // RELIANCE
-      }),
-    });
-
-    if (res.status === 200) {
-      const json = (await res.json()) as any;
-      if (json?.status === "success" || json?.data) {
-        return { ok: true, message: "DhanHQ API authenticated successfully" };
-      }
+      { timeoutMs: 6000, retries: 0 },
+    );
+    if (res.ok && parseDhanMarketFeed(res.json).length > 0) {
+      return { ok: true, message: "DhanHQ API authenticated successfully" };
     }
-
-    const errText = await res.text().catch(() => "");
     return {
       ok: false,
-      message: `DhanHQ returned status ${res.status}: ${errText.slice(0, 100) || "Invalid credentials or expired token"}`,
+      message: `DhanHQ returned status ${res.status}: invalid credentials or expired token`,
     };
-  } catch (err: any) {
-    return { ok: false, message: err?.message || "Failed to reach DhanHQ servers" };
+  } catch (err) {
+    return {
+      ok: false,
+      message: safeErrorMessage(err, "Failed to reach DhanHQ servers", [
+        creds.accessToken,
+        creds.clientId,
+      ]),
+    };
   }
 }
 
+/**
+ * Stores credentials for this isolate (and process.env) only. Nothing is written to disk here;
+ * see {@link writeDhanEnvFile} for the optional local-dev persistence.
+ */
 export function persistDhanCredentials(creds: DhanCredentials): boolean {
   try {
     setDhanRuntimeCredentials(creds);
     process.env.DHAN_CLIENT_ID = creds.clientId;
     process.env.DHAN_ACCESS_TOKEN = creds.accessToken;
-
-    const envPath = path.resolve(process.cwd(), ".env");
-    if (fs.existsSync(envPath)) {
-      let content = fs.readFileSync(envPath, "utf8");
-      if (content.includes("DHAN_CLIENT_ID=")) {
-        content = content.replace(/DHAN_CLIENT_ID=.*/g, `DHAN_CLIENT_ID="${creds.clientId}"`);
-      } else {
-        content += `\nDHAN_CLIENT_ID="${creds.clientId}"`;
-      }
-      if (content.includes("DHAN_ACCESS_TOKEN=")) {
-        content = content.replace(/DHAN_ACCESS_TOKEN=.*/g, `DHAN_ACCESS_TOKEN="${creds.accessToken}"`);
-      } else {
-        content += `\nDHAN_ACCESS_TOKEN="${creds.accessToken}"`;
-      }
-      fs.writeFileSync(envPath, content, "utf8");
-    }
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Local-development convenience: mirrors the credentials into `.env`. Never runs in production
+ * (Workers have no writable filesystem) and never throws. Pass null to blank the entries.
+ */
+export async function writeDhanEnvFile(creds: DhanCredentials | null): Promise<boolean> {
+  if (process.env.NODE_ENV === "production") return false;
+  try {
+    const [{ default: fs }, { default: path }] = await Promise.all([
+      import("node:fs"),
+      import("node:path"),
+    ]);
+    const envPath = path.resolve(process.cwd(), ".env");
+    if (!fs.existsSync(envPath)) return false;
+    let content = fs.readFileSync(envPath, "utf8");
+    const set = (key: string, value: string) => {
+      const line = `${key}="${value}"`;
+      const re = new RegExp(`^${key}=.*$`, "m");
+      content = re.test(content) ? content.replace(re, () => line) : `${content}\n${line}`;
+    };
+    set("DHAN_CLIENT_ID", creds?.clientId ?? "");
+    set("DHAN_ACCESS_TOKEN", creds?.accessToken ?? "");
+    fs.writeFileSync(envPath, content, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/* --------------------------------- Marketfeed (quotes) --------------------------------- */
+
+interface SegmentBuckets {
+  payload: Record<string, number[]>;
+  idToSym: Map<string, string>;
+}
+
+function bucketSymbols(symbols: string[]): SegmentBuckets | null {
+  const payload: Record<string, number[]> = {};
+  const idToSym = new Map<string, string>();
+  for (const s of symbols) {
+    const target = getDhanInstrument(s);
+    if (!target) continue;
+    const seg = target.segment === "IDX_I" ? "IDX_I" : "NSE_EQ";
+    const ids = (payload[seg] ??= []);
+    if (!ids.includes(target.id)) ids.push(target.id);
+    idToSym.set(`${seg}:${target.id}`, displayKey(s));
+  }
+  return Object.keys(payload).length > 0 ? { payload, idToSym } : null;
+}
+
+async function fetchMarketFeed(
+  kind: "ltp" | "ohlc",
+  symbols: string[],
+): Promise<{ rows: DhanQuoteRow[]; idToSym: Map<string, string> } | null> {
+  const creds = getDhanCredentials();
+  if (!creds) return null;
+  const buckets = bucketSymbols(symbols);
+  if (!buckets) return null;
+
+  const cacheKey = `${kind}|${JSON.stringify(buckets.payload)}`;
+  const cached = quoteCache.get(cacheKey, QUOTE_TTL_MS);
+  if (cached) return { rows: cached, idToSym: buckets.idToSym };
+
+  try {
+    const res = await dhanPost(`/v2/marketfeed/${kind}`, creds, buckets.payload);
+    if (!res.ok) return null;
+    const rows = parseDhanMarketFeed(res.json);
+    quoteCache.set(cacheKey, rows);
+    return { rows, idToSym: buckets.idToSym };
+  } catch {
+    return null;
   }
 }
 
@@ -155,162 +285,71 @@ export function persistDhanCredentials(creds: DhanCredentials): boolean {
  * POST https://api.dhan.co/v2/marketfeed/ltp
  */
 export async function getDhanLtp(symbols: string[]): Promise<Record<string, number> | null> {
-  const creds = getDhanCredentials();
-  if (!creds) return null;
-
-  const nseEqIds: number[] = [];
-  const idxIds: number[] = [];
-  const idToSym: Record<number, string> = {};
-
-  for (const s of symbols) {
-    const target = getDhanInstrument(s);
-    if (target) {
-      if (target.segment === "IDX_I") {
-        idxIds.push(target.id);
-      } else {
-        nseEqIds.push(target.id);
-      }
-      idToSym[target.id] = s.replace(/\.NS$/i, "").replace(/\.BO$/i, "").toUpperCase();
-    }
+  const fetched = await fetchMarketFeed("ltp", symbols);
+  if (!fetched) return null;
+  const out: Record<string, number> = {};
+  for (const row of fetched.rows) {
+    const sym = fetched.idToSym.get(`${row.segment}:${row.securityId}`);
+    if (sym && row.lastPrice > 0) out[sym] = row.lastPrice;
   }
+  return out;
+}
 
-  if (!nseEqIds.length && !idxIds.length) return null;
-
-  const payload: Record<string, number[]> = {};
-  if (nseEqIds.length) payload.NSE_EQ = nseEqIds;
-  if (idxIds.length) payload.IDX_I = idxIds;
-
-  try {
-    const res = await fetch(`${DHAN_BASE}/v2/marketfeed/ltp`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "client-id": creds.clientId,
-        "access-token": creds.accessToken,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) return null;
-    const json = (await res.json()) as any;
-    const data = json?.data ?? {};
-    const nseEqData = data.NSE_EQ ?? {};
-    const idxData = data.IDX_I ?? {};
-
-    const out: Record<string, number> = {};
-    for (const [idStr, val] of Object.entries(nseEqData)) {
-      const sym = idToSym[Number(idStr)];
-      if (sym && typeof (val as any)?.last_price === "number") {
-        out[sym] = (val as any).last_price;
-      }
-    }
-    for (const [idStr, val] of Object.entries(idxData)) {
-      const sym = idToSym[Number(idStr)];
-      if (sym && typeof (val as any)?.last_price === "number") {
-        out[sym] = (val as any).last_price;
-      }
-    }
-    return out;
-  } catch {
-    return null;
-  }
+export interface DhanOhlcEntry {
+  price: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
 }
 
 /**
  * Fetch OHLC and LTP via DhanHQ v2
  * POST https://api.dhan.co/v2/marketfeed/ohlc
+ *
+ * `close` is Dhan's `ohlc.close`, i.e. the previous session's close while the market is live.
  */
-export async function getDhanOhlc(symbols: string[]): Promise<
-  Record<
-    string,
-    { price: number; open: number; high: number; low: number; close: number; volume: number }
-  > | null
-> {
-  const creds = getDhanCredentials();
-  if (!creds) return null;
-
-  const nseEqIds: number[] = [];
-  const idxIds: number[] = [];
-  const idToSym: Record<number, string> = {};
-
-  for (const s of symbols) {
-    const target = getDhanInstrument(s);
-    if (target) {
-      if (target.segment === "IDX_I") {
-        idxIds.push(target.id);
-      } else {
-        nseEqIds.push(target.id);
-      }
-      idToSym[target.id] = s.replace(/\.NS$/i, "").replace(/\.BO$/i, "").toUpperCase();
-    }
-  }
-
-  if (!nseEqIds.length && !idxIds.length) return null;
-
-  const payload: Record<string, number[]> = {};
-  if (nseEqIds.length) payload.NSE_EQ = nseEqIds;
-  if (idxIds.length) payload.IDX_I = idxIds;
-
-  try {
-    const res = await fetch(`${DHAN_BASE}/v2/marketfeed/ohlc`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "client-id": creds.clientId,
-        "access-token": creds.accessToken,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) return null;
-    const json = (await res.json()) as any;
-    const data = json?.data ?? {};
-    const nseEqData = data.NSE_EQ ?? {};
-    const idxData = data.IDX_I ?? {};
-
-    const out: Record<
-      string,
-      { price: number; open: number; high: number; low: number; close: number; volume: number }
-    > = {};
-
-    const processEntries = (dict: Record<string, any>) => {
-      for (const [idStr, val] of Object.entries(dict)) {
-        const sym = idToSym[Number(idStr)];
-        const v = val as any;
-        if (sym && v) {
-          const ohlc = v.ohlc ?? {};
-          out[sym] = {
-            price: Number(v.last_price ?? ohlc.close ?? 0),
-            open: Number(ohlc.open ?? 0),
-            high: Number(ohlc.high ?? 0),
-            low: Number(ohlc.low ?? 0),
-            close: Number(ohlc.close ?? v.last_price ?? 0),
-            volume: Number(v.volume ?? 0),
-          };
-        }
-      }
+export async function getDhanOhlc(
+  symbols: string[],
+): Promise<Record<string, DhanOhlcEntry> | null> {
+  const fetched = await fetchMarketFeed("ohlc", symbols);
+  if (!fetched) return null;
+  const out: Record<string, DhanOhlcEntry> = {};
+  for (const row of fetched.rows) {
+    const sym = fetched.idToSym.get(`${row.segment}:${row.securityId}`);
+    if (!sym) continue;
+    const price = row.lastPrice > 0 ? row.lastPrice : row.close;
+    out[sym] = {
+      price,
+      open: row.open,
+      high: row.high,
+      low: row.low,
+      close: row.close > 0 ? row.close : price,
+      volume: row.volume,
     };
-
-    processEntries(nseEqData);
-    processEntries(idxData);
-
-    return out;
-  } catch {
-    return null;
   }
+  return out;
+}
+
+/* ------------------------------------ Chart candles ------------------------------------ */
+
+function isoDate(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
 }
 
 /**
  * Fetch Historical / Intraday Chart Candles via DhanHQ v2
  * POST https://api.dhan.co/v2/charts/intraday or /v2/charts/historical
+ *
+ * Returns null when Dhan is not configured, the symbol is unknown or the call fails — callers
+ * must fall back to another real source (never to generated candles).
  */
 export async function getDhanChartCandles(
   symbol: string,
   range: string = "1d",
   intervalMinutes?: number,
-): Promise<Array<{ t: number; price: number; volume: number; open: number; high: number; low: number }> | null> {
+): Promise<DhanCandle[] | null> {
   const creds = getDhanCredentials();
   if (!creds) return null;
 
@@ -320,18 +359,20 @@ export async function getDhanChartCandles(
   const isIntraday = range === "1d" || range === "5d" || range === "1w";
   const endpoint = isIntraday ? "/v2/charts/intraday" : "/v2/charts/historical";
 
-  const now = new Date();
-  const toDateStr = now.toISOString().slice(0, 10);
   const daysBack =
-    range === "1d" ? 2 :
-    range === "5d" || range === "1w" ? 7 :
-    range === "1mo" ? 30 :
-    range === "3mo" ? 90 :
-    range === "6mo" ? 180 :
-    range === "1y" ? 365 : 730;
-
-  const from = new Date(now.getTime() - daysBack * 86400_000);
-  const fromDateStr = from.toISOString().slice(0, 10);
+    range === "1d"
+      ? 2
+      : range === "5d" || range === "1w"
+        ? 7
+        : range === "1mo"
+          ? 30
+          : range === "3mo"
+            ? 90
+            : range === "6mo"
+              ? 180
+              : range === "1y"
+                ? 365
+                : 730;
 
   let intervalStr = "5";
   if (isIntraday) {
@@ -339,58 +380,44 @@ export async function getDhanChartCandles(
     else if (intervalMinutes === 15) intervalStr = "15";
     else if (intervalMinutes === 25 || intervalMinutes === 30) intervalStr = "25";
     else if (intervalMinutes === 60) intervalStr = "60";
-    else intervalStr = "5";
-  } else {
-    intervalStr = "1D";
   }
 
-  try {
-    const res = await fetch(`${DHAN_BASE}${endpoint}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "client-id": creds.clientId,
-        "access-token": creds.accessToken,
-      },
-      body: JSON.stringify({
+  // Dates are expressed in IST (exchange time).
+  const istNow = Date.now() + 330 * 60_000;
+  const fromDay = isoDate(istNow - daysBack * 86_400_000);
+  const toDay = isoDate(istNow);
+  const body = isIntraday
+    ? {
         securityId: String(target.id),
         exchangeSegment: target.segment,
         instrument: target.instrument,
         interval: intervalStr,
-        fromDate: fromDateStr,
-        toDate: toDateStr,
-      }),
-    });
-
-    if (!res.ok) return null;
-    const json = (await res.json()) as any;
-    const timestamps: number[] = json?.timestamp ?? [];
-    const opens: number[] = json?.open ?? [];
-    const highs: number[] = json?.high ?? [];
-    const lows: number[] = json?.low ?? [];
-    const closes: number[] = json?.close ?? [];
-    const volumes: number[] = json?.volume ?? [];
-
-    const points: Array<{ t: number; price: number; volume: number; open: number; high: number; low: number }> = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      if (typeof closes[i] === "number") {
-        const rawT = timestamps[i];
-        // Dhan timestamps can be seconds or milliseconds
-        const tMs = rawT > 1e11 ? rawT : rawT * 1000;
-        points.push({
-          t: tMs,
-          price: closes[i],
-          volume: volumes[i] ?? 0,
-          open: opens[i] ?? closes[i],
-          high: highs[i] ?? closes[i],
-          low: lows[i] ?? closes[i],
-        });
+        fromDate: `${fromDay} 09:15:00`,
+        toDate: `${toDay} 15:30:00`,
       }
-    }
-    return points.length > 0 ? points : null;
+    : {
+        securityId: String(target.id),
+        exchangeSegment: target.segment,
+        instrument: target.instrument,
+        expiryCode: 0,
+        fromDate: fromDay,
+        toDate: isoDate(istNow + 86_400_000), // toDate is exclusive
+      };
+
+  const cacheKey = `${endpoint}|${JSON.stringify(body)}`;
+  const ttl = isIntraday ? 15_000 : 5 * 60_000;
+  const fresh = candleCache.get(cacheKey, ttl);
+  if (fresh) return fresh;
+
+  try {
+    const res = await dhanPost(endpoint, creds, body, 8000);
+    if (!res.ok) return candleCache.getStale(cacheKey, 24 * 3600_000)?.value ?? null;
+    const points = parseDhanCandles(res.json);
+    if (points.length === 0) return null;
+    candleCache.set(cacheKey, points);
+    return points;
   } catch {
-    return null;
+    return candleCache.getStale(cacheKey, 24 * 3600_000)?.value ?? null;
   }
 }
 
@@ -418,6 +445,7 @@ export interface DhanPortfolioSummary {
   totalPnlPct: number;
 }
 
+/** Sample portfolio. Only ever surfaced when ALLOW_MOCK_DATA === "true". */
 export const DEMO_DHAN_HOLDINGS: DhanHolding[] = [
   {
     symbol: "RELIANCE",
@@ -519,40 +547,26 @@ export const DEMO_DHAN_SUMMARY: DhanPortfolioSummary = {
   totalPnlPct: 8.1,
 };
 
+const EMPTY_SUMMARY: DhanPortfolioSummary = {
+  totalInvested: 0,
+  totalCurrent: 0,
+  totalPnl: 0,
+  totalPnlPct: 0,
+};
+
 /**
  * Fetch raw holdings from DhanHQ
  * GET https://api.dhan.co/v2/holdings (or /holdings)
  */
-export async function getDhanRawHoldings(): Promise<any[] | null> {
+export async function getDhanRawHoldings(): Promise<DhanRawHolding[] | null> {
   const creds = getDhanCredentials();
   if (!creds) return null;
 
   try {
-    let res = await fetch(`${DHAN_BASE}/v2/holdings`, {
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "client-id": creds.clientId,
-        "access-token": creds.accessToken,
-      },
-    });
-
-    if (!res.ok) {
-      res = await fetch(`${DHAN_BASE}/holdings`, {
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "client-id": creds.clientId,
-          "access-token": creds.accessToken,
-        },
-      });
-    }
-
+    let res = await dhanGet("/v2/holdings", creds);
+    if (!res.ok) res = await dhanGet("/holdings", creds);
     if (!res.ok) return null;
-    const json = await res.json();
-    if (Array.isArray(json)) return json;
-    if (Array.isArray(json?.data)) return json.data;
-    return null;
+    return parseDhanHoldings(res.json);
   } catch {
     return null;
   }
@@ -571,17 +585,20 @@ export async function getDhanEnrichedHoldings(): Promise<{
   message?: string;
 }> {
   const creds = getDhanCredentials();
-  const envClientId = process.env.DHAN_CLIENT_ID?.trim() || "1114340693";
+  const mock = allowMockData();
+  const envClientId = process.env.DHAN_CLIENT_ID?.trim() || "";
 
   if (!creds) {
     return {
       ok: true,
       connected: false,
-      isDemo: true,
+      isDemo: mock,
       clientId: envClientId,
-      holdings: DEMO_DHAN_HOLDINGS,
-      summary: DEMO_DHAN_SUMMARY,
-      message: "Showing DhanHQ preview portfolio. Connect your DhanHQ token to sync live assets.",
+      holdings: mock ? DEMO_DHAN_HOLDINGS : [],
+      summary: mock ? DEMO_DHAN_SUMMARY : EMPTY_SUMMARY,
+      message: mock
+        ? "Showing DhanHQ preview portfolio. Connect your DhanHQ token to sync live assets."
+        : "DhanHQ is not connected. Configure DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN to sync holdings.",
     };
   }
 
@@ -590,11 +607,13 @@ export async function getDhanEnrichedHoldings(): Promise<{
     return {
       ok: true,
       connected: false,
-      isDemo: true,
+      isDemo: mock,
       clientId: creds.clientId,
-      holdings: DEMO_DHAN_HOLDINGS,
-      summary: DEMO_DHAN_SUMMARY,
-      message: "Failed to fetch live DhanHQ holdings. Using sample portfolio.",
+      holdings: mock ? DEMO_DHAN_HOLDINGS : [],
+      summary: mock ? DEMO_DHAN_SUMMARY : EMPTY_SUMMARY,
+      message: mock
+        ? "Failed to fetch live DhanHQ holdings. Using sample portfolio."
+        : "Failed to fetch live DhanHQ holdings. Check the access token and try again.",
     };
   }
 
@@ -605,17 +624,19 @@ export async function getDhanEnrichedHoldings(): Promise<{
       isDemo: false,
       clientId: creds.clientId,
       holdings: [],
-      summary: { totalInvested: 0, totalCurrent: 0, totalPnl: 0, totalPnlPct: 0 },
+      summary: EMPTY_SUMMARY,
       message: "DhanHQ account connected. No active holdings found.",
     };
   }
 
   // Get live prices for held symbols
-  const syms = raw.map((h: any) => h.tradingSymbol || h.symbolName).filter(Boolean);
+  const syms = raw
+    .map((h) => h.tradingSymbol || h.symbolName)
+    .filter((s): s is string => Boolean(s));
   const ltpMap = (await getDhanLtp(syms)) ?? {};
 
-  const enriched: DhanHolding[] = raw.map((h: any) => {
-    const sym = (h.tradingSymbol || h.symbolName || `SCRIP-${h.securityId}`).toUpperCase();
+  const enriched: DhanHolding[] = raw.map((h) => {
+    const sym = (h.tradingSymbol || h.symbolName || `SCRIP-${h.securityId ?? ""}`).toUpperCase();
     const qty = Number(h.totalQty ?? h.dpQty ?? h.availableQty ?? h.quantity ?? 0);
     const avg = Number(h.avgCostPrice ?? h.averagePrice ?? 0);
     const ltp = Number(ltpMap[sym] ?? h.closePrice ?? avg ?? 0);
@@ -624,7 +645,10 @@ export async function getDhanEnrichedHoldings(): Promise<{
     const current = +(qty * ltp).toFixed(2);
     const pnl = +(current - invested).toFixed(2);
     const pnlPct = invested > 0 ? +((pnl / invested) * 100).toFixed(2) : 0;
-    const dayChangePct = avg > 0 ? +(((ltp - avg) / avg) * 100).toFixed(2) : 0;
+    // Day change needs the previous close, which the holdings endpoint does not carry. Report it
+    // against the holding's last known close price when we have one, otherwise 0 (unknown).
+    const prevClose = Number(h.closePrice ?? 0);
+    const dayChangePct = prevClose > 0 ? +(((ltp - prevClose) / prevClose) * 100).toFixed(2) : 0;
 
     return {
       symbol: sym,
@@ -638,7 +662,7 @@ export async function getDhanEnrichedHoldings(): Promise<{
       pnlPct,
       dayChangePct,
       exchange: h.exchange || "NSE",
-      securityId: String(h.securityId || ""),
+      securityId: String(h.securityId ?? ""),
     };
   });
 
@@ -658,36 +682,31 @@ export async function getDhanEnrichedHoldings(): Promise<{
   };
 }
 
+function asRecordArray(json: unknown): JsonObject[] {
+  const arr = Array.isArray(json)
+    ? json
+    : typeof json === "object" && json !== null && Array.isArray((json as { data?: unknown }).data)
+      ? (json as { data: unknown[] }).data
+      : [];
+  // The input came from JSON.parse, so any object in it is already JSON-serialisable.
+  return arr.filter(
+    (x): x is JsonObject => typeof x === "object" && x !== null && !Array.isArray(x),
+  );
+}
+
 /**
  * Fetch positions from DhanHQ v2
  * GET https://api.dhan.co/v2/positions
  */
-export async function getDhanPositions(): Promise<any[] | null> {
+export async function getDhanPositions(): Promise<JsonObject[] | null> {
   const creds = getDhanCredentials();
   if (!creds) return null;
 
   try {
-    let res = await fetch(`${DHAN_BASE}/v2/positions`, {
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "client-id": creds.clientId,
-        "access-token": creds.accessToken,
-      },
-    });
-    if (!res.ok) {
-      res = await fetch(`${DHAN_BASE}/positions`, {
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "client-id": creds.clientId,
-          "access-token": creds.accessToken,
-        },
-      });
-    }
+    let res = await dhanGet("/v2/positions", creds);
+    if (!res.ok) res = await dhanGet("/positions", creds);
     if (!res.ok) return null;
-    const json = await res.json();
-    return Array.isArray(json) ? json : json?.data ?? [];
+    return asRecordArray(res.json);
   } catch {
     return null;
   }
@@ -697,31 +716,17 @@ export async function getDhanPositions(): Promise<any[] | null> {
  * Fetch fund limits / margin from DhanHQ v2
  * GET https://api.dhan.co/v2/fundlimit
  */
-export async function getDhanFundLimits(): Promise<any | null> {
+export async function getDhanFundLimits(): Promise<JsonObject | null> {
   const creds = getDhanCredentials();
   if (!creds) return null;
 
   try {
-    let res = await fetch(`${DHAN_BASE}/v2/fundlimit`, {
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "client-id": creds.clientId,
-        "access-token": creds.accessToken,
-      },
-    });
-    if (!res.ok) {
-      res = await fetch(`${DHAN_BASE}/fundlimit`, {
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "client-id": creds.clientId,
-          "access-token": creds.accessToken,
-        },
-      });
-    }
+    let res = await dhanGet("/v2/fundlimit", creds);
+    if (!res.ok) res = await dhanGet("/fundlimit", creds);
     if (!res.ok) return null;
-    return await res.json();
+    return typeof res.json === "object" && res.json !== null && !Array.isArray(res.json)
+      ? (res.json as JsonObject)
+      : null;
   } catch {
     return null;
   }
@@ -742,12 +747,13 @@ export async function getDhanQuote(symbol: string): Promise<{
   changePct: number;
 } | null> {
   const ohlc = await getDhanOhlc([symbol]);
-  const clean = symbol.replace(/\.NS$/i, "").replace(/\.BO$/i, "").toUpperCase();
+  const clean = displayKey(symbol);
   const d = ohlc?.[clean];
-  if (!d) return null;
+  if (!d || d.price <= 0) return null;
 
-  const change = +(d.price - d.open).toFixed(2);
-  const changePct = d.open > 0 ? +((change / d.open) * 100).toFixed(2) : 0;
+  const prevClose = d.close > 0 ? d.close : d.open;
+  const change = +(d.price - prevClose).toFixed(2);
+  const changePct = prevClose > 0 ? +((change / prevClose) * 100).toFixed(2) : 0;
 
   return {
     symbol: clean,
@@ -755,43 +761,89 @@ export async function getDhanQuote(symbol: string): Promise<{
     open: d.open,
     high: d.high,
     low: d.low,
-    prevClose: d.open,
+    prevClose,
     volume: d.volume,
     change,
     changePct,
   };
 }
 
+/* -------------------------------------- Option chain ---------------------------------- */
+
 /**
- * Fetch Option Chain via DhanHQ v2
- * POST https://api.dhan.co/v2/optionchain
+ * Expiry list for an underlying.
+ * POST https://api.dhan.co/v2/optionchain/expirylist
  */
-export async function getDhanOptionChain(underlying: string, expiryDate?: string): Promise<any | null> {
+export async function getDhanExpiryList(underlying: string): Promise<string[] | null> {
+  const creds = getDhanCredentials();
+  if (!creds) return null;
+  const target = getDhanInstrument(underlying);
+  if (!target) return null;
+
+  const cacheKey = `${target.segment}:${target.id}`;
+  const fresh = expiryCache.get(cacheKey, EXPIRY_TTL_MS);
+  if (fresh) return fresh;
+
+  try {
+    const res = await dhanPost("/v2/optionchain/expirylist", creds, {
+      UnderlyingScrip: target.id,
+      UnderlyingSeg: target.segment,
+    });
+    if (!res.ok) return expiryCache.getStale(cacheKey)?.value ?? null;
+    const list = parseDhanExpiryList(res.json);
+    if (list.length === 0) return null;
+    expiryCache.set(cacheKey, list);
+    return list;
+  } catch {
+    return expiryCache.getStale(cacheKey)?.value ?? null;
+  }
+}
+
+/**
+ * Fetch Option Chain via DhanHQ v2 (parsed + normalised row shape).
+ * POST https://api.dhan.co/v2/optionchain
+ *
+ * Dhan requires an explicit expiry; when none is given the nearest upcoming one is used.
+ */
+export async function getDhanOptionChain(
+  underlying: string,
+  expiryDate?: string,
+): Promise<(ParsedDhanChain & { expiry: string }) | null> {
   const creds = getDhanCredentials();
   if (!creds) return null;
 
   const target = getDhanInstrument(underlying);
   if (!target) return null;
 
-  try {
-    const res = await fetch(`${DHAN_BASE}/v2/optionchain`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "client-id": creds.clientId,
-        "access-token": creds.accessToken,
-      },
-      body: JSON.stringify({
-        UnderlyingScrip: target.id,
-        UnderlyingSeg: target.segment,
-        Expiry: expiryDate || "",
-      }),
-    });
+  let expiry = expiryDate;
+  if (!expiry) {
+    const list = await getDhanExpiryList(underlying);
+    if (!list || list.length === 0) return null;
+    const today = isoDate(Date.now() + 330 * 60_000);
+    expiry = list.find((e) => e >= today) ?? list[0];
+  }
 
-    if (!res.ok) return null;
-    return await res.json();
+  const cacheKey = `${target.segment}:${target.id}:${expiry}`;
+  const fresh = chainCache.get(cacheKey, CHAIN_TTL_MS);
+  if (fresh) return { ...fresh, expiry };
+
+  try {
+    const res = await dhanPost(
+      "/v2/optionchain",
+      creds,
+      { UnderlyingScrip: target.id, UnderlyingSeg: target.segment, Expiry: expiry },
+      8000,
+    );
+    if (!res.ok) {
+      const stale = chainCache.getStale(cacheKey, 60_000)?.value;
+      return stale ? { ...stale, expiry } : null;
+    }
+    const parsed = parseDhanOptionChain(res.json);
+    if (!parsed) return null;
+    chainCache.set(cacheKey, parsed);
+    return { ...parsed, expiry };
   } catch {
-    return null;
+    const stale = chainCache.getStale(cacheKey, 60_000)?.value;
+    return stale ? { ...stale, expiry } : null;
   }
 }

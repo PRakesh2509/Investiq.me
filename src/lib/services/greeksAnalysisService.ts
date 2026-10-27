@@ -10,7 +10,10 @@
  * - Greeks velocity between consecutive snapshots
  */
 
-import type { SynchronizedGreeksSnapshot, GreeksVelocityPoint } from "./optionsGreeksDataService.ts";
+import type {
+  SynchronizedGreeksSnapshot,
+  GreeksVelocityPoint,
+} from "./optionsGreeksDataService.ts";
 
 export interface GreeksAnalysisReport {
   instrument: string;
@@ -18,6 +21,11 @@ export interface GreeksAnalysisReport {
   atmStrike: number;
   daysToExpiry: number;
   provider: string;
+  /** Propagated from the Greeks snapshot: true when the surface is computed locally. */
+  isSimulated: boolean;
+  dataSource: string;
+  /** Provider freshness verdict for the underlying Greeks surface, when reported. */
+  freshnessStatus?: string;
   deltaAnalysis: {
     atmCallDelta: number;
     atmPutDelta: number;
@@ -39,7 +47,7 @@ export interface GreeksAnalysisReport {
   };
   vegaAnalysis: {
     atmVega: number;
-    ivSmileSkew: number; // Put IV - Call IV at 2% OTM
+    ivSmileSkew: number | null; // Put IV - Call IV at 2% OTM; null when strikes are not available
     ivRegime: "VOLATILITY_ELEVATED" | "VOLATILITY_NORMAL" | "VOLATILITY_COMPRESSED";
   };
   summary: {
@@ -67,12 +75,16 @@ export class GreeksAnalysisService {
    */
   public analyzeGreeks(snapshot: SynchronizedGreeksSnapshot): GreeksAnalysisReport {
     const { underlyingPrice, atmStrike, daysToExpiry, points, velocity, summary } = snapshot;
+    if (!points || points.length === 0) {
+      throw new Error("Greeks snapshot contains no strike points");
+    }
 
     // 1. Delta Analysis
     const atmCallDelta = summary.atmCallDelta;
     const atmPutDelta = summary.atmPutDelta;
     const deltaDiff = atmCallDelta + atmPutDelta; // near 0 in balanced market
-    let directionalBias: "BULLISH_DELTA_SKEW" | "BEARISH_DELTA_SKEW" | "NEUTRAL_BALANCED" = "NEUTRAL_BALANCED";
+    let directionalBias: "BULLISH_DELTA_SKEW" | "BEARISH_DELTA_SKEW" | "NEUTRAL_BALANCED" =
+      "NEUTRAL_BALANCED";
     if (deltaDiff > 0.08) directionalBias = "BULLISH_DELTA_SKEW";
     else if (deltaDiff < -0.08) directionalBias = "BEARISH_DELTA_SKEW";
 
@@ -92,13 +104,13 @@ export class GreeksAnalysisService {
 
     // 3. Theta Analysis
     const atmPt = points.find((p) => p.isAtm) ?? points[Math.floor(points.length / 2)];
-    const atmDailyDecayPerShare = Math.abs(atmPt?.callTheta ?? 15);
+    const atmDailyDecayPerShare = Math.abs(atmPt.callTheta);
     const thetaBurnSeverity: "AGGRESSIVE_DECAY" | "MODERATE" | "BENIGN" =
       daysToExpiry <= 1.5 || atmDailyDecayPerShare > 25
         ? "AGGRESSIVE_DECAY"
         : daysToExpiry <= 4 || atmDailyDecayPerShare > 12
-        ? "MODERATE"
-        : "BENIGN";
+          ? "MODERATE"
+          : "BENIGN";
 
     const recommendedAction =
       thetaBurnSeverity === "AGGRESSIVE_DECAY"
@@ -108,22 +120,28 @@ export class GreeksAnalysisService {
     // 4. Vega & IV Skew
     const otmPut = points.find((p) => p.strike < underlyingPrice * 0.98);
     const otmCall = points.find((p) => p.strike > underlyingPrice * 1.02);
-    const putIv = otmPut?.putIv ?? 16;
-    const callIv = otmCall?.callIv ?? 14;
-    const ivSmileSkew = +(putIv - callIv).toFixed(2);
+    const ivSmileSkew = otmPut && otmCall ? +(otmPut.putIv - otmCall.callIv).toFixed(2) : null;
 
     const atmIv = summary.atmIv;
-    let ivRegime: "VOLATILITY_ELEVATED" | "VOLATILITY_NORMAL" | "VOLATILITY_COMPRESSED" = "VOLATILITY_NORMAL";
+    let ivRegime: "VOLATILITY_ELEVATED" | "VOLATILITY_NORMAL" | "VOLATILITY_COMPRESSED" =
+      "VOLATILITY_NORMAL";
     if (atmIv > 20.0) ivRegime = "VOLATILITY_ELEVATED";
     else if (atmIv < 11.5) ivRegime = "VOLATILITY_COMPRESSED";
 
     // 5. Velocity Alerts
     const velocityAlerts: string[] = [];
-    const maxDeltaShift = Math.max(...velocity.map((v) => Math.abs(v.deltaChange)), 0);
+    const hasVelocity = snapshot.velocityAvailable !== false;
+    const maxDeltaShift = hasVelocity
+      ? Math.max(...velocity.map((v) => Math.abs(v.deltaChange)), 0)
+      : 0;
     if (maxDeltaShift > 0.05) {
-      velocityAlerts.push(`Rapid Delta transition detected (Δ shift of ${maxDeltaShift.toFixed(3)}) across near-money strikes.`);
+      velocityAlerts.push(
+        `Rapid Delta transition detected (Δ shift of ${maxDeltaShift.toFixed(3)}) across near-money strikes.`,
+      );
     }
-    const maxGammaShift = Math.max(...velocity.map((v) => Math.abs(v.gammaChange)), 0);
+    const maxGammaShift = hasVelocity
+      ? Math.max(...velocity.map((v) => Math.abs(v.gammaChange)), 0)
+      : 0;
     if (maxGammaShift > 0.001) {
       velocityAlerts.push("Gamma risk acceleration building up rapidly near ATM.");
     }
@@ -136,7 +154,9 @@ export class GreeksAnalysisService {
 
     if (thetaBurnSeverity === "AGGRESSIVE_DECAY") {
       spreadSuitability = "STRONGLY_FAVORED";
-      reasons.push("High Theta burn heavily penalizes naked long holding; vertical spreads mitigate decay.");
+      reasons.push(
+        "High Theta burn heavily penalizes naked long holding; vertical spreads mitigate decay.",
+      );
       longCallSuitability = "UNFAVORABLE";
       longPutSuitability = "UNFAVORABLE";
     }
@@ -145,7 +165,9 @@ export class GreeksAnalysisService {
       spreadSuitability = "STRONGLY_FAVORED";
       reasons.push("Elevated IV makes naked buying expensive; spreads provide Vega insulation.");
     } else if (ivRegime === "VOLATILITY_COMPRESSED") {
-      reasons.push("Low IV offers cheap directional optionality; long options face low volatility penalty.");
+      reasons.push(
+        "Low IV offers cheap directional optionality; long options face low volatility penalty.",
+      );
     }
 
     if (directionalBias === "BULLISH_DELTA_SKEW") {
@@ -157,7 +179,9 @@ export class GreeksAnalysisService {
     }
 
     if (reasons.length === 0) {
-      reasons.push("Balanced Delta skew and standard IV indicate stable options market conditions.");
+      reasons.push(
+        "Balanced Delta skew and standard IV indicate stable options market conditions.",
+      );
     }
 
     return {
@@ -166,6 +190,9 @@ export class GreeksAnalysisService {
       atmStrike,
       daysToExpiry,
       provider: snapshot.provider,
+      isSimulated: snapshot.isSimulated,
+      dataSource: snapshot.dataSource,
+      freshnessStatus: snapshot.freshnessStatus,
       deltaAnalysis: {
         atmCallDelta,
         atmPutDelta,
@@ -186,7 +213,7 @@ export class GreeksAnalysisService {
         recommendedAction,
       },
       vegaAnalysis: {
-        atmVega: atmPt?.callVega ?? 12,
+        atmVega: atmPt.callVega,
         ivSmileSkew,
         ivRegime,
       },

@@ -28,6 +28,8 @@ import { Route as DesktopFundsRouteImport } from './routes/desktop.funds'
 import { Route as DesktopIposRouteImport } from './routes/desktop.ipos'
 import { Route as DesktopOptionChainRouteImport } from './routes/desktop.option-chain'
 import { Route as DesktopTerminalRouteImport } from './routes/desktop.terminal'
+import { Route as ApiAdminKeysRouteImport } from './routes/api/admin/keys'
+import { Route as ApiAdminSessionRouteImport } from './routes/api/admin/session'
 import { Route as ApiFnoAnalysisRouteImport } from './routes/api/fno/analysis'
 import { Route as ApiFnoCandidateHistoryRouteImport } from './routes/api/fno/candidate-history'
 import { Route as ApiFnoContinuousBackendRouteImport } from './routes/api/fno/continuous-backend'
@@ -147,6 +149,16 @@ const DesktopTerminalRoute = DesktopTerminalRouteImport.update({
   id: '/terminal',
   path: '/terminal',
   getParentRoute: () => DesktopRoute,
+} as any)
+const ApiAdminKeysRoute = ApiAdminKeysRouteImport.update({
+  id: '/api/admin/keys',
+  path: '/api/admin/keys',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminSessionRoute = ApiAdminSessionRouteImport.update({
+  id: '/api/admin/session',
+  path: '/api/admin/session',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiFnoAnalysisRoute = ApiFnoAnalysisRouteImport.update({
   id: '/api/fno/analysis',
@@ -295,6 +307,8 @@ export interface FileRoutesByFullPath {
   '/desktop/option-chain': typeof DesktopOptionChainRoute
   '/desktop/terminal': typeof DesktopTerminalRoute
   '/desktop/': typeof DesktopIndexRoute
+  '/api/admin/keys': typeof ApiAdminKeysRoute
+  '/api/admin/session': typeof ApiAdminSessionRoute
   '/api/fno/analysis': typeof ApiFnoAnalysisRoute
   '/api/fno/candidate-history': typeof ApiFnoCandidateHistoryRoute
   '/api/fno/continuous-backend': typeof ApiFnoContinuousBackendRoute
@@ -339,6 +353,8 @@ export interface FileRoutesByTo {
   '/desktop/option-chain': typeof DesktopOptionChainRoute
   '/desktop/terminal': typeof DesktopTerminalRoute
   '/desktop': typeof DesktopIndexRoute
+  '/api/admin/keys': typeof ApiAdminKeysRoute
+  '/api/admin/session': typeof ApiAdminSessionRoute
   '/api/fno/analysis': typeof ApiFnoAnalysisRoute
   '/api/fno/candidate-history': typeof ApiFnoCandidateHistoryRoute
   '/api/fno/continuous-backend': typeof ApiFnoContinuousBackendRoute
@@ -385,6 +401,8 @@ export interface FileRoutesById {
   '/desktop/option-chain': typeof DesktopOptionChainRoute
   '/desktop/terminal': typeof DesktopTerminalRoute
   '/desktop/': typeof DesktopIndexRoute
+  '/api/admin/keys': typeof ApiAdminKeysRoute
+  '/api/admin/session': typeof ApiAdminSessionRoute
   '/api/fno/analysis': typeof ApiFnoAnalysisRoute
   '/api/fno/candidate-history': typeof ApiFnoCandidateHistoryRoute
   '/api/fno/continuous-backend': typeof ApiFnoContinuousBackendRoute
@@ -432,6 +450,8 @@ export interface FileRouteTypes {
     | '/desktop/option-chain'
     | '/desktop/terminal'
     | '/desktop/'
+    | '/api/admin/keys'
+    | '/api/admin/session'
     | '/api/fno/analysis'
     | '/api/fno/candidate-history'
     | '/api/fno/continuous-backend'
@@ -476,6 +496,8 @@ export interface FileRouteTypes {
     | '/desktop/option-chain'
     | '/desktop/terminal'
     | '/desktop'
+    | '/api/admin/keys'
+    | '/api/admin/session'
     | '/api/fno/analysis'
     | '/api/fno/candidate-history'
     | '/api/fno/continuous-backend'
@@ -521,6 +543,8 @@ export interface FileRouteTypes {
     | '/desktop/option-chain'
     | '/desktop/terminal'
     | '/desktop/'
+    | '/api/admin/keys'
+    | '/api/admin/session'
     | '/api/fno/analysis'
     | '/api/fno/candidate-history'
     | '/api/fno/continuous-backend'
@@ -558,6 +582,8 @@ export interface RootRouteChildren {
   ApiOptionChainRoute: typeof ApiOptionChainRoute
   ApiSearchRoute: typeof ApiSearchRoute
   ApiTestTradeRoute: typeof ApiTestTradeRoute
+  ApiAdminKeysRoute: typeof ApiAdminKeysRoute
+  ApiAdminSessionRoute: typeof ApiAdminSessionRoute
   ApiFnoAnalysisRoute: typeof ApiFnoAnalysisRoute
   ApiFnoCandidateHistoryRoute: typeof ApiFnoCandidateHistoryRoute
   ApiFnoContinuousBackendRoute: typeof ApiFnoContinuousBackendRoute
@@ -716,6 +742,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/desktop/terminal'
       preLoaderRoute: typeof DesktopTerminalRouteImport
       parentRoute: typeof DesktopRoute
+    }
+    '/api/admin/keys': {
+      id: '/api/admin/keys'
+      path: '/api/admin/keys'
+      fullPath: '/api/admin/keys'
+      preLoaderRoute: typeof ApiAdminKeysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/session': {
+      id: '/api/admin/session'
+      path: '/api/admin/session'
+      fullPath: '/api/admin/session'
+      preLoaderRoute: typeof ApiAdminSessionRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/fno/analysis': {
       id: '/api/fno/analysis'
@@ -930,6 +970,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOptionChainRoute: ApiOptionChainRoute,
   ApiSearchRoute: ApiSearchRoute,
   ApiTestTradeRoute: ApiTestTradeRoute,
+  ApiAdminKeysRoute: ApiAdminKeysRoute,
+  ApiAdminSessionRoute: ApiAdminSessionRoute,
   ApiFnoAnalysisRoute: ApiFnoAnalysisRoute,
   ApiFnoCandidateHistoryRoute: ApiFnoCandidateHistoryRoute,
   ApiFnoContinuousBackendRoute: ApiFnoContinuousBackendRoute,

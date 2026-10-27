@@ -4,11 +4,15 @@ import LiveIndexChart from "./LiveIndexChart";
 
 const INSTRUMENTS = [
   { key: "NIFTY", label: "NIFTY 50", tv: "NSE:NIFTY", dhan: "NIFTY", exchange: "NSE" },
-  { key: "BANKNIFTY", label: "BANK NIFTY", tv: "NSE:BANKNIFTY", dhan: "BANKNIFTY", exchange: "NSE" },
+  {
+    key: "BANKNIFTY",
+    label: "BANK NIFTY",
+    tv: "NSE:BANKNIFTY",
+    dhan: "BANKNIFTY",
+    exchange: "NSE",
+  },
   { key: "SENSEX", label: "SENSEX", tv: "BSE:SENSEX", dhan: "SENSEX", exchange: "BSE" },
 ] as const;
-
-
 
 const INTERVALS = [
   { label: "5m", value: "5", yahoo: { interval: "5m", range: "1d" } },
@@ -67,8 +71,6 @@ export default function FnoIndiaTV() {
         range={interval.yahoo.range}
         height={520}
       />
-
-
 
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-1 space-y-2">

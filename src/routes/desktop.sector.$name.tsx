@@ -19,6 +19,7 @@ function SectorPage() {
   const fetchQuotes = useServerFn(getYahooQuotes);
   const [quotes, setQuotes] = useState<Q[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const members = useMemo(
     () => NIFTY_UNIVERSE.filter((s) => s.sector.toLowerCase() === sector.toLowerCase()),
@@ -41,7 +42,12 @@ function SectorPage() {
             volume: q.volume,
           })),
         );
+        setError(null);
+      } else {
+        setError("Live quotes are unavailable right now.");
       }
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : "Failed to load quotes.");
     } finally {
       setLoading(false);
     }
@@ -62,10 +68,30 @@ function SectorPage() {
     () => [...quotes].filter((q) => q.changePct <= 0).sort((a, b) => a.changePct - b.changePct),
     [quotes],
   );
-  const avgPct = quotes.length
-    ? quotes.reduce((s, q) => s + q.changePct, 0) / quotes.length
-    : 0;
+  const avgPct = quotes.length ? quotes.reduce((s, q) => s + q.changePct, 0) / quotes.length : 0;
   const pos = avgPct >= 0;
+
+  if (members.length === 0) {
+    return (
+      <div className="py-16 text-center text-sm text-muted-foreground">
+        No tracked stocks found for the "{sector}" sector.
+      </div>
+    );
+  }
+
+  if (quotes.length === 0 && error) {
+    return (
+      <div role="alert" className="space-y-3 py-16 text-center text-sm text-destructive">
+        <p>{error}</p>
+        <button
+          onClick={() => void load()}
+          className="rounded-lg border border-destructive/40 px-3 py-1.5 text-xs font-semibold hover:bg-destructive/10"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   if (quotes.length === 0) {
     return (
@@ -142,9 +168,7 @@ function StockList({ title, rows, up }: { title: string; rows: Q[]; up?: boolean
                 <div className="text-right">
                   <p className="text-sm">{formatINR(s.price)}</p>
                   <p
-                    className={`text-xs ${
-                      s.changePct >= 0 ? "text-success" : "text-destructive"
-                    }`}
+                    className={`text-xs ${s.changePct >= 0 ? "text-success" : "text-destructive"}`}
                   >
                     {s.changePct >= 0 ? "+" : ""}
                     {s.changePct.toFixed(2)}%

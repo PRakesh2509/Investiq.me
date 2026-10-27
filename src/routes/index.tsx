@@ -13,15 +13,11 @@ import {
   Bitcoin,
   Sparkles,
 } from "lucide-react";
-import {
-  DisclaimerModal,
-  useDisclaimerAcknowledged,
-} from "@/components/DisclaimerModal";
+import { DisclaimerModal, useDisclaimerAcknowledged } from "@/components/DisclaimerModal";
 import { NIFTY_UNIVERSE, NIFTY_YAHOO_SYMBOLS } from "@/lib/nifty-universe";
 import { getYahooQuotes } from "@/lib/yahoo.functions";
 import { formatINR } from "@/lib/market-data";
 const logoAsset = { url: "/investiq-logo.png" };
-
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
@@ -121,7 +117,11 @@ function LandingPage() {
     [quotes],
   );
   const topRated = useMemo(
-    () => [...quotes].filter((q) => q.changePct > 0).sort((a, b) => b.changePct - a.changePct).slice(0, 6),
+    () =>
+      [...quotes]
+        .filter((q) => q.changePct > 0)
+        .sort((a, b) => b.changePct - a.changePct)
+        .slice(0, 6),
     [quotes],
   );
 
@@ -145,9 +145,9 @@ function LandingPage() {
     const q = raw.trim().toUpperCase();
     if (!q) return;
     const direct = NIFTY_UNIVERSE.find((s) => s.symbol === q);
-    const match = direct ?? NIFTY_UNIVERSE.find(
-      (s) => s.name.toUpperCase().includes(q) || s.symbol.includes(q),
-    );
+    const match =
+      direct ??
+      NIFTY_UNIVERSE.find((s) => s.name.toUpperCase().includes(q) || s.symbol.includes(q));
     const sym = match?.symbol ?? q.replace(/[^A-Z0-9&-]/g, "");
     if (!sym) return;
     setQuery("");
@@ -160,16 +160,26 @@ function LandingPage() {
       {/* Nav */}
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-2">
-          <img src={logoAsset.url} alt="InvestIQ logo" className="h-9 w-9 rounded-xl object-contain" />
+          <img
+            src={logoAsset.url}
+            alt="InvestIQ logo"
+            className="h-9 w-9 rounded-xl object-contain"
+          />
 
           <span className="font-display text-xl font-semibold tracking-tight">
             <span className="text-gradient">Invest</span>IQ
           </span>
         </div>
         <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">
-          <a href="#trending" className="transition hover:text-foreground">Trending</a>
-          <a href="#features" className="transition hover:text-foreground">Features</a>
-          <a href="#trust" className="transition hover:text-foreground">Disclaimer</a>
+          <a href="#trending" className="transition hover:text-foreground">
+            Trending
+          </a>
+          <a href="#features" className="transition hover:text-foreground">
+            Features
+          </a>
+          <a href="#trust" className="transition hover:text-foreground">
+            Disclaimer
+          </a>
         </nav>
       </header>
 
@@ -219,14 +229,11 @@ function LandingPage() {
                 market.isOpen ? "bg-success animate-pulse" : "bg-destructive"
               }`}
             />
-            <span className="font-medium">
-              {market.isOpen ? "Market Open" : "Market Closed"}
-            </span>
+            <span className="font-medium">{market.isOpen ? "Market Open" : "Market Closed"}</span>
             <span className="text-xs text-muted-foreground">· NSE / BSE · IST</span>
           </div>
           <div className="text-xs text-muted-foreground">
-            {market.label}{" "}
-            <span className="font-mono text-foreground">{market.countdown}</span>
+            {market.label} <span className="font-mono text-foreground">{market.countdown}</span>
           </div>
         </div>
 
@@ -310,17 +317,17 @@ function LandingPage() {
               Highest absolute movers from the Nifty universe · live
             </p>
           </div>
-          <button
-            onClick={() => go("/desktop")}
-            className="text-xs text-primary hover:underline"
-          >
+          <button onClick={() => go("/desktop")} className="text-xs text-primary hover:underline">
             View all →
           </button>
         </div>
         {trending.length === 0 ? (
           <div className="grid grid-cols-4 gap-3">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="h-24 animate-pulse rounded-xl border border-border bg-surface/40" />
+              <div
+                key={i}
+                className="h-24 animate-pulse rounded-xl border border-border bg-surface/40"
+              />
             ))}
           </div>
         ) : (
@@ -369,7 +376,10 @@ function LandingPage() {
         {topRated.length === 0 ? (
           <div className="grid grid-cols-3 gap-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-20 animate-pulse rounded-xl border border-border bg-surface/40" />
+              <div
+                key={i}
+                className="h-20 animate-pulse rounded-xl border border-border bg-surface/40"
+              />
             ))}
           </div>
         ) : (
@@ -406,11 +416,26 @@ function LandingPage() {
         </h2>
         <div className="mt-8 grid gap-5 md:grid-cols-3">
           {[
-            { icon: Brain, title: "AI stock insights", body: "Fundamentals, technicals, and sentiment — synthesized into a decisive BUY/HOLD/SELL view." },
-            { icon: BarChart3, title: "Live charts & F&O signals", body: "Real-time Yahoo Finance data with CPR, Camarilla, and pivot-confluence F&O setups." },
-            { icon: Sparkles, title: "IPO & Mutual Fund research", body: "Institutional-grade IPO notes, live NAV graphs, and Telegram alerts on every event." },
+            {
+              icon: Brain,
+              title: "AI stock insights",
+              body: "Fundamentals, technicals, and sentiment — synthesized into a decisive BUY/HOLD/SELL view.",
+            },
+            {
+              icon: BarChart3,
+              title: "Live charts & F&O signals",
+              body: "Real-time Yahoo Finance data with CPR, Camarilla, and pivot-confluence F&O setups.",
+            },
+            {
+              icon: Sparkles,
+              title: "IPO & Mutual Fund research",
+              body: "Institutional-grade IPO notes, live NAV graphs, and Telegram alerts on every event.",
+            },
           ].map(({ icon: Icon, title, body }) => (
-            <div key={title} className="rounded-2xl border border-border bg-gradient-card p-6 shadow-elegant">
+            <div
+              key={title}
+              className="rounded-2xl border border-border bg-gradient-card p-6 shadow-elegant"
+            >
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-primary/15 text-primary">
                 <Icon className="h-5 w-5" />
               </span>
@@ -424,9 +449,9 @@ function LandingPage() {
       <footer id="trust" className="border-t border-border">
         <div className="mx-auto max-w-6xl space-y-2 px-6 py-8 text-xs text-muted-foreground">
           <p className="text-foreground/80">
-            Disclaimer: InvestIQ is NOT a SEBI-registered portal. This is an educational
-            research platform only. Please consult a SEBI-registered financial advisor before
-            making any investment decisions. All market investments carry risk of loss.
+            Disclaimer: InvestIQ is NOT a SEBI-registered portal. This is an educational research
+            platform only. Please consult a SEBI-registered financial advisor before making any
+            investment decisions. All market investments carry risk of loss.
           </p>
           <p>© {new Date().getFullYear()} InvestIQ · Built for education & research purposes.</p>
         </div>

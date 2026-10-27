@@ -2,6 +2,9 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { getDhanLiveChart, getDhanHoldings as getDhanHoldingsFn } from "./dhan.functions";
 import { getDhanQuote } from "./dhan.server";
+import { isValidSymbol, safeErrorMessage } from "./provider-utils";
+
+const SymbolSchema = z.string().min(1).max(32).refine(isValidSymbol, { message: "Invalid symbol" });
 
 export type ChartPoint = { t: number; price: number; volume: number };
 
@@ -13,7 +16,7 @@ export const getLiveChart = createServerFn({ method: "POST" })
   .validator((d) =>
     z
       .object({
-        growwSymbol: z.string().min(1),
+        growwSymbol: SymbolSchema,
         exchange: z.enum(["NSE", "BSE"]).default("NSE"),
         segment: z.enum(["CASH", "FNO"]).default("CASH"),
         intervalMinutes: z.number().int().min(1).max(1440).default(5),
@@ -38,7 +41,7 @@ export const getGrowwQuote = createServerFn({ method: "POST" })
   .validator((d) =>
     z
       .object({
-        growwSymbol: z.string().min(1),
+        growwSymbol: SymbolSchema,
         exchange: z.enum(["NSE", "BSE"]).default("NSE"),
         segment: z.enum(["CASH", "FNO"]).default("CASH"),
       })
@@ -50,7 +53,7 @@ export const getGrowwQuote = createServerFn({ method: "POST" })
       if (q) return { ok: true as const, quote: q };
       return { ok: false as const, error: "DhanHQ quote not found" };
     } catch (e) {
-      return { ok: false as const, error: (e as Error).message };
+      return { ok: false as const, error: safeErrorMessage(e, "quote failed") };
     }
   });
 

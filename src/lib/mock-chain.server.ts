@@ -3,10 +3,32 @@
  *
  * Used when Upstox credentials are missing/expired so test Telegram alerts can
  * still be exercised end-to-end. Values are randomised and NOT market data.
+ *
+ * SAFETY GATE: both builders throw MockDataDisabledError unless the environment variable
+ * ALLOW_MOCK_DATA is exactly "true". Production must never emit simulated chains. Chains built
+ * here carry isSimulated: true and dataSource: "mock" so they can be badged downstream.
  */
 
 import type { OptionChain, OptionRow, OptionSide } from "./upstox.server";
 import type { AiTradePlan, PremiumTrade } from "./ai-trades";
+import { allowMockData, nextThursdayISO } from "./provider-utils";
+
+export class MockDataDisabledError extends Error {
+  constructor() {
+    super(
+      "Simulated option data is disabled. Set ALLOW_MOCK_DATA=true (non-production only) to enable test data.",
+    );
+    this.name = "MockDataDisabledError";
+  }
+}
+
+export function isMockDataAllowed(): boolean {
+  return allowMockData();
+}
+
+function assertMockAllowed(): void {
+  if (!allowMockData()) throw new MockDataDisabledError();
+}
 
 const BASE: Record<string, { spot: number; step: number }> = {
   NIFTY: { spot: 24800, step: 50 },
@@ -17,13 +39,6 @@ const BASE: Record<string, { spot: number; step: number }> = {
 
 const rnd = (min: number, max: number) => min + Math.random() * (max - min);
 const r2 = (n: number) => Math.round(n * 100) / 100;
-
-function nextThursdayISO() {
-  const d = new Date();
-  const add = (4 - d.getUTCDay() + 7) % 7 || 7;
-  d.setUTCDate(d.getUTCDate() + add);
-  return d.toISOString().slice(0, 10);
-}
 
 function side(premium: number, oi: number, delta: number): OptionSide {
   const ltp = r2(Math.max(1, premium));
@@ -49,6 +64,7 @@ function side(premium: number, oi: number, delta: number): OptionSide {
 
 /** Build a randomised chain around a plausible spot for the given index. */
 export function buildMockChain(symbol: string): OptionChain {
+  assertMockAllowed();
   const cfg = BASE[symbol.toUpperCase()] ?? BASE.NIFTY;
   const spot = r2(cfg.spot * rnd(0.99, 1.01));
   const atm = Math.round(spot / cfg.step) * cfg.step;
@@ -74,7 +90,8 @@ export function buildMockChain(symbol: string): OptionChain {
   }
 
   const maxPain = rows.reduce(
-    (best, r) => (r.call.oi + r.put.oi > best.oi ? { oi: r.call.oi + r.put.oi, strike: r.strike } : best),
+    (best, r) =>
+      r.call.oi + r.put.oi > best.oi ? { oi: r.call.oi + r.put.oi, strike: r.strike } : best,
     { oi: 0, strike: atm },
   ).strike;
 
@@ -89,11 +106,14 @@ export function buildMockChain(symbol: string): OptionChain {
     totalPutOi,
     rows,
     generatedAt: Date.now(),
+    isSimulated: true,
+    dataSource: "mock",
   };
 }
 
 /** Deterministic-shape sample trades derived from a (mock) chain. */
 export function buildMockPlan(symbol: string, chain: OptionChain): AiTradePlan {
+  assertMockAllowed();
   const step = chain.rows.length > 1 ? chain.rows[1].strike - chain.rows[0].strike : 50;
   const bullish = chain.pcr >= 1;
   const mk = (rank: number, otm: number, type: "CE" | "PE"): PremiumTrade => {

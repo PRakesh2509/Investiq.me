@@ -1,21 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { hookFailure, hookResponse, readJsonBody, requireCronAuth } from "@/lib/cron-auth.server";
+import { escapeHtml, getBotToken, resolveChatIds, sendToMany } from "@/lib/telegram.server";
 
 /**
  * Telegram notifications for option-chain trading.
  *
  * Accepts a structured payload only — the message text is composed server-side
  * so no caller can push arbitrary content to the bot. TELEGRAM_BOT_TOKEN stays
- * server-side.
+ * server-side. Requires CRON_SECRET (x-cron-secret or Authorization: Bearer).
  */
-
-const PERMANENT_CHAT_IDS = [
-  "7350570004",
-  "5589831995",
-  "1840901163",
-  "1360613728",
-  "8155139346",
-  "6799336293", "7280324188", "6698697147",
-];
 
 type Payload = {
   kind?: "order" | "execution" | "pnl" | "level" | "volatility" | "unusual" | "margin";
@@ -38,12 +31,14 @@ type Payload = {
 const TITLES: Record<NonNullable<Payload["kind"]>, string> = {
   order: "🟡 ORDER PLACED",
   execution: "🟢 TRADE EXECUTED",
-  pnl: "📊 P&L UPDATE",
+  pnl: "📊 P&amp;L UPDATE",
   level: "🎯 PRICE LEVEL BREACHED",
   volatility: "⚡ HIGH VOLATILITY",
   unusual: "🔍 UNUSUAL OPTION ACTIVITY",
   margin: "⚠️ MARGIN ALERT",
 };
+
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 const inr = (v: number) =>
   v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -59,99 +54,74 @@ function inQuietHours() {
 }
 
 function buildMessage(p: Payload) {
-  const kind = p.kind ?? "execution";
+  const kind = p.kind && p.kind in TITLES ? p.kind : "execution";
   const lines: string[] = [];
   lines.push(`<b>${TITLES[kind]}</b>`);
   lines.push("━━━━━━━━━━━━━━━━━━");
   lines.push("");
 
-  const contract = [p.symbol, p.expiry, p.strike ? String(p.strike) : null, p.optionType]
+  const contract = [
+    p.symbol ? String(p.symbol).slice(0, 40) : null,
+    p.expiry ? String(p.expiry).slice(0, 20) : null,
+    p.strike ? String(p.strike) : null,
+    p.optionType === "CE" || p.optionType === "PE" ? p.optionType : null,
+  ]
     .filter(Boolean)
     .join(" · ");
-  if (contract) lines.push(`<b>${contract}</b>`);
-  if (p.direction) lines.push(`Direction : <b>${p.direction}</b>`);
-  if (typeof p.qty === "number") lines.push(`Quantity  : ${p.qty}`);
-  if (typeof p.entry === "number") lines.push(`Entry     : ₹${inr(p.entry)}`);
-  if (typeof p.exit === "number") lines.push(`Exit      : ₹${inr(p.exit)}`);
-  if (typeof p.ltp === "number") lines.push(`LTP       : ₹${inr(p.ltp)}`);
-  if (typeof p.iv === "number") lines.push(`IV        : ${p.iv.toFixed(1)}%`);
-  if (typeof p.oiChange === "number")
+  if (contract) lines.push(`<b>${escapeHtml(contract)}</b>`);
+  if (p.direction === "BUY" || p.direction === "SELL")
+    lines.push(`Direction : <b>${p.direction}</b>`);
+  if (isNum(p.qty)) lines.push(`Quantity  : ${p.qty}`);
+  if (isNum(p.entry)) lines.push(`Entry     : ₹${inr(p.entry)}`);
+  if (isNum(p.exit)) lines.push(`Exit      : ₹${inr(p.exit)}`);
+  if (isNum(p.ltp)) lines.push(`LTP       : ₹${inr(p.ltp)}`);
+  if (isNum(p.iv)) lines.push(`IV        : ${p.iv.toFixed(1)}%`);
+  if (isNum(p.oiChange))
     lines.push(`Chg in OI : ${p.oiChange > 0 ? "+" : ""}${p.oiChange.toLocaleString("en-IN")}`);
-  if (typeof p.pnl === "number") {
+  if (isNum(p.pnl)) {
     const tag = p.pnl >= 0 ? "🟢 PROFIT" : "🔴 LOSS";
     lines.push("");
-    lines.push(`P&L       : <b>${tag} ₹${inr(Math.abs(p.pnl))}</b>`);
+    lines.push(`P&amp;L       : <b>${tag} ₹${inr(Math.abs(p.pnl))}</b>`);
   }
   if (p.note) {
     lines.push("");
-    lines.push(p.note.slice(0, 300));
+    lines.push(escapeHtml(String(p.note).slice(0, 300)));
   }
   lines.push("");
   lines.push("━━━━━━━━━━━━━━━━━━");
-  lines.push(
-    `<i>${istNow().toISOString().slice(11, 16)} IST · InvestIQ Terminal</i>`,
-  );
+  lines.push(`<i>${istNow().toISOString().slice(11, 16)} IST · InvestIQ Terminal</i>`);
   return lines.join("\n");
-}
-
-async function sendTelegram(token: string, chatId: string, text: string) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text,
-          parse_mode: "HTML",
-          disable_web_page_preview: true,
-        }),
-      });
-      const json = (await res.json()) as { ok: boolean; description?: string };
-      if (json.ok) return true;
-      if (attempt === 2) throw new Error(json.description ?? "unknown");
-    } catch (e) {
-      if (attempt === 2) {
-        console.error("[option-alert]", chatId, (e as Error).message);
-        return false;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-  }
-  return false;
 }
 
 export const Route = createFileRoute("/api/option-alert")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const denied = await requireCronAuth(request);
+        if (denied) return denied;
         try {
-          const token = process.env["TELEGRAM_BOT_TOKEN"];
-          if (!token) {
-            return Response.json(
-              { ok: false, error: "TELEGRAM_BOT_TOKEN not configured" },
-              { status: 500 },
-            );
-          }
-          const body = (await request.json().catch(() => ({}))) as Payload & { chatIds?: string[] };
+          const token = getBotToken();
+          if (!token) return hookFailure("TELEGRAM_BOT_TOKEN not configured", 503);
+          const body = await readJsonBody<Payload & { chatIds: string[] }>(request);
           if (!body.force && inQuietHours()) {
-            return Response.json({ ok: true, skipped: "quiet-hours" });
+            return hookResponse({ sent: 0, skipped: 1, errors: [], reason: "quiet-hours" });
           }
           const text = buildMessage(body);
-          const envIds = (process.env["TELEGRAM_CHAT_ID"] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-          const chatIds = body.chatIds?.length
-            ? Array.from(new Set(body.chatIds.map((s) => String(s).trim()).filter(Boolean)))
-            : Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
-          const results = await Promise.all(
-            chatIds.map((id) => sendTelegram(token, id, text)),
+          const chatIds = resolveChatIds(body.chatIds);
+          const res = await sendToMany(token, chatIds, text, { delayMs: 150 });
+          console.log(
+            `[option-alert] kind=${body.kind ?? "execution"} sent=${res.delivered}/${chatIds.length}`,
           );
-          const sent = results.filter(Boolean).length;
-          console.log(`[option-alert] kind=${body.kind ?? "execution"} sent=${sent}/${results.length}`);
-          return Response.json({ ok: sent > 0, sent, total: results.length });
+          return hookResponse({
+            sent: res.delivered,
+            skipped: 0,
+            errors: res.errors,
+            total: chatIds.length,
+          });
         } catch (e) {
           const err = e as Error;
           console.error("[option-alert]", err.message);
-          return Response.json({ ok: false, error: err.message }, { status: 500 });
+          return hookFailure(err.message);
         }
       },
     },

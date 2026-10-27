@@ -1,5 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { fnoMarketDataService } from "@/lib/services/fnoMarketDataService";
+import {
+  badRequest,
+  okJson,
+  parseExpiryParam,
+  parseInstrumentParam,
+  serverError,
+} from "@/lib/services/fnoApiHelpers";
 
 export const Route = createFileRoute("/api/fno/market-snapshot")({
   server: {
@@ -7,22 +14,31 @@ export const Route = createFileRoute("/api/fno/market-snapshot")({
       GET: async ({ request }) => {
         try {
           const url = new URL(request.url);
-          const instrument = url.searchParams.get("instrument") || "NIFTY 50";
-          const expiry = url.searchParams.get("expiry") || undefined;
+          const inst = parseInstrumentParam(url.searchParams.get("instrument"));
+          if (!inst.ok) return badRequest(inst.error);
+          const exp = parseExpiryParam(url.searchParams.get("expiry"));
+          if (!exp.ok) return badRequest(exp.error);
 
-          const snapshot = await fnoMarketDataService.getMarketSnapshot(instrument, expiry);
+          const snapshot = await fnoMarketDataService.getMarketSnapshot(inst.value, exp.value);
 
-          return Response.json(
-            { ok: true, data: snapshot },
-            { headers: { "cache-control": "no-store, max-age=0" } }
-          );
+          return okJson({
+            ok: true,
+            data: snapshot,
+            dataQuality: {
+              chain: snapshot.dataSource,
+              isSimulated: snapshot.isSimulated,
+              provider: snapshot.provider,
+              candles: {
+                source: snapshot.barsSource,
+                lastBarAt: snapshot.barsLastAt,
+                error: snapshot.barsError,
+              },
+              freshness: snapshot.validation.freshnessStatus,
+              ageSeconds: snapshot.validation.ageSeconds,
+            },
+          });
         } catch (e) {
-          const err = e as Error;
-          console.error("[api/fno/market-snapshot]", err.message);
-          return Response.json(
-            { ok: false, error: err.message },
-            { status: 500, headers: { "cache-control": "no-store" } }
-          );
+          return serverError("api/fno/market-snapshot", e);
         }
       },
     },

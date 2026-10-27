@@ -15,16 +15,31 @@ export interface OHLC {
 }
 
 export interface Pivots {
-  P: number; R1: number; R2: number; R3: number; S1: number; S2: number; S3: number;
+  P: number;
+  R1: number;
+  R2: number;
+  R3: number;
+  S1: number;
+  S2: number;
+  S3: number;
 }
 
 export interface CPR {
-  P: number; TC: number; BC: number; width: number;
+  P: number;
+  TC: number;
+  BC: number;
+  width: number;
 }
 
 export interface Camarilla {
-  H4: number; H3: number; H2: number; H1: number;
-  L1: number; L2: number; L3: number; L4: number;
+  H4: number;
+  H3: number;
+  H2: number;
+  H1: number;
+  L1: number;
+  L2: number;
+  L3: number;
+  L4: number;
 }
 
 export function standardPivots(prev: OHLC): Pivots {
@@ -66,7 +81,7 @@ function cluster(levels: Array<{ v: number; src: string }>, tolerancePct = 0.15)
   const zones: Array<{ mid: number; sources: string[]; count: number }> = [];
   for (const l of sorted) {
     const last = zones[zones.length - 1];
-    if (last && Math.abs(l.v - last.mid) / last.mid * 100 <= tolerancePct) {
+    if (last && (Math.abs(l.v - last.mid) / last.mid) * 100 <= tolerancePct) {
       const arr = last.sources.concat(l.src);
       const mean = (last.mid * last.count + l.v) / (last.count + 1);
       zones[zones.length - 1] = { mid: mean, sources: arr, count: arr.length };
@@ -112,14 +127,20 @@ export function generateSignal(input: {
 
   // Longs: cluster support levels below LTP; Shorts: resistance above LTP.
   const supports = [
-    { v: piv.S1, src: "Pivot S1" }, { v: piv.S2, src: "Pivot S2" },
-    { v: cp.BC, src: "CPR BC" }, { v: cp.P, src: "CPR Pivot" },
-    { v: cam.L3, src: "Cam L3" }, { v: cam.L4, src: "Cam L4" },
+    { v: piv.S1, src: "Pivot S1" },
+    { v: piv.S2, src: "Pivot S2" },
+    { v: cp.BC, src: "CPR BC" },
+    { v: cp.P, src: "CPR Pivot" },
+    { v: cam.L3, src: "Cam L3" },
+    { v: cam.L4, src: "Cam L4" },
   ].filter((l) => l.v < ltp);
   const resistances = [
-    { v: piv.R1, src: "Pivot R1" }, { v: piv.R2, src: "Pivot R2" },
-    { v: cp.TC, src: "CPR TC" }, { v: cp.P, src: "CPR Pivot" },
-    { v: cam.H3, src: "Cam H3" }, { v: cam.H4, src: "Cam H4" },
+    { v: piv.R1, src: "Pivot R1" },
+    { v: piv.R2, src: "Pivot R2" },
+    { v: cp.TC, src: "CPR TC" },
+    { v: cp.P, src: "CPR Pivot" },
+    { v: cam.H3, src: "Cam H3" },
+    { v: cam.H4, src: "Cam H4" },
   ].filter((l) => l.v > ltp);
 
   const supportZones = cluster(supports).sort((a, b) => b.count - a.count);
@@ -131,21 +152,29 @@ export function generateSignal(input: {
   const rvol = avgVolume ? volume / avgVolume : 1;
   const volConfirm = rvol >= 1.2;
   // Narrow CPR bias
-  const narrowCPR = cp.width / cp.P * 100 < 0.5;
+  const narrowCPR = (cp.width / cp.P) * 100 < 0.5;
 
   // Decide direction from HTF trend + closest zone
   let direction: Direction;
   let zone: { mid: number; sources: string[]; count: number } | undefined;
-  if (htfTrend === "up" && gpz) { direction = "LONG"; zone = gpz; }
-  else if (htfTrend === "down" && dpz) { direction = "SHORT"; zone = dpz; }
-  else {
+  if (htfTrend === "up" && gpz) {
+    direction = "LONG";
+    zone = gpz;
+  } else if (htfTrend === "down" && dpz) {
+    direction = "SHORT";
+    zone = dpz;
+  } else {
     // flat: pick nearest confluence
     const nearestUp = supportZones[0];
     const nearestDown = resistanceZones[0];
     if (!nearestUp && !nearestDown) return null;
-    if (!nearestUp) { direction = "SHORT"; zone = nearestDown; }
-    else if (!nearestDown) { direction = "LONG"; zone = nearestUp; }
-    else {
+    if (!nearestUp) {
+      direction = "SHORT";
+      zone = nearestDown;
+    } else if (!nearestDown) {
+      direction = "LONG";
+      zone = nearestUp;
+    } else {
       const dU = Math.abs(ltp - nearestUp.mid);
       const dD = Math.abs(nearestDown.mid - ltp);
       direction = dU < dD ? "LONG" : "SHORT";
@@ -155,9 +184,8 @@ export function generateSignal(input: {
   if (!zone) return null;
 
   const entry = zone.mid;
-  const stop = direction === "LONG"
-    ? Math.min(prev.low, entry * 0.994)
-    : Math.max(prev.high, entry * 1.006);
+  const stop =
+    direction === "LONG" ? Math.min(prev.low, entry * 0.994) : Math.max(prev.high, entry * 1.006);
   const risk = Math.abs(entry - stop);
   const target = direction === "LONG" ? entry + risk * 2 : entry - risk * 2;
   const rr = risk ? Math.abs(target - entry) / risk : 0;
@@ -168,13 +196,16 @@ export function generateSignal(input: {
   if (htfTrend !== "flat") confluences.push(`HTF ${htfTrend.toUpperCase()}`);
 
   // Score
-  const score = zone.count * 15 + (volConfirm ? 15 : 0) + (narrowCPR ? 10 : 0) + (htfTrend !== "flat" ? 15 : 0);
+  const score =
+    zone.count * 15 + (volConfirm ? 15 : 0) + (narrowCPR ? 10 : 0) + (htfTrend !== "flat" ? 15 : 0);
   const confidence = Math.min(92, 40 + score); // cap under 100
   const grade: Grade = score >= 60 ? "A+" : score >= 40 ? "A" : "Scalp";
 
   return {
-    symbol, name,
-    grade, direction,
+    symbol,
+    name,
+    grade,
+    direction,
     ltp,
     entry: round2(entry),
     target: round2(target),
@@ -183,13 +214,16 @@ export function generateSignal(input: {
     confidence,
     confluences,
     timeframe: "15m / Daily bias",
-    note: direction === "LONG"
-      ? "Look for reclaim & retest of GPZ with volume expansion."
-      : "Look for rejection & retest of DPZ with volume expansion.",
+    note:
+      direction === "LONG"
+        ? "Look for reclaim & retest of GPZ with volume expansion."
+        : "Look for rejection & retest of DPZ with volume expansion.",
   };
 }
 
-function round2(n: number) { return Math.round(n * 100) / 100; }
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
 
 // Index F&O only — NO individual stock F&O.
 // `symbol` is the display code; `yahoo` is the full Yahoo Finance ticker.

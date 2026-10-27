@@ -2,6 +2,9 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { fetchSensibullGreeksChartData } from "../sensibull.server.ts";
 
+// Without a live option chain the service only returns theoretical curves when this flag is set.
+process.env.ALLOW_MOCK_DATA = "true";
+
 describe("Sensibull Greeks View Chart Service", () => {
   test("Fetches structured Greek View Chart points across 21 strikes", async () => {
     const data = await fetchSensibullGreeksChartData("NIFTY 50");
@@ -14,8 +17,14 @@ describe("Sensibull Greeks View Chart Service", () => {
     // Check ATM point
     const atm = data.points.find((p) => p.isAtm);
     assert.ok(atm, "Must identify ATM strike");
-    assert.ok(atm.callDelta >= 0.40 && atm.callDelta <= 0.60, `ATM Call delta should be ~0.50, got ${atm.callDelta}`);
-    assert.ok(atm.putDelta >= -0.60 && atm.putDelta <= -0.40, `ATM Put delta should be ~-0.50, got ${atm.putDelta}`);
+    assert.ok(
+      atm.callDelta >= 0.4 && atm.callDelta <= 0.6,
+      `ATM Call delta should be ~0.50, got ${atm.callDelta}`,
+    );
+    assert.ok(
+      atm.putDelta >= -0.6 && atm.putDelta <= -0.4,
+      `ATM Put delta should be ~-0.50, got ${atm.putDelta}`,
+    );
 
     // Check Gamma peak at ATM
     assert.ok(data.summary.peakGamma > 0, "Peak Gamma must be greater than zero");
@@ -24,7 +33,10 @@ describe("Sensibull Greeks View Chart Service", () => {
     // Check monotonic Delta progression (Call Delta decreases as strike increases)
     const firstCallDelta = data.points[0].callDelta;
     const lastCallDelta = data.points[data.points.length - 1].callDelta;
-    assert.ok(firstCallDelta > lastCallDelta, "Deep ITM Call Delta must exceed deep OTM Call Delta");
+    assert.ok(
+      firstCallDelta > lastCallDelta,
+      "Deep ITM Call Delta must exceed deep OTM Call Delta",
+    );
   });
 
   test("Correctly supports Bank Nifty strike step (100 pts)", async () => {

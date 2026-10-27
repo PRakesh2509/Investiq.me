@@ -16,6 +16,7 @@ export default function TVWidget({
   className?: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
+  const configJson = JSON.stringify(config);
 
   useEffect(() => {
     const el = host.current;
@@ -28,12 +29,12 @@ export default function TVWidget({
     s.src = `https://s3.tradingview.com/external-embedding/${script}`;
     s.type = "text/javascript";
     s.async = true;
-    s.innerHTML = JSON.stringify(config);
+    s.innerHTML = configJson;
     el.appendChild(s);
     return () => {
       el.innerHTML = "";
     };
-  }, [script, JSON.stringify(config)]);
+  }, [script, configJson]);
 
   return (
     <div

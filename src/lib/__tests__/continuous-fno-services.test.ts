@@ -1,4 +1,4 @@
-import { test, describe } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   tradingSessionService,
@@ -10,6 +10,18 @@ import {
   tradeCandidateService,
   fnoMarketDataService,
 } from "../services/index.ts";
+
+// Production never fabricates option data: without a broker feed the providers report
+// "unavailable". These service tests exercise the pipeline against the model chain that the
+// provider layer only emits (and clearly flags `isSimulated`) when ALLOW_MOCK_DATA === "true".
+const previousAllowMock = process.env.ALLOW_MOCK_DATA;
+before(() => {
+  process.env.ALLOW_MOCK_DATA = "true";
+});
+after(() => {
+  if (previousAllowMock === undefined) delete process.env.ALLOW_MOCK_DATA;
+  else process.env.ALLOW_MOCK_DATA = previousAllowMock;
+});
 
 describe("Phase 1 & 7: Trading Session Controls (tradingSessionService)", () => {
   test("Accurately identifies weekend as closed", () => {
@@ -104,7 +116,7 @@ describe("Phase 1 & 2: Options Greeks Ingestion & Velocity Tracking (optionsGree
     assert.equal(snapshot.instrument, "NIFTY 50");
     assert.ok(snapshot.underlyingPrice > 10000);
     assert.ok(snapshot.points.length >= 21);
-    assert.ok(snapshot.summary.atmCallDelta >= 0.40 && snapshot.summary.atmCallDelta <= 0.60);
+    assert.ok(snapshot.summary.atmCallDelta >= 0.4 && snapshot.summary.atmCallDelta <= 0.6);
     assert.ok(snapshot.provider.includes("Sensibull"));
   });
 
@@ -128,7 +140,11 @@ describe("Phase 3: Greeks Analysis & Strategy Suitability (greeksAnalysisService
     assert.ok(report);
     assert.ok(report.gammaAnalysis.peakGamma > 0);
     assert.ok(report.thetaAnalysis.atmDailyDecayPerShare > 0);
-    assert.ok(["VOLATILITY_ELEVATED", "VOLATILITY_NORMAL", "VOLATILITY_COMPRESSED"].includes(report.vegaAnalysis.ivRegime));
+    assert.ok(
+      ["VOLATILITY_ELEVATED", "VOLATILITY_NORMAL", "VOLATILITY_COMPRESSED"].includes(
+        report.vegaAnalysis.ivRegime,
+      ),
+    );
     assert.ok(report.strategySuitability.reasons.length > 0);
   });
 });
@@ -156,7 +172,7 @@ describe("Phase 5: Market Risk Service & Regulatory Cost Accounting (marketRiskS
       150.0, // ₹150 premium
       25, // Nifty lot size
       2, // 2 lots = 50 shares
-      false
+      false,
     );
 
     assert.ok(costs.brokerage === 40); // 2 orders * ₹20
@@ -218,7 +234,7 @@ describe("Phase 4 & 6: Trade Candidate Engine & Lifecycle Monitoring (tradeCandi
       greeksReport,
       combined,
       50000, // ₹50,000 capital
-      2.0 // 2% risk budget
+      2.0, // 2% risk budget
     );
 
     assert.ok(result);
@@ -247,22 +263,35 @@ describe("Phase 4 & 6: Trade Candidate Engine & Lifecycle Monitoring (tradeCandi
     }
   });
 
+  test("Never produces candidates from a simulated option chain", async () => {
+    const marketSnapshot = await fnoMarketDataService.getMarketSnapshot("NIFTY 50");
+    const greeksSnapshot = await optionsGreeksDataService.getGreeksSnapshot("NIFTY 50");
+    assert.equal(marketSnapshot.isSimulated, true, "mock-mode chain must be flagged simulated");
+    assert.equal(greeksSnapshot.isSimulated, true);
+
+    const greeksReport = greeksAnalysisService.analyzeGreeks(greeksSnapshot);
+    const combined = fnoSignalAnalysisService.analyzeCombinedSignal(marketSnapshot, greeksReport);
+    const result = tradeCandidateService.evaluateCandidates(marketSnapshot, greeksReport, combined);
+
+    assert.equal(result.activeCandidates.length, 0);
+    assert.ok(result.noTradeDecision);
+    assert.equal(result.noTradeDecision.isNoTrade, true);
+  });
+
   test("Emits explicit NO_TRADE when market data is stale or invalid", async () => {
     const marketSnapshot = await fnoMarketDataService.getMarketSnapshot("NIFTY 50");
     // Force stale validation
     marketSnapshot.validation.isValid = false;
     marketSnapshot.validation.freshnessStatus = "STALE";
-    marketSnapshot.validation.issues = [{ field: "staleness", severity: "CRITICAL", message: "Stale data feed" }];
+    marketSnapshot.validation.issues = [
+      { field: "staleness", severity: "CRITICAL", message: "Stale data feed" },
+    ];
 
     const greeksSnapshot = await optionsGreeksDataService.getGreeksSnapshot("NIFTY 50");
     const greeksReport = greeksAnalysisService.analyzeGreeks(greeksSnapshot);
     const combined = fnoSignalAnalysisService.analyzeCombinedSignal(marketSnapshot, greeksReport);
 
-    const result = tradeCandidateService.evaluateCandidates(
-      marketSnapshot,
-      greeksReport,
-      combined
-    );
+    const result = tradeCandidateService.evaluateCandidates(marketSnapshot, greeksReport, combined);
 
     assert.equal(result.activeCandidates.length, 0);
     assert.ok(result.noTradeDecision);

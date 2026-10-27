@@ -1,23 +1,41 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { toast } from "sonner";
+import {
+  API_KEY_PREFIX,
+  DEFAULT_LOVABLE_ENDPOINT,
+  PERMANENT_CHAT_IDS,
+  generateApiKey,
+} from "@/components/admin/admin-constants";
 
-export type OcAccessLevel = "Read-only" | "Read-Write" | "Full Access";
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
 
-export interface OcUser {
-  id: string;
-  name: string;
-  email: string;
-  level: OcAccessLevel;
-  enabled: boolean;
-  lastActivity: string;
+export type KeyScope = "nse" | "global";
+
+/** Metadata about a registered API key. The server never returns the plaintext key. */
+export interface KeyInfo {
+  configured: boolean;
+  createdAt: string | number | null;
+  lastUsedAt: string | number | null;
 }
 
-export interface OcAuditEntry {
-  at: string;
-  event: string;
-}
+export type KeyStatusMap = Record<KeyScope, KeyInfo>;
 
-interface AdminSettings {
+export type LoginResult = { ok: true } | { ok: false; status: number; error: string };
+
+export interface AdminSettings {
   masterEnabled: boolean;
+  /** Secret: kept in memory for the current session only (never persisted). */
   telegramBotToken: string;
   telegramChatId: string;
   notifyNews: boolean;
@@ -27,103 +45,33 @@ interface AdminSettings {
   notifyPostMarket: boolean;
   notifyIpo: boolean;
   notifyFunds: boolean;
-  notifyFnoIndia: boolean;
-  notifyFnoUsa: boolean;
   sheetUrl: string;
   sheetName: string;
   colName: string;
   colRSI: string;
   colPrice: string;
 
-  // Dedicated API Keys for External Paper Trading
-  // 1. NSE F&O API Key
+  /** Secret: plaintext of the key generated/pasted this session. Memory only. */
   nseFnoApiKey: string;
-  nseFnoApiKeyCreated: string;
-  nseFnoApiKeyLastUsed: string;
-
-  // 2. GLOBAL API Key
+  /** Secret: plaintext of the key generated/pasted this session. Memory only. */
   globalApiKey: string;
-  globalApiKeyCreated: string;
-  globalApiKeyLastUsed: string;
 
   // External Paper Trading Auto-Push Webhook Configuration
   externalTradingEndpoint: string;
   autoPushTradesEnabled: boolean;
   autoPushIntervalSeconds: number;
-
-  // Legacy fields preserved for backward compatibility
-  apiKey: string;
-  apiKeyCreated: string;
-  apiKeyLastUsed: string;
-  fnoEngineApiKey: string;
-  fnoEngineApiKeyCreated: string;
-  growwApiKey: string;
-  growwApiSecret: string;
-  growwSession: string;
-  ocApiKey: string;
-  ocApiKeyStatus: string;
-  ocApiKeyCreated: string;
-  ocApiKeyLastUsed: string;
-  ocApiKeyExpires: string;
-  ocUsers: OcUser[];
-  ocAudit: OcAuditEntry[];
-
-  // Option Chain Telegram alerts
-  notifyOptionChain: boolean;
-  ocFrequency: "Real-time" | "5-min" | "15-min" | "Hourly";
-  ocThreshold: number;
-  ocStrikeFilter: string;
-  ocGreeksAlerts: boolean;
-  ocVolumeAlerts: boolean;
-  apiKeys: CustomApiKey[];
 }
 
-export interface CustomApiKey {
-  id: string;
-  name: string;
-  type: "fno_engine" | "option_chain" | "broker" | "web" | "custom";
-  key: string;
-  maskedKey: string;
-  createdAt: string;
-  expiresAt: string;
-  accessLevel: "Full Access" | "Read & Execute" | "Read-only";
-  status: "active" | "revoked";
-}
+/* -------------------------------------------------------------------------- */
+/* Constants & helpers                                                        */
+/* -------------------------------------------------------------------------- */
 
-export function generateCleanToken(prefix = "iq_live"): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let token = "";
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-    const arr = new Uint8Array(28);
-    crypto.getRandomValues(arr);
-    for (let i = 0; i < arr.length; i++) {
-      token += chars[arr[i] % chars.length];
-    }
-  } else {
-    for (let i = 0; i < 28; i++) {
-      token += chars[Math.floor(Math.random() * chars.length)];
-    }
-  }
-  return `${prefix}_${token}`;
-}
-
-export function maskApiKey(key: string): string {
-  if (!key || key.length < 10) return "••••••••••••";
-  const start = key.slice(0, 6);
-  const end = key.slice(-4);
-  return `${start}${"•".repeat(Math.max(8, key.length - 10))}${end}`;
-}
-
-// Permanent Telegram chat IDs — do not remove. Always included in outbound alerts.
-export const PERMANENT_CHAT_IDS = ["7350570004", "5589831995", "1840901163", "1360613728", "8155139346", "6799336293", "7280324188", "6698697147"] as const;
-
-export const DEFAULT_NSE_FNO_KEY = "iq_nse_fno_live_8f3a9e2c4b71d605a982e3f4";
-export const DEFAULT_GLOBAL_KEY = "iq_global_live_6b2d1c9e4a80f735d194c7b2";
-export const DEFAULT_LOVABLE_ENDPOINT = "https://637793ac-c049-46b9-aed4-edaff2e3ea91.lovableproject.com/api/public/investiq/trades";
+/** Settings fields that hold secrets: they live in memory only and are never written to storage. */
+const SECRET_FIELDS = ["telegramBotToken", "nseFnoApiKey", "globalApiKey"] as const;
 
 const defaultSettings: AdminSettings = {
   masterEnabled: true,
-  telegramBotToken: "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc",
+  telegramBotToken: "",
   telegramChatId: PERMANENT_CHAT_IDS.join(","),
   notifyNews: true,
   notifyQuarterly: true,
@@ -132,462 +80,391 @@ const defaultSettings: AdminSettings = {
   notifyPostMarket: true,
   notifyIpo: true,
   notifyFunds: true,
-  notifyFnoIndia: false,
-  notifyFnoUsa: false,
   sheetUrl:
     "https://docs.google.com/spreadsheets/d/1WgMLvMlUewkeljWkwFH6Cmcryytn8cWgIXgsmlq1Syo/edit?usp=sharing",
   sheetName: "Sheet1",
   colName: "C",
   colRSI: "B",
   colPrice: "A",
-  // Dedicated API Keys for External Paper Trading
-  // 1. NSE F&O API Key (Active & Ready)
-  nseFnoApiKey: DEFAULT_NSE_FNO_KEY,
-  nseFnoApiKeyCreated: "2026-10-22",
-  nseFnoApiKeyLastUsed: "Active (Ready)",
-
-  // 2. GLOBAL API Key (Active & Ready)
-  globalApiKey: DEFAULT_GLOBAL_KEY,
-  globalApiKeyCreated: "2026-10-22",
-  globalApiKeyLastUsed: "Active (Ready)",
-
-  // External Paper Trading Auto-Push Webhook Configuration
+  nseFnoApiKey: "",
+  globalApiKey: "",
   externalTradingEndpoint: DEFAULT_LOVABLE_ENDPOINT,
   autoPushTradesEnabled: true,
   autoPushIntervalSeconds: 30,
-
-  // Legacy fields
-  apiKey: "",
-  apiKeyCreated: "",
-  apiKeyLastUsed: "",
-  fnoEngineApiKey: "",
-  fnoEngineApiKeyCreated: "",
-  growwApiKey: "",
-  growwApiSecret: "",
-  growwSession: "",
-  ocApiKey: "",
-  ocApiKeyStatus: "",
-  ocApiKeyCreated: "",
-  ocApiKeyLastUsed: "",
-  ocApiKeyExpires: "",
-  ocUsers: [],
-  ocAudit: [
-    { at: "2026-08-05 12:00", event: "Option Chain API key registered (active)" },
-    { at: "2026-10-22 12:30", event: "All API keys permanently deleted" },
-    { at: "2026-10-22 16:45", event: "NSE F&O and GLOBAL dedicated API keys created" },
-  ],
-  notifyOptionChain: true,
-  ocFrequency: "15-min",
-  ocThreshold: 5,
-  ocStrikeFilter: "ATM ±5",
-  ocGreeksAlerts: true,
-  ocVolumeAlerts: true,
-  apiKeys: [],
 };
 
-export function cleanChatIds(chatId: string): string {
-  return chatId
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .join(",");
+const emptyKeyInfo: KeyInfo = { configured: false, createdAt: null, lastUsedAt: null };
+const emptyKeyStatus: KeyStatusMap = { nse: emptyKeyInfo, global: emptyKeyInfo };
+
+function stripSecrets(s: AdminSettings): Partial<AdminSettings> {
+  const copy: Partial<AdminSettings> = { ...s };
+  for (const f of SECRET_FIELDS) delete copy[f];
+  return copy;
 }
+
+function parseKeyInfo(raw: unknown): KeyInfo {
+  if (!raw || typeof raw !== "object") return emptyKeyInfo;
+  const r = raw as Record<string, unknown>;
+  const toStamp = (v: unknown): string | number | null =>
+    typeof v === "string" || typeof v === "number" ? v : null;
+  return {
+    configured: r.configured === true,
+    createdAt: toStamp(r.createdAt),
+    lastUsedAt: toStamp(r.lastUsedAt),
+  };
+}
+
+function describeStatus(status: number, fallback: string): string {
+  if (status === 401 || status === 403) return "Admin session expired — sign in again";
+  if (status === 429) return "Too many attempts — wait a moment and try again";
+  if (status === 503) return "Admin service is not configured on the server";
+  return fallback;
+}
+
+const LEGACY_STORAGE_KEYS = [
+  "investiq_admin_v1",
+  "investiq_admin_settings_v1",
+  "investiq_admin_settings_v2",
+  "investiq_admin_settings_v3",
+  "investiq_admin_settings_v5",
+  "groww_session",
+  "groww_holdings",
+  "groww_token",
+  "groww_credentials",
+];
+const SETTINGS_KEY = "investiq_admin_settings_v6";
+
+/* -------------------------------------------------------------------------- */
+/* Context                                                                    */
+/* -------------------------------------------------------------------------- */
 
 interface AdminCtx {
   isAdmin: boolean;
-  login: (u: string, p: string) => boolean;
-  logout: () => void;
+  /** False until the initial GET /api/admin/session has resolved. */
+  sessionReady: boolean;
+  login: (u: string, p: string) => Promise<boolean>;
+  /** Same as `login` but reports why it failed (401 / 429 / 503 ...). */
+  loginDetailed: (u: string, p: string) => Promise<LoginResult>;
+  logout: () => Promise<void>;
   settings: AdminSettings;
   updateSettings: (patch: Partial<AdminSettings>) => void;
-  deleteAllApiKeys: () => void;
-  // Dedicated API Keys for External Paper Trading
+
+  /** Registered-key metadata from GET /api/admin/keys. */
+  keyStatus: KeyStatusMap;
+  keyStatusLoading: boolean;
+  refreshKeyStatus: () => Promise<void>;
+  /** Generates a key client-side, registers its hash and resolves with the result. */
+  rotateKey: (scope: KeyScope) => Promise<{ ok: boolean; key: string; error?: string }>;
+  /** Registers a caller-supplied key (rotation). */
+  registerKey: (scope: KeyScope, key: string) => Promise<boolean>;
+  revokeKey: (scope: KeyScope) => Promise<boolean>;
+  /** Keeps a key in memory for the Test buttons without registering anything. */
+  setSessionApiKey: (scope: KeyScope, key: string) => void;
+
+  // Stable names kept for existing callers
+  deleteAllApiKeys: () => Promise<boolean>;
   rotateNseFnoApiKey: () => string;
   setNseFnoApiKey: (key: string) => void;
   rotateGlobalApiKey: () => string;
   setGlobalApiKey: (key: string) => void;
-  // Legacy handlers preserved
-  setWebpageApiKey: (key: string) => void;
-  deleteWebpageApiKey: () => void;
-  setFnoEngineApiKey: (key: string) => void;
-  deleteFnoEngineApiKey: () => void;
-  setGrowwCredentials: (apiKey: string, secret: string) => void;
-  deleteGrowwCredentials: () => void;
-  setOcApiKey: (key: string, expires?: string) => void;
-  deleteOcApiKey: () => void;
-  setOcUserLevel: (id: string, level: OcAccessLevel) => void;
-  setOcUserEnabled: (id: string, enabled: boolean) => void;
-  removeOcUser: (id: string) => void;
-  addOcUser: (user: Omit<OcUser, "id" | "lastActivity">) => void;
-  // Helpers
-  createApiKey: (params: {
-    name: string;
-    type: CustomApiKey["type"];
-    customKey?: string;
-    accessLevel: CustomApiKey["accessLevel"];
-    expiresAt?: string;
-  }) => CustomApiKey;
-  revokeApiKey: (id: string) => void;
-  deleteApiKey: (id: string) => void;
-  rotateApiKey: (id: string) => CustomApiKey | null;
 }
 
 const Ctx = createContext<AdminCtx | null>(null);
-const KEY = "investiq_admin_v1";
-const SETTINGS_KEY = "investiq_admin_settings_v5";
+
+async function adminFetch(input: string, init?: RequestInit): Promise<Response> {
+  return fetch(input, { credentials: "same-origin", ...init });
+}
+
+const KEY_FIELD: Record<KeyScope, "nseFnoApiKey" | "globalApiKey"> = {
+  nse: "nseFnoApiKey",
+  global: "globalApiKey",
+};
 
 export function AdminProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
   const [settings, setSettings] = useState<AdminSettings>(defaultSettings);
+  const [hydrated, setHydrated] = useState(false);
+  const [keyStatus, setKeyStatus] = useState<KeyStatusMap>(emptyKeyStatus);
+  const [keyStatusLoading, setKeyStatusLoading] = useState(false);
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
+  // Hydrate non-secret preferences; wipe every legacy copy (they may contain secrets).
   useEffect(() => {
     try {
-      setIsAdmin(localStorage.getItem(KEY) === "1");
-      // Permanently remove legacy settings and cached broker/token keys
-      localStorage.removeItem("investiq_admin_settings_v1");
-      localStorage.removeItem("investiq_admin_settings_v2");
-      localStorage.removeItem("investiq_admin_settings_v3");
-      localStorage.removeItem("groww_session");
-      localStorage.removeItem("groww_holdings");
-      localStorage.removeItem("groww_token");
-      localStorage.removeItem("groww_credentials");
-
       const raw = localStorage.getItem(SETTINGS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        // Ensure dedicated keys are present and active
-        parsed.nseFnoApiKey = parsed.nseFnoApiKey || defaultSettings.nseFnoApiKey;
-        parsed.globalApiKey = parsed.globalApiKey || defaultSettings.globalApiKey;
-        parsed.externalTradingEndpoint = parsed.externalTradingEndpoint || defaultSettings.externalTradingEndpoint;
-        if (typeof parsed.autoPushTradesEnabled !== "boolean") {
-          parsed.autoPushTradesEnabled = true;
+      const legacyRaw = raw ? null : localStorage.getItem("investiq_admin_settings_v5");
+      const source = raw ?? legacyRaw;
+      if (source) {
+        const parsed = JSON.parse(source) as Record<string, unknown>;
+        const picked: Record<string, unknown> = {};
+        for (const k of Object.keys(defaultSettings) as Array<keyof AdminSettings>) {
+          if ((SECRET_FIELDS as readonly string[]).includes(k)) continue;
+          if (typeof parsed[k] === typeof defaultSettings[k]) picked[k] = parsed[k];
         }
-        if (!parsed.autoPushIntervalSeconds) {
-          parsed.autoPushIntervalSeconds = 30;
-        }
-        if (!Array.isArray(parsed.apiKeys)) {
-          parsed.apiKeys = [];
-        }
-        if (!Array.isArray(parsed.ocUsers)) {
-          parsed.ocUsers = [];
-        }
-        if (!Array.isArray(parsed.ocAudit) || parsed.ocAudit.length === 0) {
-          parsed.ocAudit = defaultSettings.ocAudit;
-        }
-        const merged = { ...defaultSettings, ...parsed };
-        if (typeof merged.telegramChatId !== "string") {
-          merged.telegramChatId = defaultSettings.telegramChatId;
-        }
-        setSettings(merged);
-      } else {
-        // First load with v5: initialize with active dedicated keys
-        setSettings(defaultSettings);
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(defaultSettings));
+        if (!picked.externalTradingEndpoint) delete picked.externalTradingEndpoint;
+        if (!picked.autoPushIntervalSeconds) delete picked.autoPushIntervalSeconds;
+        setSettings((prev) => ({ ...prev, ...(picked as Partial<AdminSettings>) }));
       }
-    } catch {}
+      for (const k of LEGACY_STORAGE_KEYS) localStorage.removeItem(k);
+    } catch {
+      /* storage unavailable — run with defaults */
+    }
+    setHydrated(true);
   }, []);
 
-  const persist = (s: AdminSettings) => {
-    setSettings(s);
+  // Persist everything except secrets.
+  useEffect(() => {
+    if (!hydrated) return;
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
-    } catch {}
-  };
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(stripSecrets(settings)));
+    } catch {
+      /* ignore */
+    }
+  }, [settings, hydrated]);
 
-  const createApiKey = (params: {
-    name: string;
-    type: CustomApiKey["type"];
-    customKey?: string;
-    accessLevel: CustomApiKey["accessLevel"];
-    expiresAt?: string;
-  }): CustomApiKey => {
-    const keyVal = params.customKey?.trim() || generateCleanToken();
-    const newKey: CustomApiKey = {
-      id: `key_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      name: params.name.trim() || "Untitled API Key",
-      type: params.type,
-      key: keyVal,
-      maskedKey: maskApiKey(keyVal),
-      createdAt: new Date().toISOString().split("T")[0],
-      expiresAt: params.expiresAt || "Never",
-      accessLevel: params.accessLevel || "Full Access",
-      status: "active",
+  const clearSecrets = useCallback(() => {
+    setSettings((prev) => ({ ...prev, telegramBotToken: "", nseFnoApiKey: "", globalApiKey: "" }));
+    setKeyStatus(emptyKeyStatus);
+  }, []);
+
+  // Admin state comes from the server (HttpOnly cookie) — never from localStorage.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await adminFetch("/api/admin/session");
+        const data = res.ok ? ((await res.json()) as { isAdmin?: boolean }) : null;
+        if (!cancelled) setIsAdmin(data?.isAdmin === true);
+      } catch {
+        if (!cancelled) setIsAdmin(false);
+      } finally {
+        if (!cancelled) setSessionReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
-    const updated = [newKey, ...(settings.apiKeys || [])];
-    persist({ ...settings, apiKeys: updated });
-    return newKey;
-  };
+  }, []);
 
-  // Hard delete: no status = "revoked" rows left behind
-  const revokeApiKey = (id: string) => {
-    deleteApiKey(id);
-  };
-
-  const deleteApiKey = (id: string) => {
-    const updated = (settings.apiKeys || []).filter((k) => k.id !== id);
-    persist({ ...settings, apiKeys: updated });
-  };
-
-  const rotateApiKey = (id: string): CustomApiKey | null => {
-    const target = (settings.apiKeys || []).find((k) => k.id === id);
-    if (!target) return null;
-    const newKeyVal = generateCleanToken();
-    const updatedKey: CustomApiKey = {
-      ...target,
-      key: newKeyVal,
-      maskedKey: maskApiKey(newKeyVal),
-      createdAt: new Date().toISOString().split("T")[0],
-      status: "active",
-    };
-    const updated = (settings.apiKeys || []).map((k) => (k.id === id ? updatedKey : k));
-    persist({ ...settings, apiKeys: updated });
-    return updatedKey;
-  };
-
-  const deleteAllApiKeys = () => {
-    const nowStamp = new Date().toISOString().slice(0, 16).replace("T", " ");
-    const updatedAudit: OcAuditEntry[] = [
-      ...(settings.ocAudit || []),
-      { at: nowStamp, event: "All API keys permanently deleted" },
-    ];
-
-    const purged: AdminSettings = {
-      ...settings,
-      apiKey: "",
-      apiKeyCreated: "",
-      apiKeyLastUsed: "",
-      fnoEngineApiKey: "",
-      fnoEngineApiKeyCreated: "",
-      growwApiKey: "",
-      growwApiSecret: "",
-      growwSession: "",
-      ocApiKey: "",
-      ocApiKeyStatus: "",
-      ocApiKeyCreated: "",
-      ocApiKeyLastUsed: "",
-      ocApiKeyExpires: "",
-      ocUsers: [],
-      ocAudit: updatedAudit,
-      apiKeys: [],
-    };
-
-    persist(purged);
-
-    try {
-      localStorage.removeItem("groww_session");
-      localStorage.removeItem("groww_holdings");
-      localStorage.removeItem("groww_token");
-      sessionStorage.clear();
-    } catch {}
-  };
-
-  // Dedicated API Keys for External Paper Trading
-  const rotateNseFnoApiKey = (): string => {
-    const newKey = generateCleanToken("iq_nse_fno");
-    const now = new Date().toISOString().split("T")[0];
-    persist({
-      ...settings,
-      nseFnoApiKey: newKey,
-      nseFnoApiKeyCreated: now,
-      nseFnoApiKeyLastUsed: "Active (Rotated)",
-    });
-    return newKey;
-  };
-
-  const setNseFnoApiKey = (key: string) => {
-    const now = new Date().toISOString().split("T")[0];
-    persist({
-      ...settings,
-      nseFnoApiKey: key.trim(),
-      nseFnoApiKeyCreated: now,
-      nseFnoApiKeyLastUsed: "Active",
-    });
-  };
-
-  const rotateGlobalApiKey = (): string => {
-    const newKey = generateCleanToken("iq_global");
-    const now = new Date().toISOString().split("T")[0];
-    persist({
-      ...settings,
-      globalApiKey: newKey,
-      globalApiKeyCreated: now,
-      globalApiKeyLastUsed: "Active (Rotated)",
-    });
-    return newKey;
-  };
-
-  const setGlobalApiKey = (key: string) => {
-    const now = new Date().toISOString().split("T")[0];
-    persist({
-      ...settings,
-      globalApiKey: key.trim(),
-      globalApiKeyCreated: now,
-      globalApiKeyLastUsed: "Active",
-    });
-  };
-
-  // Section 1: Webpage API Key
-  const setWebpageApiKey = (key: string) => {
-    const now = new Date().toISOString().split("T")[0];
-    persist({
-      ...settings,
-      apiKey: key.trim(),
-      apiKeyCreated: now,
-      apiKeyLastUsed: now,
-    });
-  };
-
-  const deleteWebpageApiKey = () => {
-    persist({
-      ...settings,
-      apiKey: "",
-      apiKeyCreated: "",
-      apiKeyLastUsed: "",
-    });
-  };
-
-  // Section 2: F&O Trading Engine Key
-  const setFnoEngineApiKey = (key: string) => {
-    const now = new Date().toISOString().split("T")[0];
-    persist({
-      ...settings,
-      fnoEngineApiKey: key.trim(),
-      fnoEngineApiKeyCreated: now,
-    });
-  };
-
-  const deleteFnoEngineApiKey = () => {
-    persist({
-      ...settings,
-      fnoEngineApiKey: "",
-      fnoEngineApiKeyCreated: "",
-    });
-  };
-
-  // Section 3: Groww Trading API
-  const setGrowwCredentials = (apiKey: string, secret: string) => {
-    persist({
-      ...settings,
-      growwApiKey: apiKey.trim(),
-      growwApiSecret: secret.trim(),
-      growwSession: "Investiq",
-    });
-  };
-
-  const deleteGrowwCredentials = () => {
-    persist({
-      ...settings,
-      growwApiKey: "",
-      growwApiSecret: "",
-      growwSession: "",
-    });
-    try {
-      localStorage.removeItem("groww_session");
-      localStorage.removeItem("groww_holdings");
-      localStorage.removeItem("groww_token");
-    } catch {}
-  };
-
-  // Section 4: Option Chain API Key
-  const setOcApiKey = (key: string, expires = "Never") => {
-    const now = new Date().toISOString().split("T")[0];
-    persist({
-      ...settings,
-      ocApiKey: key.trim(),
-      ocApiKeyStatus: "active",
-      ocApiKeyCreated: now,
-      ocApiKeyLastUsed: now,
-      ocApiKeyExpires: expires,
-    });
-  };
-
-  const deleteOcApiKey = () => {
-    persist({
-      ...settings,
-      ocApiKey: "",
-      ocApiKeyStatus: "",
-      ocApiKeyCreated: "",
-      ocApiKeyLastUsed: "",
-      ocApiKeyExpires: "",
-      ocUsers: [],
-    });
-  };
-
-  const setOcUserLevel = (id: string, level: OcAccessLevel) => {
-    const updated = (settings.ocUsers || []).map((u) =>
-      u.id === id ? { ...u, level } : u
-    );
-    persist({ ...settings, ocUsers: updated });
-  };
-
-  const setOcUserEnabled = (id: string, enabled: boolean) => {
-    const updated = (settings.ocUsers || []).map((u) =>
-      u.id === id ? { ...u, enabled } : u
-    );
-    persist({ ...settings, ocUsers: updated });
-  };
-
-  const removeOcUser = (id: string) => {
-    const updated = (settings.ocUsers || []).filter((u) => u.id !== id);
-    persist({ ...settings, ocUsers: updated });
-  };
-
-  const addOcUser = (user: Omit<OcUser, "id" | "lastActivity">) => {
-    const newUser: OcUser = {
-      ...user,
-      id: `u-${Date.now().toString().slice(-4)}`,
-      lastActivity: new Date().toISOString().slice(0, 16).replace("T", " "),
-    };
-    persist({ ...settings, ocUsers: [...(settings.ocUsers || []), newUser] });
-  };
-
-  return (
-    <Ctx.Provider
-      value={{
-        isAdmin,
-        login: (u, p) => {
-          const ok = u === "prakesh25" && p === "Rakesh@25";
-          if (ok) {
-            setIsAdmin(true);
-            try {
-              localStorage.setItem(KEY, "1");
-            } catch {}
-          }
-          return ok;
-        },
-        logout: () => {
-          setIsAdmin(false);
-          try {
-            localStorage.removeItem(KEY);
-          } catch {}
-        },
-        settings,
-        updateSettings: (patch) => persist({ ...settings, ...patch }),
-        deleteAllApiKeys,
-        rotateNseFnoApiKey,
-        setNseFnoApiKey,
-        rotateGlobalApiKey,
-        setGlobalApiKey,
-        setWebpageApiKey,
-        deleteWebpageApiKey,
-        setFnoEngineApiKey,
-        deleteFnoEngineApiKey,
-        setGrowwCredentials,
-        deleteGrowwCredentials,
-        setOcApiKey,
-        deleteOcApiKey,
-        setOcUserLevel,
-        setOcUserEnabled,
-        removeOcUser,
-        addOcUser,
-        createApiKey,
-        revokeApiKey,
-        deleteApiKey,
-        rotateApiKey,
-      }}
-    >
-      {children}
-    </Ctx.Provider>
+  const handleExpired = useCallback(
+    (status: number) => {
+      if (status === 401 || status === 403) {
+        setIsAdmin(false);
+        clearSecrets();
+      }
+    },
+    [clearSecrets],
   );
+
+  const refreshKeyStatus = useCallback(async () => {
+    setKeyStatusLoading(true);
+    try {
+      const res = await adminFetch("/api/admin/keys");
+      if (!res.ok) {
+        handleExpired(res.status);
+        return;
+      }
+      const data = (await res.json()) as Record<string, unknown>;
+      const src = (data.keys && typeof data.keys === "object" ? data.keys : data) as Record<
+        string,
+        unknown
+      >;
+      setKeyStatus({ nse: parseKeyInfo(src.nse), global: parseKeyInfo(src.global) });
+    } catch {
+      /* leave the previous status in place */
+    } finally {
+      setKeyStatusLoading(false);
+    }
+  }, [handleExpired]);
+
+  useEffect(() => {
+    if (isAdmin) void refreshKeyStatus();
+  }, [isAdmin, refreshKeyStatus]);
+
+  const loginDetailed = useCallback(async (u: string, p: string): Promise<LoginResult> => {
+    try {
+      const res = await adminFetch("/api/admin/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: u, password: p }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (res.ok && data?.ok) {
+        setIsAdmin(true);
+        return { ok: true };
+      }
+      return {
+        ok: false,
+        status: res.status,
+        error: data?.error || `Sign-in failed (${res.status})`,
+      };
+    } catch (e) {
+      return { ok: false, status: 0, error: (e as Error).message || "Network error" };
+    }
+  }, []);
+
+  const login = useCallback(
+    async (u: string, p: string) => (await loginDetailed(u, p)).ok,
+    [loginDetailed],
+  );
+
+  const logout = useCallback(async () => {
+    try {
+      await adminFetch("/api/admin/session", { method: "DELETE" });
+    } catch {
+      /* the cookie may linger, but local state is cleared regardless */
+    }
+    setIsAdmin(false);
+    clearSecrets();
+  }, [clearSecrets]);
+
+  const updateSettings = useCallback((patch: Partial<AdminSettings>) => {
+    setSettings((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const setSessionApiKey = useCallback((scope: KeyScope, key: string) => {
+    setSettings((prev) => ({ ...prev, [KEY_FIELD[scope]]: key.trim() }));
+  }, []);
+
+  const registerKey = useCallback(
+    async (scope: KeyScope, key: string): Promise<boolean> => {
+      const trimmed = key.trim();
+      const previous = settingsRef.current[KEY_FIELD[scope]];
+      setSettings((prev) => ({ ...prev, [KEY_FIELD[scope]]: trimmed }));
+      try {
+        const res = await adminFetch("/api/admin/keys", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scope, key: trimmed }),
+        });
+        if (!res.ok) {
+          setSettings((prev) => ({ ...prev, [KEY_FIELD[scope]]: previous }));
+          handleExpired(res.status);
+          toast.error(describeStatus(res.status, `Could not register key (${res.status})`));
+          return false;
+        }
+        await refreshKeyStatus();
+        return true;
+      } catch (e) {
+        setSettings((prev) => ({ ...prev, [KEY_FIELD[scope]]: previous }));
+        toast.error(`Could not register key: ${(e as Error).message}`);
+        return false;
+      }
+    },
+    [handleExpired, refreshKeyStatus],
+  );
+
+  const rotateKey = useCallback(
+    async (scope: KeyScope) => {
+      const key = generateApiKey(scope);
+      const ok = await registerKey(scope, key);
+      return ok ? { ok, key } : { ok, key: "", error: "Registration failed" };
+    },
+    [registerKey],
+  );
+
+  const revokeKey = useCallback(
+    async (scope: KeyScope): Promise<boolean> => {
+      try {
+        const res = await adminFetch(`/api/admin/keys?scope=${scope}`, { method: "DELETE" });
+        if (!res.ok) {
+          handleExpired(res.status);
+          toast.error(describeStatus(res.status, `Could not revoke key (${res.status})`));
+          return false;
+        }
+        setSettings((prev) => ({ ...prev, [KEY_FIELD[scope]]: "" }));
+        await refreshKeyStatus();
+        return true;
+      } catch (e) {
+        toast.error(`Could not revoke key: ${(e as Error).message}`);
+        return false;
+      }
+    },
+    [handleExpired, refreshKeyStatus],
+  );
+
+  const deleteAllApiKeys = useCallback(async (): Promise<boolean> => {
+    const results = await Promise.all([revokeKey("nse"), revokeKey("global")]);
+    return results.every(Boolean);
+  }, [revokeKey]);
+
+  // Synchronous wrappers: generate client-side, return the plaintext, register in the background.
+  const rotateNseFnoApiKey = useCallback((): string => {
+    const key = generateApiKey("nse");
+    void registerKey("nse", key);
+    return key;
+  }, [registerKey]);
+
+  const rotateGlobalApiKey = useCallback((): string => {
+    const key = generateApiKey("global");
+    void registerKey("global", key);
+    return key;
+  }, [registerKey]);
+
+  const setNseFnoApiKey = useCallback(
+    (key: string) => {
+      void registerKey("nse", key);
+    },
+    [registerKey],
+  );
+
+  const setGlobalApiKey = useCallback(
+    (key: string) => {
+      void registerKey("global", key);
+    },
+    [registerKey],
+  );
+
+  const value = useMemo<AdminCtx>(
+    () => ({
+      isAdmin,
+      sessionReady,
+      login,
+      loginDetailed,
+      logout,
+      settings,
+      updateSettings,
+      keyStatus,
+      keyStatusLoading,
+      refreshKeyStatus,
+      rotateKey,
+      registerKey,
+      revokeKey,
+      setSessionApiKey,
+      deleteAllApiKeys,
+      rotateNseFnoApiKey,
+      setNseFnoApiKey,
+      rotateGlobalApiKey,
+      setGlobalApiKey,
+    }),
+    [
+      isAdmin,
+      sessionReady,
+      login,
+      loginDetailed,
+      logout,
+      settings,
+      updateSettings,
+      keyStatus,
+      keyStatusLoading,
+      refreshKeyStatus,
+      rotateKey,
+      registerKey,
+      revokeKey,
+      setSessionApiKey,
+      deleteAllApiKeys,
+      rotateNseFnoApiKey,
+      setNseFnoApiKey,
+      rotateGlobalApiKey,
+      setGlobalApiKey,
+    ],
+  );
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useAdmin() {

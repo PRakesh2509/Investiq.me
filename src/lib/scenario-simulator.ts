@@ -133,7 +133,14 @@ export function calculateOptionCharges(
   // SEBI turnover charges: ₹10 per crore (0.0001%)
   const sebiFee = +(totalTurnover * 0.000001).toFixed(2);
 
-  const totalCharges = +(brokerage + stt + exchangeTurnoverCharge + gst + stampDuty + sebiFee).toFixed(2);
+  const totalCharges = +(
+    brokerage +
+    stt +
+    exchangeTurnoverCharge +
+    gst +
+    stampDuty +
+    sebiFee
+  ).toFixed(2);
 
   return {
     brokerage,
@@ -295,9 +302,7 @@ export function simulateStrategyScenarios(
       }
 
       const priceDiff = effectiveExitPrice - leg.entryPrice;
-      const legPnl = +(
-        (leg.action === "BUY" ? priceDiff : -priceDiff) * leg.quantity
-      ).toFixed(2);
+      const legPnl = +((leg.action === "BUY" ? priceDiff : -priceDiff) * leg.quantity).toFixed(2);
 
       scenarioGrossPnl += legPnl;
 
@@ -344,7 +349,9 @@ export function simulateStrategyScenarios(
     const gammaPnl = +(0.5 * netGamma * deltaSpot * deltaSpot).toFixed(2);
     const thetaPnl = +(netThetaPerDay * scen.daysElapsed).toFixed(2);
     const vegaPnl = +(netVegaPerPoint * scen.ivChangePctPoints).toFixed(2);
-    const higherOrderPnl = +(scenarioGrossPnl - (deltaPnl + gammaPnl + thetaPnl + vegaPnl)).toFixed(2);
+    const higherOrderPnl = +(scenarioGrossPnl - (deltaPnl + gammaPnl + thetaPnl + vegaPnl)).toFixed(
+      2,
+    );
 
     return {
       scenario: scen,

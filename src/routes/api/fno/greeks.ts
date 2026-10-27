@@ -1,5 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { optionsGreeksDataService } from "@/lib/services/optionsGreeksDataService";
+import {
+  badRequest,
+  okJson,
+  parseExpiryParam,
+  parseInstrumentParam,
+  serverError,
+} from "@/lib/services/fnoApiHelpers";
 
 export const Route = createFileRoute("/api/fno/greeks")({
   server: {
@@ -7,22 +14,26 @@ export const Route = createFileRoute("/api/fno/greeks")({
       GET: async ({ request }) => {
         try {
           const url = new URL(request.url);
-          const instrument = url.searchParams.get("instrument") || "NIFTY 50";
-          const expiry = url.searchParams.get("expiry") || undefined;
+          const inst = parseInstrumentParam(url.searchParams.get("instrument"));
+          if (!inst.ok) return badRequest(inst.error);
+          const exp = parseExpiryParam(url.searchParams.get("expiry"));
+          if (!exp.ok) return badRequest(exp.error);
 
-          const greeks = await optionsGreeksDataService.getGreeksSnapshot(instrument, expiry);
+          const greeks = await optionsGreeksDataService.getGreeksSnapshot(inst.value, exp.value);
 
-          return Response.json(
-            { ok: true, data: greeks },
-            { headers: { "cache-control": "no-store, max-age=0" } }
-          );
+          return okJson({
+            ok: true,
+            data: greeks,
+            dataQuality: {
+              greeks: greeks.dataSource,
+              isSimulated: greeks.isSimulated,
+              provider: greeks.provider,
+              velocityAvailable: greeks.velocityAvailable,
+              timestamp: greeks.timestamp,
+            },
+          });
         } catch (e) {
-          const err = e as Error;
-          console.error("[api/fno/greeks]", err.message);
-          return Response.json(
-            { ok: false, error: err.message },
-            { status: 500, headers: { "cache-control": "no-store" } }
-          );
+          return serverError("api/fno/greeks", e);
         }
       },
     },

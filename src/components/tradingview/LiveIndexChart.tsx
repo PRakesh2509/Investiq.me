@@ -16,7 +16,12 @@ type Point = { t: number; price: number; volume: number };
 function fmtTime(t: number, intraday: boolean) {
   const d = new Date(t);
   return intraday
-    ? d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" })
+    ? d.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "Asia/Kolkata",
+      })
     : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" });
 }
 
@@ -62,10 +67,7 @@ export default function LiveIndexChart({
     staleTime: 5_000,
   });
 
-  const points: Point[] = useMemo(
-    () => (q.data?.ok ? (q.data.points as Point[]) : []),
-    [q.data],
-  );
+  const points: Point[] = useMemo(() => (q.data?.ok ? (q.data.points as Point[]) : []), [q.data]);
 
   const last = points[points.length - 1]?.price ?? 0;
   const prevClose = q.data?.ok ? q.data.previousClose : 0;
@@ -86,14 +88,17 @@ export default function LiveIndexChart({
             <span className="font-mono text-lg font-bold text-foreground">
               {last ? last.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}
             </span>
-            <span className={`font-mono text-sm font-semibold ${up ? "text-green-500" : "text-red-500"}`}>
+            <span
+              className={`font-mono text-sm font-semibold ${up ? "text-green-500" : "text-red-500"}`}
+            >
               {up ? "▲" : "▼"} {Math.abs(change).toFixed(2)} ({Math.abs(changePct).toFixed(2)}%)
             </span>
           </div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             Live · DhanHQ Direct Feed · refreshes every 10s · H{" "}
             {hi ? hi.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"} · L{" "}
-            {Number.isFinite(lo) ? lo.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"} · Prev {prevClose ? prevClose.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}
+            {Number.isFinite(lo) ? lo.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"} ·
+            Prev {prevClose ? prevClose.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -110,7 +115,9 @@ export default function LiveIndexChart({
           <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center text-sm text-muted-foreground">
             {q.isLoading
               ? "Loading live DhanHQ chart…"
-              : (q.data && !q.data.ok ? q.data.error : "No DhanHQ data for this interval right now.")}
+              : q.data && !q.data.ok
+                ? q.data.error
+                : "No DhanHQ data for this interval right now."}
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
@@ -132,7 +139,9 @@ export default function LiveIndexChart({
               />
               <YAxis
                 domain={["auto", "auto"]}
-                tickFormatter={(v) => (v as number).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                tickFormatter={(v) =>
+                  (v as number).toLocaleString("en-IN", { maximumFractionDigits: 0 })
+                }
                 tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                 tickLine={false}
                 axisLine={false}
@@ -147,7 +156,10 @@ export default function LiveIndexChart({
                   fontSize: 12,
                 }}
                 labelFormatter={(t) => fmtTime(t as number, intraday)}
-                formatter={(v) => [(v as number).toLocaleString("en-IN", { maximumFractionDigits: 2 }), label]}
+                formatter={(v) => [
+                  (v as number).toLocaleString("en-IN", { maximumFractionDigits: 2 }),
+                  label,
+                ]}
               />
               <Area
                 type="monotone"

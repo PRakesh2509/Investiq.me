@@ -16,7 +16,6 @@ import { OnboardingProvider } from "@/context/OnboardingContext";
 import { AdminProvider } from "@/context/AdminContext";
 import { Toaster } from "@/components/ui/sonner";
 
-
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-hero px-4">
@@ -51,7 +50,11 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold">Something went wrong</h1>
         <p className="mt-2 text-xs text-destructive font-mono bg-destructive/10 p-3 rounded-lg border border-destructive/20 text-left overflow-auto max-h-40 whitespace-pre-wrap">
-          {error instanceof Error ? error.message : String(error)}
+          {import.meta.env.DEV
+            ? error instanceof Error
+              ? error.message
+              : String(error)
+            : "An unexpected error occurred. Please try again."}
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
@@ -113,7 +116,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
       { rel: "apple-touch-icon", href: "/favicon.png" },
-
     ],
   }),
   shellComponent: RootShell,
@@ -147,7 +149,6 @@ function RootComponent() {
           <Toaster />
         </AdminProvider>
       </OnboardingProvider>
-
     </QueryClientProvider>
   );
 }

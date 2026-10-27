@@ -1,25 +1,30 @@
 import { createServerFn } from "@tanstack/react-start";
+import { TtlCache, fetchWithRetry, safeErrorMessage } from "./provider-utils";
+import { parseMfApi } from "./provider-parsers";
 
 // mfapi.in returns: { meta:{scheme_name, fund_house,...}, data:[{date:"dd-mm-yyyy", nav:"12.34"}, ...] }
-export interface NavPoint { date: string; nav: number }
+export interface NavPoint {
+  date: string;
+  nav: number;
+}
 export interface FundLiveData {
   ok: boolean;
   schemeCode: string;
   schemeName?: string;
   fundHouse?: string;
   currentNav?: number;
-  currentDate?: string;   // dd-mm-yyyy
+  currentDate?: string; // dd-mm-yyyy
   prevNav?: number;
   changeAbs?: number;
   changePct?: number;
   return1m?: number;
   return3m?: number;
   return1y?: number;
-  return3y?: number;      // annualized
-  return5y?: number;      // annualized
-  return10y?: number;     // annualized
-  returnAll?: number;     // annualized since inception
-  history: NavPoint[];    // downsampled full history, oldest → newest
+  return3y?: number; // annualized
+  return5y?: number; // annualized
+  return10y?: number; // annualized
+  returnAll?: number; // annualized since inception
+  history: NavPoint[]; // downsampled full history, oldest → newest
   error?: string;
 }
 
@@ -45,12 +50,17 @@ export function findByDaysBack(pts: NavPoint[], days: number): NavPoint | undefi
   return best;
 }
 
-export function parseMfApiResponse(json: any, schemeCode: string): FundLiveData {
-  const raw: Array<{ date: string; nav: string }> = json?.data ?? [];
+export function parseMfApiResponse(json: unknown, schemeCode: string): FundLiveData {
+  const payload = parseMfApi(json);
+  const raw: Array<{ date: string; nav: string }> = payload?.data ?? [];
   if (raw.length === 0) throw new Error("No NAV data in response");
 
   // Ascending order (mfapi returns newest first)
-  const asc = raw.slice().reverse().map((r) => ({ date: r.date, nav: Number(r.nav) })).filter((p) => p.nav > 0);
+  const asc = raw
+    .slice()
+    .reverse()
+    .map((r) => ({ date: r.date, nav: Number(r.nav) }))
+    .filter((p) => p.nav > 0);
   if (asc.length === 0) throw new Error("Invalid NAV data");
 
   const latest = asc[asc.length - 1];
@@ -64,7 +74,9 @@ export function parseMfApiResponse(json: any, schemeCode: string): FundLiveData 
   const p5y = findByDaysBack(asc, 5 * 365);
   const p10y = findByDaysBack(asc, 10 * 365);
 
-  const yearsAll = (parseDdMmYyyy(latest.date).getTime() - parseDdMmYyyy(first.date).getTime()) / (365 * 86_400_000);
+  const yearsAll =
+    (parseDdMmYyyy(latest.date).getTime() - parseDdMmYyyy(first.date).getTime()) /
+    (365 * 86_400_000);
 
   // Downsample: cap at ~1500 points
   const step = Math.max(1, Math.floor(asc.length / 1500));
@@ -74,8 +86,8 @@ export function parseMfApiResponse(json: any, schemeCode: string): FundLiveData 
   return {
     ok: true,
     schemeCode,
-    schemeName: json?.meta?.scheme_name,
-    fundHouse: json?.meta?.fund_house,
+    schemeName: payload?.meta.scheme_name,
+    fundHouse: payload?.meta.fund_house,
     currentNav: latest.nav,
     currentDate: latest.date,
     prevNav: prev?.nav,
@@ -92,42 +104,40 @@ export function parseMfApiResponse(json: any, schemeCode: string): FundLiveData 
   };
 }
 
-const fundCache = new Map<string, { time: number; data: FundLiveData }>();
+const fundCache = new TtlCache<FundLiveData>(100);
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export const getFundData = createServerFn({ method: "GET" })
   .validator((d: unknown): { schemeCode: string } => {
     const s = (d as { schemeCode?: unknown })?.schemeCode;
-    if (typeof s !== "string" || !s) throw new Error("schemeCode required");
+    // AMFI scheme codes are numeric; reject anything else before it reaches a URL.
+    if (typeof s !== "string" || !/^d{3,8}$/.test(s)) throw new Error("schemeCode must be numeric");
     return { schemeCode: s };
   })
   .handler(async ({ data }): Promise<FundLiveData> => {
-    const cached = fundCache.get(data.schemeCode);
-    if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
-      return cached.data;
-    }
+    const fresh = fundCache.get(data.schemeCode, CACHE_TTL_MS);
+    if (fresh) return fresh;
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 7000);
-      const res = await fetch(`https://api.mfapi.in/mf/${data.schemeCode}`, {
-        headers: { "User-Agent": "Mozilla/5.0 InvestIQ" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
+      const res = await fetchWithRetry(
+        `https://api.mfapi.in/mf/${data.schemeCode}`,
+        { headers: { "User-Agent": "Mozilla/5.0 InvestIQ" } },
+        { timeoutMs: 7000, retries: 2 },
+      );
       if (!res.ok) throw new Error(`mfapi HTTP ${res.status}`);
-      const json = await res.json();
+      const json: unknown = await res.json();
       const parsed = parseMfApiResponse(json, data.schemeCode);
-      fundCache.set(data.schemeCode, { time: Date.now(), data: parsed });
+      fundCache.set(data.schemeCode, parsed);
       return parsed;
     } catch (e) {
-      if (cached) return cached.data;
+      // Stale-if-error: serve the last real NAV data we have for this scheme.
+      const stale = fundCache.getStale(data.schemeCode);
+      if (stale) return stale.value;
       return {
         ok: false,
         schemeCode: data.schemeCode,
         history: [],
-        error: (e as Error).message,
+        error: safeErrorMessage(e, "NAV fetch failed"),
       };
     }
   });

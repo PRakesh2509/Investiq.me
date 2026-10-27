@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { hookFailure, hookResponse, readJsonBody, requireCronAuth } from "@/lib/cron-auth.server";
+import { getBotToken, resolveChatIds, sendToMany } from "@/lib/telegram.server";
 
 /**
  * Auto A+ trade alerts.
@@ -6,16 +8,8 @@ import { createFileRoute } from "@tanstack/react-router";
  * Scans the live option chain for the configured indices, asks the AI engine
  * for premium trades and pushes ONLY grade "A+" ideas to Telegram. Each
  * (symbol, expiry, strike, type, direction) is sent once per day.
+ * Requires CRON_SECRET (x-cron-secret or Authorization: Bearer).
  */
-
-const PERMANENT_CHAT_IDS = [
-  "7350570004",
-  "5589831995",
-  "1840901163",
-  "1360613728",
-  "8155139346",
-  "6799336293", "7280324188", "6698697147",
-];
 
 const SCAN = ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -33,53 +27,41 @@ function marketOpen() {
   return mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;
 }
 
-async function sendTelegram(token: string, chatId: string, text: string) {
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-    }),
-  });
-  const json = (await res.json()) as { ok: boolean; description?: string };
-  if (!json.ok) throw new Error(`TG(${chatId}): ${json.description ?? "unknown"}`);
-}
-
 export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const body = (await request.json().catch(() => ({}))) as {
-          force?: boolean;
-          chatIds?: string[];
-        };
+        const denied = await requireCronAuth(request);
+        if (denied) return denied;
+
+        const body = await readJsonBody<{ force: boolean; chatIds: string[] }>(request);
         const force = !!body.force;
         try {
           if (!force && !marketOpen()) {
-            return Response.json({ ok: true, skipped: true, reason: "market closed" });
+            return hookResponse({
+              sent: 0,
+              skipped: 1,
+              errors: [],
+              reason: "market closed",
+            });
           }
-          const token = process.env.TELEGRAM_BOT_TOKEN || "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc";
-          const envIds = (process.env.TELEGRAM_CHAT_ID ?? "")
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean);
-          const chatIds = body.chatIds?.length
-            ? Array.from(new Set(body.chatIds.map((s) => String(s).trim()).filter(Boolean)))
-            : Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
+          const token = getBotToken();
+          if (!token) return hookFailure("TELEGRAM_BOT_TOKEN not configured", 503);
+          const chatIds = resolveChatIds(body.chatIds);
 
           const { getAccessToken, fetchExpiries, fetchOptionChain, INDEX_UNDERLYINGS } =
             await import("@/lib/upstox.server");
-          const { generatePremiumTrades, buildTradeMessage } = await import(
-            "@/lib/ai-trades.server"
-          );
-          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+          const { generatePremiumTrades, buildTradeMessage } =
+            await import("@/lib/ai-trades.server");
+          const { claimOnce, releaseClaim } = await import("@/lib/hook-dedupe.server");
 
           const accessToken = getAccessToken();
           const today = istNow().toISOString().slice(0, 10);
           const results: Record<string, unknown>[] = [];
+          const errors: string[] = [];
+          let sent = 0;
+          let skipped = 0;
+          let dedupeUnavailable = false;
 
           for (const key of SCAN) {
             const label = INDEX_UNDERLYINGS.find((u) => u.key === key)?.label ?? key;
@@ -87,6 +69,7 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
               const expiries = await fetchExpiries(key, accessToken);
               const expiry = expiries[0];
               if (!expiry) {
+                skipped++;
                 results.push({ symbol: label, skipped: "no expiry" });
                 continue;
               }
@@ -94,22 +77,32 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
               const plan = await generatePremiumTrades(label, chain);
               const aplus = plan.trades.filter((t) => t.grade === "A+");
               if (!aplus.length) {
+                skipped++;
                 results.push({ symbol: label, aplus: 0 });
                 continue;
               }
 
-              // Dedupe: one alert per unique A+ trade per day.
+              // Dedupe: one alert per unique A+ trade per day (insert-first, race-safe).
               const fresh: typeof aplus = [];
+              const claimed: string[] = [];
               for (const t of aplus) {
                 const tradeKey = `${label}|${expiry}|${t.strike}|${t.optionType}|${t.direction}`;
                 if (force) {
                   fresh.push(t);
                   continue;
                 }
-                const { error } = await supabaseAdmin
-                  .from("ai_trade_sent")
-                  .insert({ trade_key: tradeKey, sent_date: today });
-                if (!error) fresh.push(t);
+                const claim = await claimOnce(
+                  "ai_trade_sent",
+                  { trade_key: tradeKey, sent_date: today },
+                  `${tradeKey}|${today}`,
+                );
+                if (claim === "duplicate") {
+                  skipped++;
+                  continue;
+                }
+                if (claim === "unavailable") dedupeUnavailable = true;
+                else claimed.push(tradeKey);
+                fresh.push(t);
               }
               if (!fresh.length) {
                 results.push({ symbol: label, aplus: aplus.length, new: 0 });
@@ -117,29 +110,46 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
               }
 
               const text = buildTradeMessage({ ...plan, trades: fresh });
-              let delivered = 0;
-              for (const id of chatIds) {
-                try {
-                  await sendTelegram(token, id, text);
-                  delivered++;
-                } catch (e) {
-                  console.error("[ai-trade-alert]", (e as Error).message);
+              const res = await sendToMany(token, chatIds, text, { delayMs: 300 });
+              sent += res.delivered;
+              errors.push(...res.errors);
+              if (res.delivered === 0) {
+                // Nobody got it: free the claims so the next run retries.
+                for (const k of claimed) {
+                  await releaseClaim(
+                    "ai_trade_sent",
+                    { trade_key: k, sent_date: today },
+                    `${k}|${today}`,
+                  );
                 }
-                await sleep(300);
               }
-              results.push({ symbol: label, aplus: aplus.length, new: fresh.length, delivered });
+              results.push({
+                symbol: label,
+                aplus: aplus.length,
+                new: fresh.length,
+                delivered: res.delivered,
+              });
             } catch (e) {
-              console.error("[ai-trade-alert]", label, (e as Error).message);
+              const msg = `${label}: ${(e as Error).message}`;
+              console.error("[ai-trade-alert]", msg);
+              errors.push(msg);
               results.push({ symbol: label, error: (e as Error).message });
             }
             await sleep(500);
           }
 
-          return Response.json({ ok: true, results }, { headers: { "cache-control": "no-store" } });
+          return hookResponse({
+            sent,
+            skipped,
+            errors,
+            recipients: chatIds.length,
+            dedupe: dedupeUnavailable ? "unavailable" : "ok",
+            results,
+          });
         } catch (e) {
           const err = e as Error;
           console.error("[ai-trade-alert]", err.message);
-          return Response.json({ ok: false, error: err.message }, { status: 500 });
+          return hookFailure(err.message);
         }
       },
     },

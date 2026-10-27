@@ -1,22 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { NIFTY_UNIVERSE, sectorOf } from "@/lib/nifty-universe";
-
-const PERMANENT_CHAT_IDS = ["7350570004", "5589831995", "1840901163", "1360613728", "8155139346", "6799336293", "7280324188", "6698697147"];
-
-async function sendTelegram(token: string, chatId: string, text: string) {
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-    }),
-  });
-  const json = (await res.json()) as { ok: boolean; description?: string };
-  if (!json.ok) throw new Error(`Telegram(${chatId}): ${json.description ?? "unknown"}`);
-}
+import { hookFailure, hookResponse, readJsonBody, requireCronAuth } from "@/lib/cron-auth.server";
+import { escapeHtml, getBotToken, resolveChatIds, sendToMany } from "@/lib/telegram.server";
+import { fetchQuote, fetchQuotes, toYahooSymbol } from "@/lib/yahoo.server";
 
 interface Quote {
   symbol: string;
@@ -28,49 +14,9 @@ interface Quote {
   volume: number;
 }
 
-async function fetchQuote(symbol: string, name: string): Promise<Quote | null> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-    symbol,
-  )}.NS?interval=1d&range=5d`;
-  try {
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 InvestIQ" } });
-    if (!res.ok) return null;
-    const j = (await res.json()) as any;
-    const r = j?.chart?.result?.[0];
-    if (!r) return null;
-    const meta = r.meta ?? {};
-    const price = Number(meta.regularMarketPrice ?? 0);
-    const prev = Number(meta.chartPreviousClose ?? meta.previousClose ?? 0);
-    if (!price || !prev) return null;
-    return {
-      symbol,
-      name,
-      sector: sectorOf(symbol),
-      price,
-      prevClose: prev,
-      changePct: ((price - prev) / prev) * 100,
-      volume: Number(meta.regularMarketVolume ?? 0),
-    };
-  } catch {
-    return null;
-  }
-}
-
 async function fetchIndex(symbol: string): Promise<{ price: number; prev: number } | null> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`;
-  try {
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 InvestIQ" } });
-    if (!res.ok) return null;
-    const j = (await res.json()) as any;
-    const meta = j?.chart?.result?.[0]?.meta;
-    if (!meta) return null;
-    const price = Number(meta.regularMarketPrice ?? 0);
-    const prev = Number(meta.chartPreviousClose ?? meta.previousClose ?? 0);
-    if (!price || !prev) return null;
-    return { price, prev };
-  } catch {
-    return null;
-  }
+  const q = await fetchQuote(symbol);
+  return q ? { price: q.price, prev: q.prevClose } : null;
 }
 
 function fmtInr(n: number, dp = 2): string {
@@ -86,18 +32,25 @@ function fmtVol(n: number): string {
   return n.toString();
 }
 
-type Section = "summary" | "sectors" | "trending" | "all";
+const SECTIONS = ["summary", "sectors", "trending", "all"] as const;
+type Section = (typeof SECTIONS)[number];
+
+function indexLine(label: string, idx: { price: number; prev: number }): string {
+  const chg = idx.price - idx.prev;
+  const pct = (chg / idx.prev) * 100;
+  return `• ${label}: <b>${fmtPts(idx.price)}</b> (${chg >= 0 ? "+" : ""}${fmtPts(chg)} / ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`;
+}
 
 async function buildMessage(section: Section, quotes: Quote[]): Promise<string> {
   const today = new Date().toLocaleString("en-IN", {
-    weekday: "short", day: "2-digit", month: "short",
-    hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Kolkata",
   });
-  const lines: string[] = [
-    `🌆 <b>InvestIQ — Post-Market Update</b>`,
-    `<i>${today} IST</i>`,
-    ``,
-  ];
+  const lines: string[] = [`🌆 <b>InvestIQ — Post-Market Update</b>`, `<i>${today} IST</i>`, ``];
 
   if (section === "summary" || section === "all") {
     const [nifty, sensex, bank] = await Promise.all([
@@ -108,26 +61,11 @@ async function buildMessage(section: Section, quotes: Quote[]): Promise<string> 
     const adv = quotes.filter((q) => q.changePct > 0).length;
     const dec = quotes.filter((q) => q.changePct < 0).length;
     const unc = quotes.length - adv - dec;
-    const sentiment =
-      adv > dec * 1.5 ? "🟢 Bullish"
-      : dec > adv * 1.5 ? "🔴 Bearish"
-      : "🟡 Mixed";
+    const sentiment = adv > dec * 1.5 ? "🟢 Bullish" : dec > adv * 1.5 ? "🔴 Bearish" : "🟡 Mixed";
     lines.push(`<b>📊 Daily Market Summary</b>`);
-    if (nifty) {
-      const chg = nifty.price - nifty.prev;
-      const pct = (chg / nifty.prev) * 100;
-      lines.push(`• Nifty 50: <b>${fmtPts(nifty.price)}</b> (${chg >= 0 ? "+" : ""}${fmtPts(chg)} / ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`);
-    }
-    if (sensex) {
-      const chg = sensex.price - sensex.prev;
-      const pct = (chg / sensex.prev) * 100;
-      lines.push(`• Sensex: <b>${fmtPts(sensex.price)}</b> (${chg >= 0 ? "+" : ""}${fmtPts(chg)} / ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`);
-    }
-    if (bank) {
-      const chg = bank.price - bank.prev;
-      const pct = (chg / bank.prev) * 100;
-      lines.push(`• Bank Nifty: <b>${fmtPts(bank.price)}</b> (${chg >= 0 ? "+" : ""}${fmtPts(chg)} / ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`);
-    }
+    if (nifty) lines.push(indexLine("Nifty 50", nifty));
+    if (sensex) lines.push(indexLine("Sensex", sensex));
+    if (bank) lines.push(indexLine("Bank Nifty", bank));
     lines.push(`• Sentiment: <b>${sentiment}</b>`);
     lines.push(`• Advance / Decline / Unchanged: <b>${adv}</b> · <b>${dec}</b> · <b>${unc}</b>`);
     lines.push(``);
@@ -148,20 +86,24 @@ async function buildMessage(section: Section, quotes: Quote[]): Promise<string> 
     const bot = sectors.slice(-3).reverse();
     lines.push(`<b>🏭 Sector Performance</b>`);
     lines.push(`<b>Top:</b>`);
-    for (const s of top) lines.push(`  • ${s.name}: ${s.avg >= 0 ? "+" : ""}${s.avg.toFixed(2)}% (${s.count})`);
+    for (const s of top)
+      lines.push(
+        `  • ${escapeHtml(s.name)}: ${s.avg >= 0 ? "+" : ""}${s.avg.toFixed(2)}% (${s.count})`,
+      );
     lines.push(`<b>Weakest:</b>`);
-    for (const s of bot) lines.push(`  • ${s.name}: ${s.avg >= 0 ? "+" : ""}${s.avg.toFixed(2)}% (${s.count})`);
+    for (const s of bot)
+      lines.push(
+        `  • ${escapeHtml(s.name)}: ${s.avg >= 0 ? "+" : ""}${s.avg.toFixed(2)}% (${s.count})`,
+      );
     lines.push(``);
   }
 
   if (section === "trending" || section === "all") {
-    const active = [...quotes]
-      .sort((a, b) => b.volume - a.volume)
-      .slice(0, 5);
+    const active = [...quotes].sort((a, b) => b.volume - a.volume).slice(0, 5);
     lines.push(`<b>🔥 Trending Stocks (most active)</b>`);
     for (const q of active) {
       lines.push(
-        `• <b>${q.name}</b> (${q.symbol}) — ${fmtInr(q.price)} · <b>${q.changePct >= 0 ? "+" : ""}${q.changePct.toFixed(2)}%</b> · Vol ${fmtVol(q.volume)}`,
+        `• <b>${escapeHtml(q.name)}</b> (${escapeHtml(q.symbol)}) — ${fmtInr(q.price)} · <b>${q.changePct >= 0 ? "+" : ""}${q.changePct.toFixed(2)}%</b> · Vol ${fmtVol(q.volume)}`,
       );
     }
     lines.push(``);
@@ -175,42 +117,51 @@ export const Route = createFileRoute("/api/public/hooks/postmarket-alert")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const token = process.env.TELEGRAM_BOT_TOKEN || "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc";
-        let body: { section?: Section; chatIds?: string[] } = {};
-        try { body = (await request.json()) as any; } catch { /* empty body allowed */ }
-        const section: Section = body.section ?? "all";
+        const denied = await requireCronAuth(request);
+        if (denied) return denied;
+        try {
+          const token = getBotToken();
+          if (!token) return hookFailure("TELEGRAM_BOT_TOKEN not configured", 503);
 
-        const envIds = (process.env.TELEGRAM_CHAT_ID ?? "")
-          .split(",").map((s) => s.trim()).filter(Boolean);
-        const chatIds = body.chatIds?.length
-          ? Array.from(new Set(body.chatIds.map((s) => String(s).trim()).filter(Boolean)))
-          : Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
+          const body = await readJsonBody<{ section: Section; chatIds: string[] }>(request);
+          const section: Section = body.section ?? "all";
+          if (!SECTIONS.includes(section)) {
+            return hookFailure(`section must be one of ${SECTIONS.join(", ")}`, 400);
+          }
+          const chatIds = resolveChatIds(body.chatIds);
 
-        const out: Quote[] = [];
-        const chunk = 12;
-        for (let i = 0; i < NIFTY_UNIVERSE.length; i += chunk) {
-          const batch = NIFTY_UNIVERSE.slice(i, i + chunk);
-          const res = await Promise.all(batch.map((s) => fetchQuote(s.symbol, s.name)));
-          for (const q of res) if (q) out.push(q);
+          const raw = await fetchQuotes(NIFTY_UNIVERSE.map((s) => toYahooSymbol(s.symbol)));
+          const out: Quote[] = [];
+          NIFTY_UNIVERSE.forEach((s, i) => {
+            const q = raw[i];
+            if (!q) return;
+            out.push({
+              symbol: s.symbol,
+              name: s.name,
+              sector: sectorOf(s.symbol),
+              price: q.price,
+              prevClose: q.prevClose,
+              changePct: q.changePct,
+              volume: q.volume,
+            });
+          });
+          if (out.length === 0) return hookFailure("no quotes fetched", 502);
+
+          const message = await buildMessage(section, out);
+          const res = await sendToMany(token, chatIds, message, { delayMs: 150 });
+          return hookResponse({
+            sent: res.delivered,
+            skipped: NIFTY_UNIVERSE.length - out.length,
+            errors: res.errors,
+            section,
+            scanned: out.length,
+            delivered: res.delivered,
+            recipients: chatIds.length,
+          });
+        } catch (e) {
+          console.error("[postmarket-alert]", (e as Error).message);
+          return hookFailure((e as Error).message);
         }
-        if (out.length === 0) {
-          return Response.json({ ok: false, error: "no quotes fetched" }, { status: 502 });
-        }
-
-        const message = await buildMessage(section, out);
-        const results = await Promise.allSettled(chatIds.map((id) => sendTelegram(token, id, message)));
-        const delivered = results.filter((r) => r.status === "fulfilled").length;
-        const errors = results
-          .filter((r): r is PromiseRejectedResult => r.status === "rejected")
-          .map((r) => (r.reason as Error).message);
-        return Response.json({
-          ok: delivered > 0,
-          section,
-          scanned: out.length,
-          delivered,
-          recipients: chatIds,
-          errors,
-        });
       },
     },
   },

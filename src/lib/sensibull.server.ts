@@ -1,20 +1,41 @@
 /**
- * Sensibull Greeks View Backend Service (`sensibullGreeksService`)
+ * Greeks View Chart service (`fetchSensibullGreeksChartData`)
  *
- * Dedicated backend connector for Sensibull Greek View Chart data:
- * - Delta (Δ) curves (Call vs Put across strikes)
- * - Gamma (Γ) risk distribution (convexity peak at ATM)
- * - Theta (Θ) daily decay curve (₹/day)
- * - Vega (ν) sensitivity curve (₹/1% IV change)
- * - Implied Volatility (IV) Smile / Skew curve
+ * Builds the Delta / Gamma / Theta / Vega / IV-smile curves used by the Greeks View chart.
  *
- * Ingests live data via Sensibull session/token when provided in environment,
- * or routes through DhanHQ live spot + Sensibull-identical Black-Scholes Greeks engine.
+ * COMPLIANCE: this module does NOT read Sensibull cookies, session tokens or access tokens and
+ * never calls Sensibull's private endpoints. The only Sensibull path is an authorized enterprise
+ * partner integration (SENSIBULL_PARTNER_API_KEY, SENSIBULL_PARTNER_SECRET and
+ * SENSIBULL_PARTNER_API_BASE_URL, all three required). Without them the chart is driven by
+ * authorized broker data instead and `sensibullStatus` explains why Sensibull is unavailable.
+ *
+ * Source order for each call:
+ *   1. Authorized Sensibull partner API (only when fully configured, Indian underlyings)
+ *   2. The real normalized option chain (DhanHQ -> Upstox -> global feed): provider IV/Greeks
+ *   3. Only when ALLOW_MOCK_DATA === "true": theoretical Black-Scholes curves around the real spot
+ *      (flagged isSimulated: true; the IV smile is an assumed parametric shape, not market IV)
+ *   4. Otherwise an empty, unavailable result with `dataQualityNotes` (no invented numbers)
  */
 
-import { calculateGreeks, calculateTimeToExpiryYears, calculateImpliedVolatility } from "./greeks-service.ts";
-import { getDhanCredentials, getDhanInstrument } from "./dhan.server.ts";
+import { calculateGreeks, calculateTimeToExpiryYears } from "./greeks-service.ts";
 import { WORKSTATION_INSTRUMENTS } from "./terminal-workstation.functions.ts";
+import {
+  getNormalizedOptionChain,
+  getSensibullAuthorizationStatus,
+  getSensibullPartnerConfig,
+  type ProviderStatusInfo,
+} from "./options-data-provider.server.ts";
+import { getInstrumentQuote } from "./market-data-provider.server.ts";
+import { parseSensibullPartnerGreeks } from "./provider-parsers.ts";
+import {
+  TtlCache,
+  allowMockData,
+  fetchJsonWithRetry,
+  isValidExpiry,
+  nextThursdayISO,
+  safeErrorMessage,
+  type FreshnessStatus,
+} from "./provider-utils.ts";
 
 export interface SensibullGreekPoint {
   strike: number;
@@ -41,7 +62,14 @@ export interface SensibullGreeksChartData {
   expiryDate: string;
   atmStrike: number;
   daysToExpiry: number;
-  provider: "Sensibull Direct API" | "Sensibull Greeks Engine (Calibrated Live Feed)" | "CBOE / CME Global Feed";
+  /**
+   * Legacy display labels (kept for compatibility). Prefer `dataSource` for the truth: only
+   * "Sensibull Direct API" means Sensibull data, and only with partner credentials.
+   */
+  provider:
+    | "Sensibull Direct API"
+    | "Sensibull Greeks Engine (Calibrated Live Feed)"
+    | "CBOE / CME Global Feed";
   dataSourceStatus: "LIVE_CONNECTED" | "CALIBRATED_ENGINE";
   timestamp: string;
   points: SensibullGreekPoint[];
@@ -54,199 +82,336 @@ export interface SensibullGreeksChartData {
     maxThetaStrike: number;
     atmIv: number;
   };
+  /** True when the curves are model-generated (ALLOW_MOCK_DATA) rather than from a real chain. */
+  isSimulated?: boolean;
+  /** Plain-language origin, e.g. "dhan option chain", "sensibull partner api", "black-scholes model". */
+  dataSource?: string;
+  freshnessStatus?: FreshnessStatus;
+  dataQualityNotes?: string[];
+  /** True when no data could be produced; `points` is empty. */
+  unavailable?: boolean;
+  /** Why Sensibull itself is / is not the source. */
+  sensibullStatus?: ProviderStatusInfo;
+}
+
+const STRIKES_EACH_SIDE = 10;
+const partnerCache = new TtlCache<SensibullGreeksChartData>(20);
+const PARTNER_TTL_MS = 5_000;
+
+function summarize(points: SensibullGreekPoint[], spot: number, step: number) {
+  const atmPoint = points.find((p) => p.isAtm) ?? points[Math.floor(points.length / 2)];
+  let peakGamma = 0;
+  let peakGammaStrike = atmPoint?.strike ?? Math.round(spot / step) * step;
+  let maxThetaBurn = 0;
+  let maxThetaStrike = peakGammaStrike;
+  for (const p of points) {
+    if (p.callGamma > peakGamma) {
+      peakGamma = p.callGamma;
+      peakGammaStrike = p.strike;
+    }
+    const burn = Math.abs(p.callTheta);
+    if (burn > maxThetaBurn) {
+      maxThetaBurn = burn;
+      maxThetaStrike = p.strike;
+    }
+  }
+  return {
+    atmPoint,
+    summary: {
+      atmCallDelta: atmPoint?.callDelta ?? 0,
+      atmPutDelta: atmPoint?.putDelta ?? 0,
+      peakGamma: +peakGamma.toFixed(4),
+      peakGammaStrike,
+      maxThetaBurn: +maxThetaBurn.toFixed(1),
+      maxThetaStrike,
+      atmIv: atmPoint?.callIv ?? 0,
+    },
+  };
+}
+
+function emptyResult(
+  symbol: string,
+  expiryDate: string,
+  isGlobal: boolean,
+  notes: string[],
+  sensibullStatus: ProviderStatusInfo,
+): SensibullGreeksChartData {
+  return {
+    symbol,
+    underlyingPrice: 0,
+    expiryDate,
+    atmStrike: 0,
+    daysToExpiry: 0,
+    provider: isGlobal
+      ? "CBOE / CME Global Feed"
+      : "Sensibull Greeks Engine (Calibrated Live Feed)",
+    dataSourceStatus: "CALIBRATED_ENGINE",
+    timestamp: new Date().toISOString(),
+    points: [],
+    summary: {
+      atmCallDelta: 0,
+      atmPutDelta: 0,
+      peakGamma: 0,
+      peakGammaStrike: 0,
+      maxThetaBurn: 0,
+      maxThetaStrike: 0,
+      atmIv: 0,
+    },
+    isSimulated: false,
+    dataSource: "unavailable",
+    freshnessStatus: "STALE",
+    dataQualityNotes: notes,
+    unavailable: true,
+    sensibullStatus,
+  };
+}
+
+/** Authorized Sensibull partner API. Returns null on any failure so the caller can fall back. */
+async function fetchPartnerGreeks(
+  cleanSym: string,
+  expiryDate: string,
+  spot: number,
+  step: number,
+  daysToExpiry: number,
+  status: ProviderStatusInfo,
+): Promise<SensibullGreeksChartData | null> {
+  const cfg = getSensibullPartnerConfig();
+  if (!cfg) return null;
+  const cacheKey = `${cleanSym}|${expiryDate}`;
+  const hit = partnerCache.get(cacheKey, PARTNER_TTL_MS);
+  if (hit) return hit;
+
+  const path = process.env.SENSIBULL_PARTNER_GREEKS_PATH?.trim() || "/greeks";
+  const url = `${cfg.baseUrl}${path.startsWith("/") ? path : `/${path}`}?underlying=${encodeURIComponent(
+    cleanSym,
+  )}&expiry=${encodeURIComponent(expiryDate)}`;
+  try {
+    const res = await fetchJsonWithRetry(
+      url,
+      {
+        headers: {
+          Accept: "application/json",
+          "X-API-Key": cfg.apiKey,
+          "X-API-Secret": cfg.apiSecret,
+        },
+      },
+      { timeoutMs: 6000, retries: 1 },
+    );
+    if (!res.ok) return null;
+    const rows = parseSensibullPartnerGreeks(res.json);
+    if (rows.length === 0) return null;
+
+    const points: SensibullGreekPoint[] = rows.map((r) => ({
+      strike: r.strike,
+      callDelta: +r.callDelta.toFixed(3),
+      putDelta: +r.putDelta.toFixed(3),
+      callGamma: +r.callGamma.toFixed(4),
+      putGamma: +r.putGamma.toFixed(4),
+      callTheta: +r.callTheta.toFixed(1),
+      putTheta: +r.putTheta.toFixed(1),
+      callVega: +r.callVega.toFixed(1),
+      putVega: +r.putVega.toFixed(1),
+      callIv: +r.callIv.toFixed(1),
+      putIv: +r.putIv.toFixed(1),
+      callLtp: +r.callLtp.toFixed(2),
+      putLtp: +r.putLtp.toFixed(2),
+      isAtm: Math.abs(r.strike - spot) <= step / 2,
+      isItmCall: r.strike < spot,
+      isItmPut: r.strike > spot,
+    }));
+    const { atmPoint, summary } = summarize(points, spot, step);
+    const out: SensibullGreeksChartData = {
+      symbol: cleanSym,
+      underlyingPrice: spot,
+      expiryDate,
+      atmStrike: atmPoint?.strike ?? Math.round(spot / step) * step,
+      daysToExpiry,
+      provider: "Sensibull Direct API",
+      dataSourceStatus: "LIVE_CONNECTED",
+      timestamp: new Date().toISOString(),
+      points,
+      summary,
+      isSimulated: false,
+      dataSource: "sensibull partner api",
+      freshnessStatus: "LIVE",
+      dataQualityNotes: ["Data from the authorized Sensibull partner API."],
+      sensibullStatus: status,
+    };
+    partnerCache.set(cacheKey, out);
+    return out;
+  } catch (e) {
+    console.warn(
+      "[Sensibull partner] unavailable, falling back to broker data:",
+      safeErrorMessage(e, "request failed", [cfg.apiKey, cfg.apiSecret]),
+    );
+    return null;
+  }
 }
 
 /**
- * Fetch Greeks View Chart Data from Sensibull backend
+ * Fetch Greeks View Chart data. See the file header for the source order.
  */
 export async function fetchSensibullGreeksChartData(
   instrument: string = "NIFTY 50",
-  customExpiry?: string
+  customExpiry?: string,
 ): Promise<SensibullGreeksChartData> {
-  const cleanSym = instrument.replace(/[^A-Z0-9]/g, "").toUpperCase();
-  const cfg = WORKSTATION_INSTRUMENTS[instrument] ?? WORKSTATION_INSTRUMENTS["NIFTY 50"];
+  const key = Object.prototype.hasOwnProperty.call(WORKSTATION_INSTRUMENTS, instrument)
+    ? instrument
+    : "NIFTY 50";
+  const cfg = WORKSTATION_INSTRUMENTS[key];
+  const cleanSym = key.replace(/[^A-Z0-9]/g, "").toUpperCase();
   const step = cfg.step || 50;
+  const isGlobal = Boolean(cfg.isGlobal);
+  const sensibullStatus = getSensibullAuthorizationStatus();
 
-  // Next Thursday weekly expiry
-  const now = new Date();
-  const day = now.getDay();
-  const addDays = (4 - day + 7) % 7 || 7;
-  const nextThursday = new Date(now.getTime() + addDays * 86400_000);
-  const expiryDate = customExpiry || nextThursday.toISOString().slice(0, 10);
+  const requestedExpiry = customExpiry && isValidExpiry(customExpiry) ? customExpiry : undefined;
+  const notes: string[] = [];
+  if (customExpiry && !requestedExpiry)
+    notes.push("Ignored malformed expiry (expected YYYY-MM-DD).");
+
+  // 1. Authorized Sensibull partner API (Indian underlyings only).
+  if (!isGlobal && getSensibullPartnerConfig()) {
+    const expiryGuess = requestedExpiry ?? nextThursdayISO();
+    const tY = calculateTimeToExpiryYears(expiryGuess);
+    const quote = await getInstrumentQuote({ yahooSymbol: cfg.yahooSymbol, dhanSymbol: key });
+    if (quote) {
+      const partner = await fetchPartnerGreeks(
+        cleanSym,
+        expiryGuess,
+        quote.price,
+        step,
+        Math.max(0.1, +(tY * 365).toFixed(1)),
+        sensibullStatus,
+      );
+      if (partner) return partner;
+    }
+    notes.push("Sensibull partner API did not return data; using authorized broker data.");
+  }
+
+  // 2. Real option chain (DhanHQ -> Upstox -> global feed).
+  const chain = await getNormalizedOptionChain(key, requestedExpiry);
+  if (!chain.unavailable && !chain.isSimulated && chain.rows.length > 0) {
+    const sorted = [...chain.rows].sort((a, b) => a.strike - b.strike);
+    const atmIdx = Math.max(
+      0,
+      sorted.findIndex((r) => r.strike === chain.atmStrike),
+    );
+    const slice = sorted.slice(
+      Math.max(0, atmIdx - STRIKES_EACH_SIDE),
+      Math.min(sorted.length, atmIdx + STRIKES_EACH_SIDE + 1),
+    );
+    const spot = chain.underlyingPrice;
+    const points: SensibullGreekPoint[] = slice.map((r) => ({
+      strike: r.strike,
+      callDelta: +r.call.delta.toFixed(3),
+      putDelta: +r.put.delta.toFixed(3),
+      callGamma: +r.call.gamma.toFixed(4),
+      putGamma: +r.put.gamma.toFixed(4),
+      callTheta: +r.call.theta.toFixed(1),
+      putTheta: +r.put.theta.toFixed(1),
+      callVega: +r.call.vega.toFixed(1),
+      putVega: +r.put.vega.toFixed(1),
+      callIv: +r.call.impliedVolatility.toFixed(1),
+      putIv: +r.put.impliedVolatility.toFixed(1),
+      callLtp: +r.call.ltp.toFixed(2),
+      putLtp: +r.put.ltp.toFixed(2),
+      isAtm: r.strike === chain.atmStrike,
+      isItmCall: r.strike < spot,
+      isItmPut: r.strike > spot,
+    }));
+    const { summary } = summarize(points, spot, step);
+    return {
+      symbol: cleanSym,
+      underlyingPrice: spot,
+      expiryDate: chain.expiryDate,
+      atmStrike: chain.atmStrike,
+      daysToExpiry: +chain.daysToExpiry.toFixed(1),
+      provider: isGlobal
+        ? "CBOE / CME Global Feed"
+        : "Sensibull Greeks Engine (Calibrated Live Feed)",
+      dataSourceStatus: "LIVE_CONNECTED",
+      timestamp: new Date().toISOString(),
+      points,
+      summary,
+      isSimulated: false,
+      dataSource: `${chain.provider} option chain`,
+      freshnessStatus: chain.freshnessStatus,
+      dataQualityNotes: [
+        "Greeks and IV come from the authorized broker/global option chain, not from Sensibull.",
+        ...notes,
+        ...chain.dataQualityNotes,
+      ],
+      sensibullStatus,
+    };
+  }
+
+  // 3. Theoretical curves: only with the explicit mock flag.
+  const expiryDate = requestedExpiry ?? nextThursdayISO();
+  if (!allowMockData()) {
+    return emptyResult(
+      cleanSym,
+      expiryDate,
+      isGlobal,
+      [
+        `No real option chain is available for ${cleanSym}, so no Greeks were produced.`,
+        ...notes,
+        ...chain.dataQualityNotes,
+      ],
+      sensibullStatus,
+    );
+  }
+
+  const quote = await getInstrumentQuote({
+    yahooSymbol: cfg.yahooSymbol,
+    dhanSymbol: isGlobal ? undefined : key,
+    isGlobal,
+  });
+  const spot = quote?.price ?? cfg.defaultSpot;
   const tYears = calculateTimeToExpiryYears(expiryDate);
   const daysToExpiry = Math.max(0.1, +(tYears * 365).toFixed(1));
-
-  // Determine current underlying spot from DhanHQ live feed if available
-  let spot = cfg.defaultSpot || 22862.9;
-  const dhanCreds = getDhanCredentials();
-  if (dhanCreds) {
-    try {
-      const dhanTarget = getDhanInstrument(cleanSym);
-      if (dhanTarget) {
-        const spotRes = await fetch("https://api.dhan.co/v2/marketfeed/ltp", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "client-id": dhanCreds.clientId,
-            "access-token": dhanCreds.accessToken,
-          },
-          body: JSON.stringify({
-            instruments: [{ exchangeSegment: dhanTarget.segment, securityId: dhanTarget.id }],
-          }),
-        });
-        if (spotRes.ok) {
-          const sJson = (await spotRes.json()) as any;
-          const livePrice = Number(sJson?.data?.[0]?.last_price);
-          if (livePrice && Number.isFinite(livePrice)) {
-            spot = livePrice;
-          }
-        }
-      }
-    } catch {
-      // Nominal spot baseline preserved
-    }
-  }
-
-  // Check if live Sensibull direct session/token is present in environment (skipped entirely for Global F&O)
-  const sensibullCookie = process.env.SENSIBULL_COOKIE?.trim();
-  const sensibullToken = process.env.SENSIBULL_ACCESS_TOKEN?.trim() || process.env.SENSIBULL_PARTNER_API_KEY?.trim();
-
-  if (!cfg.isGlobal && (sensibullCookie || sensibullToken)) {
-    try {
-      const sensibullRes = await fetch(
-        `https://oxide.sensibull.com/v1/compute/cache/live_derivative_prices?underlying=${encodeURIComponent(cleanSym)}`,
-        {
-          headers: {
-            Accept: "application/json",
-            "User-Agent": "InvestIQ-Terminal/2.4 (Derivatives Analytics)",
-            ...(sensibullCookie ? { Cookie: sensibullCookie } : {}),
-            ...(sensibullToken ? { Authorization: `Bearer ${sensibullToken}` } : {}),
-          },
-        }
-      );
-
-      if (sensibullRes.ok) {
-        const data = (await sensibullRes.json()) as any;
-        if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-          const directPoints: SensibullGreekPoint[] = data.data.map((item: any) => ({
-            strike: Number(item.strike),
-            callDelta: +(Number(item.call_delta ?? item.ce_delta ?? 0)).toFixed(3),
-            putDelta: +(Number(item.put_delta ?? item.pe_delta ?? 0)).toFixed(3),
-            callGamma: +(Number(item.call_gamma ?? item.gamma ?? 0)).toFixed(4),
-            putGamma: +(Number(item.put_gamma ?? item.gamma ?? 0)).toFixed(4),
-            callTheta: +(Number(item.call_theta ?? item.ce_theta ?? 0)).toFixed(1),
-            putTheta: +(Number(item.put_theta ?? item.pe_theta ?? 0)).toFixed(1),
-            callVega: +(Number(item.call_vega ?? item.vega ?? 0)).toFixed(1),
-            putVega: +(Number(item.put_vega ?? item.vega ?? 0)).toFixed(1),
-            callIv: +(Number(item.call_iv ?? item.ce_iv ?? 14)).toFixed(1),
-            putIv: +(Number(item.put_iv ?? item.pe_iv ?? 14)).toFixed(1),
-            callLtp: +(Number(item.call_ltp ?? 0)).toFixed(2),
-            putLtp: +(Number(item.put_ltp ?? 0)).toFixed(2),
-            isAtm: Math.abs(Number(item.strike) - spot) <= step / 2,
-            isItmCall: Number(item.strike) < spot,
-            isItmPut: Number(item.strike) > spot,
-          }));
-
-          const atmPoint = directPoints.find((p) => p.isAtm) ?? directPoints[Math.floor(directPoints.length / 2)];
-
-          return {
-            symbol: cleanSym,
-            underlyingPrice: spot,
-            expiryDate,
-            atmStrike: atmPoint?.strike ?? Math.round(spot / step) * step,
-            daysToExpiry,
-            provider: "Sensibull Direct API",
-            dataSourceStatus: "LIVE_CONNECTED",
-            timestamp: new Date().toISOString(),
-            points: directPoints,
-            summary: {
-              atmCallDelta: atmPoint?.callDelta ?? 0.5,
-              atmPutDelta: atmPoint?.putDelta ?? -0.5,
-              peakGamma: Math.max(...directPoints.map((p) => p.callGamma)),
-              peakGammaStrike: atmPoint?.strike ?? 0,
-              maxThetaBurn: Math.max(...directPoints.map((p) => Math.abs(p.callTheta))),
-              maxThetaStrike: atmPoint?.strike ?? 0,
-              atmIv: atmPoint?.callIv ?? 14.5,
-            },
-          };
-        }
-      }
-    } catch (e) {
-      console.warn("[Sensibull Direct] Connection fallback to Calibrated Engine:", (e as Error).message);
-    }
-  }
-
-  // Generate Sensibull-identical Calibrated Greek View Chart Data
-  // Computes Black-Scholes curves with 21 strike levels centered around ATM
   const atmStrike = Math.round(spot / step) * step;
   const points: SensibullGreekPoint[] = [];
 
-  let peakGamma = 0;
-  let peakGammaStrike = atmStrike;
-  let maxThetaBurn = 0;
-  let maxThetaStrike = atmStrike;
-
-  for (let i = -10; i <= 10; i++) {
+  for (let i = -STRIKES_EACH_SIDE; i <= STRIKES_EACH_SIDE; i++) {
     const strike = atmStrike + i * step;
-    const isAtm = strike === atmStrike;
-
-    // IV Smile / Skew curve (typical Indian index vol skew: OTM puts trade at premium IV)
+    // Assumed parametric IV smile (OTM puts at a premium). A model shape, not market IV.
     const moneyness = (strike - spot) / spot;
-    // Vol skew equation: baseline ~ 14.5% with OTM Put skew
-    const callIvPct = 14.5 - moneyness * 12 + (moneyness * moneyness) * 45;
-    const putIvPct = 14.5 - moneyness * 16 + (moneyness * moneyness) * 60;
-
-    const cIv = Math.max(8.0, Math.min(45.0, callIvPct));
-    const pIv = Math.max(8.0, Math.min(50.0, putIvPct));
-
-    const cGreeks = calculateGreeks({
+    const cIv = Math.max(8.0, Math.min(45.0, 14.5 - moneyness * 12 + moneyness * moneyness * 45));
+    const pIv = Math.max(8.0, Math.min(50.0, 14.5 - moneyness * 16 + moneyness * moneyness * 60));
+    const c = calculateGreeks({
       spot,
       strike,
       timeToExpiryYears: tYears,
       volatility: cIv / 100,
       type: "CE",
     });
-
-    const pGreeks = calculateGreeks({
+    const p = calculateGreeks({
       spot,
       strike,
       timeToExpiryYears: tYears,
       volatility: pIv / 100,
       type: "PE",
     });
-
-    if (cGreeks.gamma > peakGamma) {
-      peakGamma = cGreeks.gamma;
-      peakGammaStrike = strike;
-    }
-
-    const absTheta = Math.abs(cGreeks.theta);
-    if (absTheta > maxThetaBurn) {
-      maxThetaBurn = absTheta;
-      maxThetaStrike = strike;
-    }
-
     points.push({
       strike,
-      callDelta: +cGreeks.delta.toFixed(3),
-      putDelta: +pGreeks.delta.toFixed(3),
-      callGamma: +cGreeks.gamma.toFixed(4),
-      putGamma: +pGreeks.gamma.toFixed(4),
-      callTheta: +cGreeks.theta.toFixed(1),
-      putTheta: +pGreeks.theta.toFixed(1),
-      callVega: +cGreeks.vega.toFixed(1),
-      putVega: +pGreeks.vega.toFixed(1),
+      callDelta: +c.delta.toFixed(3),
+      putDelta: +p.delta.toFixed(3),
+      callGamma: +c.gamma.toFixed(4),
+      putGamma: +p.gamma.toFixed(4),
+      callTheta: +c.theta.toFixed(1),
+      putTheta: +p.theta.toFixed(1),
+      callVega: +c.vega.toFixed(1),
+      putVega: +p.vega.toFixed(1),
       callIv: +cIv.toFixed(1),
       putIv: +pIv.toFixed(1),
-      callLtp: +cGreeks.price.toFixed(2),
-      putLtp: +pGreeks.price.toFixed(2),
-      isAtm,
+      callLtp: +c.price.toFixed(2),
+      putLtp: +p.price.toFixed(2),
+      isAtm: strike === atmStrike,
       isItmCall: strike < spot,
       isItmPut: strike > spot,
     });
   }
-
-  const atmPt = points.find((p) => p.isAtm) ?? points[10];
+  const { summary } = summarize(points, spot, step);
 
   return {
     symbol: cleanSym,
@@ -254,18 +419,23 @@ export async function fetchSensibullGreeksChartData(
     expiryDate,
     atmStrike,
     daysToExpiry,
-    provider: cfg.isGlobal ? "CBOE / CME Global Feed" : "Sensibull Greeks Engine (Calibrated Live Feed)",
-    dataSourceStatus: cfg.isGlobal ? "LIVE_CONNECTED" : "CALIBRATED_ENGINE",
+    provider: isGlobal
+      ? "CBOE / CME Global Feed"
+      : "Sensibull Greeks Engine (Calibrated Live Feed)",
+    dataSourceStatus: "CALIBRATED_ENGINE",
     timestamp: new Date().toISOString(),
     points,
-    summary: {
-      atmCallDelta: atmPt.callDelta,
-      atmPutDelta: atmPt.putDelta,
-      peakGamma: +peakGamma.toFixed(4),
-      peakGammaStrike,
-      maxThetaBurn: +maxThetaBurn.toFixed(1),
-      maxThetaStrike,
-      atmIv: atmPt.callIv,
-    },
+    summary,
+    isSimulated: true,
+    dataSource: "black-scholes model",
+    freshnessStatus: quote?.freshnessStatus ?? "STALE",
+    dataQualityNotes: [
+      "SIMULATED: theoretical Black-Scholes curves with an assumed IV smile (ALLOW_MOCK_DATA=true). Not market data and not from Sensibull.",
+      quote
+        ? `Underlying price is a real ${quote.source} quote.`
+        : "Underlying price is a static reference level (no live quote reachable).",
+      ...notes,
+    ],
+    sensibullStatus,
   };
 }

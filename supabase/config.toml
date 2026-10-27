@@ -1,1 +1,7 @@
+# Keep this file minimal on purpose. Only the project linkage lives here.
+# Adding [auth]/[api] sections would make `supabase config push` overwrite the
+# remote project's auth settings (site_url, redirect URLs, signup, JWT expiry)
+# with local defaults. Manage those in the Supabase dashboard instead:
+#   - Auth > Providers: disable "Allow new users to sign up" (the app has no end-user signup)
+#   - API > Exposed schemas: public only
 project_id = "sofhttaxppwkwsrywstt"

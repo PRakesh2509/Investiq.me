@@ -8,17 +8,14 @@
 import { tradingSessionService } from "./tradingSessionService.ts";
 
 export type DataFreshnessStatus =
-  | "LIVE"
-  | "DELAYED"
-  | "STALE"
-  | "MARKET_CLOSED"
-  | "INSUFFICIENT_DATA";
+  "LIVE" | "DELAYED" | "STALE" | "MARKET_CLOSED" | "INSUFFICIENT_DATA";
 
 export interface DataValidationIssue {
   field: string;
   severity: "CRITICAL" | "WARNING" | "INFO";
   message: string;
-  observedValue?: string | number | boolean | null | Record<string, string | number | boolean | null | undefined>;
+  observedValue?:
+    string | number | boolean | null | Record<string, string | number | boolean | null | undefined>;
 }
 
 export interface MarketDataValidationReport {
@@ -51,16 +48,14 @@ export class MarketDataValidationService {
    */
   public validateQuote(
     data: QuoteValidationInput,
-    maxAllowedAgeSeconds: number = 180
+    maxAllowedAgeSeconds: number = 180,
   ): MarketDataValidationReport {
     const issues: DataValidationIssue[] = [];
     const now = Date.now();
 
     // 1. Parse timestamp
     const tsMillis =
-      typeof data.timestamp === "number"
-        ? data.timestamp
-        : new Date(data.timestamp).getTime();
+      typeof data.timestamp === "number" ? data.timestamp : new Date(data.timestamp).getTime();
 
     const ageSeconds = Math.max(0, Math.floor((now - tsMillis) / 1000));
 
@@ -147,7 +142,7 @@ export class MarketDataValidationService {
     }
 
     // 5. Freshness status determination
-    const sessionInfo = tradingSessionService.getSessionInfo();
+    const sessionInfo = tradingSessionService.getSessionInfo(undefined, data.instrument);
     let freshnessStatus: DataFreshnessStatus = "LIVE";
 
     if (issues.some((i) => i.severity === "CRITICAL")) {
@@ -178,7 +173,8 @@ export class MarketDataValidationService {
 
     const criticalCount = issues.filter((i) => i.severity === "CRITICAL").length;
     const warningsCount = issues.filter((i) => i.severity === "WARNING").length;
-    const isValid = criticalCount === 0 && freshnessStatus !== "STALE" && freshnessStatus !== "INSUFFICIENT_DATA";
+    const isValid =
+      criticalCount === 0 && freshnessStatus !== "STALE" && freshnessStatus !== "INSUFFICIENT_DATA";
 
     return {
       isValid,

@@ -19,9 +19,16 @@ export const Route = createFileRoute("/desktop/funds")({
   head: () => ({
     meta: [
       { title: "Mutual Funds — InvestIQ" },
-      { name: "description", content: "Every mutual fund we track with live NAV, historical charts, expense ratios and returns." },
+      {
+        name: "description",
+        content:
+          "Every mutual fund we track with live NAV, historical charts, expense ratios and returns.",
+      },
       { property: "og:title", content: "Mutual Funds — InvestIQ" },
-      { property: "og:description", content: "Live NAV & performance for India's top mutual funds across 7 categories." },
+      {
+        property: "og:description",
+        content: "Live NAV & performance for India's top mutual funds across 7 categories.",
+      },
     ],
   }),
   component: FundsPage,
@@ -30,7 +37,13 @@ export const Route = createFileRoute("/desktop/funds")({
 type Interval = "1M" | "3M" | "1Y" | "3Y" | "5Y" | "10Y" | "ALL";
 const INTERVALS: Interval[] = ["1M", "3M", "1Y", "3Y", "5Y", "10Y", "ALL"];
 const DAYS: Record<Interval, number | null> = {
-  "1M": 30, "3M": 91, "1Y": 365, "3Y": 3 * 365, "5Y": 5 * 365, "10Y": 10 * 365, ALL: null,
+  "1M": 30,
+  "3M": 91,
+  "1Y": 365,
+  "3Y": 3 * 365,
+  "5Y": 5 * 365,
+  "10Y": 10 * 365,
+  ALL: null,
 };
 
 function parseDdMmYyyy(s: string): number {
@@ -91,7 +104,8 @@ function FundsPage() {
       <div>
         <h1 className="font-display text-3xl font-semibold">Mutual Funds</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Live NAV, historical charts and returns across every fund we track. Daily Telegram digest ranks the top 5 per category.
+          Live NAV, historical charts and returns across every fund we track. Daily Telegram digest
+          ranks the top 5 per category.
         </p>
       </div>
 
@@ -126,7 +140,9 @@ function FundsPage() {
               <h2 className="font-display text-xl font-semibold">{selected.name}</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 {selected.amc} · {selected.manager} ({selected.managerYears}y exp) ·{" "}
-                <span className={`ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] ${riskColor(selected.risk)}`}>
+                <span
+                  className={`ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] ${riskColor(selected.risk)}`}
+                >
                   Risk: {selected.risk}
                 </span>
               </p>
@@ -136,8 +152,14 @@ function FundsPage() {
                 {data?.currentNav ? `₹${data.currentNav.toFixed(2)}` : isFetching ? "…" : "—"}
               </p>
               {data?.changePct != null && (
-                <p className={`mt-1 inline-flex items-center gap-1 text-xs ${data.changePct >= 0 ? "text-success" : "text-destructive"}`}>
-                  {data.changePct >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                <p
+                  className={`mt-1 inline-flex items-center gap-1 text-xs ${data.changePct >= 0 ? "text-success" : "text-destructive"}`}
+                >
+                  {data.changePct >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
                   {data.changeAbs?.toFixed(2)} ({data.changePct.toFixed(2)}%)
                 </p>
               )}
@@ -189,12 +211,30 @@ function FundsPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#202830" opacity={0.6} />
                   <XAxis dataKey="t" stroke="#8a94a3" fontSize={10} minTickGap={40} />
-                  <YAxis stroke="#8a94a3" fontSize={10} domain={["auto", "auto"]} tickFormatter={(v) => `₹${v}`} />
+                  <YAxis
+                    stroke="#8a94a3"
+                    fontSize={10}
+                    domain={["auto", "auto"]}
+                    tickFormatter={(v) => `₹${v}`}
+                  />
                   <Tooltip
-                    contentStyle={{ background: "#11171D", border: "1px solid #202830", borderRadius: 8, fontSize: 12 }}
+                    contentStyle={{
+                      background: "#11171D",
+                      border: "1px solid #202830",
+                      borderRadius: 8,
+                      fontSize: 12,
+                    }}
                     formatter={(v: number) => [`₹${v.toFixed(2)}`, "NAV"]}
                   />
-                  <Area type="monotone" dataKey="nav" stroke="#E7A92A" fill="url(#navFill)" strokeWidth={2} isAnimationActive={false} dot={false} />
+                  <Area
+                    type="monotone"
+                    dataKey="nav"
+                    stroke="#E7A92A"
+                    fill="url(#navFill)"
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                    dot={false}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -210,9 +250,14 @@ function FundsPage() {
               ["5Y (p.a.)", data?.return5y],
               ["ALL (p.a.)", data?.returnAll],
             ].map(([label, v]) => (
-              <div key={label as string} className="rounded-lg border border-border bg-background/50 p-2">
+              <div
+                key={label as string}
+                className="rounded-lg border border-border bg-background/50 p-2"
+              >
                 <p className="text-[10px] uppercase text-muted-foreground">{label}</p>
-                <p className={`mt-1 font-medium ${typeof v === "number" ? (v >= 0 ? "text-success" : "text-destructive") : ""}`}>
+                <p
+                  className={`mt-1 font-medium ${typeof v === "number" ? (v >= 0 ? "text-success" : "text-destructive") : ""}`}
+                >
                   {typeof v === "number" ? `${v >= 0 ? "+" : ""}${v.toFixed(1)}%` : "—"}
                 </p>
               </div>
@@ -221,9 +266,17 @@ function FundsPage() {
 
           {/* Fund metadata */}
           <div className="grid grid-cols-3 gap-3 pt-2 text-xs">
-            <Meta label="Expense ratio" v={`${selected.expenseRatio.toFixed(2)}%`} sub={`Category avg ${selected.categoryAvgER.toFixed(2)}%`} />
+            <Meta
+              label="Expense ratio"
+              v={`${selected.expenseRatio.toFixed(2)}%`}
+              sub={`Category avg ${selected.categoryAvgER.toFixed(2)}%`}
+            />
             <Meta label="Min SIP" v={`₹${selected.minSip}`} sub="Monthly" />
-            <Meta label="Rating" v={"★".repeat(selected.rating) + "☆".repeat(5 - selected.rating)} sub="InvestIQ score" />
+            <Meta
+              label="Rating"
+              v={"★".repeat(selected.rating) + "☆".repeat(5 - selected.rating)}
+              sub="InvestIQ score"
+            />
           </div>
 
           <div className="rounded-lg border border-border bg-background/40 p-4 text-xs text-muted-foreground">
@@ -259,7 +312,9 @@ function FundsPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <p className="text-[10px] text-muted-foreground">#{i + 1} · {f.amc}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          #{i + 1} · {f.amc}
+                        </p>
                         {inTop5 && (
                           <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-medium text-primary">
                             TOP 5 · TG
@@ -274,14 +329,17 @@ function FundsPage() {
                   </div>
                   <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
                     <span>ER {f.expenseRatio.toFixed(2)}%</span>
-                    <span className={`rounded-full px-2 py-0.5 ${riskColor(f.risk)}`}>{f.risk}</span>
+                    <span className={`rounded-full px-2 py-0.5 ${riskColor(f.risk)}`}>
+                      {f.risk}
+                    </span>
                   </div>
                 </button>
               );
             })}
           </div>
           <p className="text-[10px] text-muted-foreground">
-            NAV from AMFI (mfapi.in). Only the top 5 per category are pushed to Telegram. Past performance ≠ future results.
+            NAV from AMFI (mfapi.in). Only the top 5 per category are pushed to Telegram. Past
+            performance ≠ future results.
           </p>
         </aside>
       </div>

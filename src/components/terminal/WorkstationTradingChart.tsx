@@ -6,6 +6,7 @@ import {
   HistogramSeries,
   LineStyle,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type UTCTimestamp,
 } from "lightweight-charts";
@@ -45,20 +46,20 @@ export default function WorkstationTradingChart({
   const chartRef = useRef<IChartApi | null>(null);
 
   const seriesRefs = useRef<{
-    candle?: ISeriesApi<any> | null;
-    line?: ISeriesApi<any> | null;
-    ema9?: ISeriesApi<any> | null;
-    ema21?: ISeriesApi<any> | null;
-    vwap?: ISeriesApi<any> | null;
-    supertrend?: ISeriesApi<any> | null;
-    volume?: ISeriesApi<any> | null;
+    candle?: ISeriesApi<"Candlestick"> | null;
+    line?: ISeriesApi<"Line"> | null;
+    ema9?: ISeriesApi<"Line"> | null;
+    ema21?: ISeriesApi<"Line"> | null;
+    vwap?: ISeriesApi<"Line"> | null;
+    supertrend?: ISeriesApi<"Line"> | null;
+    volume?: ISeriesApi<"Histogram"> | null;
   }>({});
 
   const priceLinesRef = useRef<{
-    entry?: any;
-    tp1?: any;
-    tp2?: any;
-    sl?: any;
+    entry?: IPriceLine;
+    tp1?: IPriceLine;
+    tp2?: IPriceLine;
+    sl?: IPriceLine;
   }>({});
 
   // 1. Initialize Chart
@@ -183,7 +184,12 @@ export default function WorkstationTradingChart({
 
   // 2. Update Bars and Indicators whenever data or toggles change
   useEffect(() => {
-    if (!bars.length || !chartRef.current) return;
+    if (!chartRef.current) return;
+    if (!bars.length) {
+      // Clear stale series so a previous instrument never lingers behind a loading state.
+      for (const series of Object.values(seriesRefs.current)) series?.setData([]);
+      return;
+    }
 
     // Clean, sort, and deduplicate timestamps for Lightweight Charts
     const sorted = [...bars].sort((a, b) => a.time - b.time);
@@ -238,8 +244,8 @@ export default function WorkstationTradingChart({
     const closes = cleanBars.map((b) => b.close);
     const e9 = ema(closes, 9);
     const e21 = ema(closes, 21);
-    const vw = vwap(cleanBars as any);
-    const st = supertrend(cleanBars as any, 10, 3);
+    const vw = vwap(cleanBars);
+    const st = supertrend(cleanBars, 10, 3);
 
     const makeLinePoints = (vals: (number | null)[]) => {
       const pts: { time: UTCTimestamp; value: number }[] = [];
@@ -302,25 +308,21 @@ export default function WorkstationTradingChart({
 
     // 3. Price Lines (Entry, TP1, TP2, Stop Loss)
     const activeTargetSeries = isCandle ? seriesRefs.current.candle : seriesRefs.current.line;
+    // Lines may live on either series (chart type can switch), so clear both.
+    const owners = [seriesRefs.current.candle, seriesRefs.current.line];
+    for (const key of ["entry", "tp1", "tp2", "sl"] as const) {
+      const line = priceLinesRef.current[key];
+      if (!line) continue;
+      for (const owner of owners) {
+        try {
+          owner?.removePriceLine(line);
+        } catch {
+          // line belongs to the other series
+        }
+      }
+      priceLinesRef.current[key] = undefined;
+    }
     if (activeTargetSeries) {
-      // Clear old price lines
-      if (priceLinesRef.current.entry) {
-        activeTargetSeries.removePriceLine(priceLinesRef.current.entry);
-        priceLinesRef.current.entry = undefined;
-      }
-      if (priceLinesRef.current.tp1) {
-        activeTargetSeries.removePriceLine(priceLinesRef.current.tp1);
-        priceLinesRef.current.tp1 = undefined;
-      }
-      if (priceLinesRef.current.tp2) {
-        activeTargetSeries.removePriceLine(priceLinesRef.current.tp2);
-        priceLinesRef.current.tp2 = undefined;
-      }
-      if (priceLinesRef.current.sl) {
-        activeTargetSeries.removePriceLine(priceLinesRef.current.sl);
-        priceLinesRef.current.sl = undefined;
-      }
-
       if (setupActive) {
         if (typeof entry === "number" && entry > 0) {
           priceLinesRef.current.entry = activeTargetSeries.createPriceLine({

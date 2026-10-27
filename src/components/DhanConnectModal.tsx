@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getDhanStatus, connectDhanAccount, disconnectDhanAccount } from "@/lib/dhan.functions";
 import { ExternalLink, ShieldCheck, Zap, X, RefreshCw, KeyRound, CheckCircle2 } from "lucide-react";
@@ -18,7 +18,11 @@ export function DhanConnectModal({
   const disconnectFn = useServerFn(disconnectDhanAccount);
 
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<{ connected: boolean; clientId: string | null; feedSource: string }>({
+  const [status, setStatus] = useState<{
+    connected: boolean;
+    clientId: string | null;
+    feedSource: string;
+  }>({
     connected: false,
     clientId: null,
     feedSource: "Checking...",
@@ -35,12 +39,17 @@ export function DhanConnectModal({
         setClientId((prev) => prev || (res as any).configuredClientId);
       }
       if (onStatusChange) onStatusChange(res.feedSource);
-    } catch {}
+    } catch {
+      // Status is informational; keep the previous value when the request fails.
+    }
   };
 
+  // Latest callback via ref so the effect only re-runs when the modal opens/closes.
+  const refreshStatusRef = useRef(refreshStatus);
+  refreshStatusRef.current = refreshStatus;
   useEffect(() => {
     if (isOpen) {
-      refreshStatus();
+      void refreshStatusRef.current();
       setErrorMsg("");
     }
   }, [isOpen]);
@@ -109,7 +118,9 @@ export function DhanConnectModal({
           </div>
           <div>
             <h2 className="font-display text-lg font-semibold">DhanHQ v2 API Feed</h2>
-            <p className="text-xs text-muted-foreground">Colocated ultra-low latency live tick feed</p>
+            <p className="text-xs text-muted-foreground">
+              Colocated ultra-low latency live tick feed
+            </p>
           </div>
         </div>
 

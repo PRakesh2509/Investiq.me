@@ -51,6 +51,13 @@ export interface ModelPerformanceMetrics {
 
 export interface BacktestValidationReport {
   instrument: string;
+  /**
+   * The per-model figures below are a STATIC reference model, not the output of a live
+   * backtest over market data. Consumers must not treat them as realised performance.
+   */
+  isSimulated: boolean;
+  dataSource: "STATIC_REFERENCE_MODEL";
+  disclaimer: string;
   testPeriod: string;
   totalHistoricalEvents: number;
   models: ModelPerformanceMetrics[];
@@ -64,8 +71,36 @@ export interface BacktestValidationReport {
   timestamp: string;
 }
 
+export type RealizedStrategyPerformance =
+  | { available: false; reason: string }
+  | {
+      available: true;
+      winRatePct: number;
+      profitFactor: number;
+      sampleSignalsCount: number;
+      period: string;
+    };
+
 /**
- * Generate a validated out-of-sample backtest comparison
+ * Realised, verifiable strategy statistics for use as a scoring input.
+ *
+ * No live signal ledger or historical option-price archive is wired into this module, so
+ * a genuine win rate / profit factor cannot be computed. The static reference model below
+ * is deliberately NOT returned here: scoring must treat performance as unavailable rather
+ * than feed illustrative numbers into a trade decision.
+ */
+export function getRealizedStrategyPerformance(
+  _instrument = "NIFTY 50",
+): RealizedStrategyPerformance {
+  return {
+    available: false,
+    reason:
+      "No verified signal ledger or historical option-price archive is available to backtest against.",
+  };
+}
+
+/**
+ * Static reference comparison of the four model baselines (illustrative, not live).
  */
 export function runStrategyBacktestValidation(
   instrument = "NIFTY 50",
@@ -76,7 +111,8 @@ export function runStrategyBacktestValidation(
   const techOnly: ModelPerformanceMetrics = {
     modelId: "TECHNICAL_ONLY",
     modelName: "1. Technical-Only Baseline",
-    description: "Trades purely on EMA 9/21 cross, Supertrend flip, and RSI overbought/oversold levels.",
+    description:
+      "Trades purely on EMA 9/21 cross, Supertrend flip, and RSI overbought/oversold levels.",
     totalSignals: sampleSize,
     tradesExecuted: 232,
     tradesFilteredOut: 18,
@@ -92,10 +128,10 @@ export function runStrategyBacktestValidation(
     brierCalibrationScore: 0.248,
     averageTradeDurationMin: 42,
     regimeBreakdown: {
-      "TRENDING_BULLISH": { trades: 68, winRatePct: 69.1, netPnl: 72400 },
-      "TRENDING_BEARISH": { trades: 54, winRatePct: 64.8, netPnl: 58200 },
-      "RANGE_BOUND": { trades: 82, winRatePct: 37.8, netPnl: -26400 },
-      "EVENT_DRIVEN": { trades: 28, winRatePct: 42.8, netPnl: 8760 },
+      TRENDING_BULLISH: { trades: 68, winRatePct: 69.1, netPnl: 72400 },
+      TRENDING_BEARISH: { trades: 54, winRatePct: 64.8, netPnl: 58200 },
+      RANGE_BOUND: { trades: 82, winRatePct: 37.8, netPnl: -26400 },
+      EVENT_DRIVEN: { trades: 28, winRatePct: 42.8, netPnl: 8760 },
     },
   };
 
@@ -104,7 +140,8 @@ export function runStrategyBacktestValidation(
   const greeksAware: ModelPerformanceMetrics = {
     modelId: "GREEKS_AWARE",
     modelName: "2. Greeks-Aware Strategy",
-    description: "Adds ATM IV checks, theta burn limits, and avoids high-gamma OTM purchases near expiry.",
+    description:
+      "Adds ATM IV checks, theta burn limits, and avoids high-gamma OTM purchases near expiry.",
     totalSignals: sampleSize,
     tradesExecuted: 184,
     tradesFilteredOut: 66,
@@ -120,10 +157,10 @@ export function runStrategyBacktestValidation(
     brierCalibrationScore: 0.212,
     averageTradeDurationMin: 36,
     regimeBreakdown: {
-      "TRENDING_BULLISH": { trades: 62, winRatePct: 72.5, netPnl: 78500 },
-      "TRENDING_BEARISH": { trades: 50, winRatePct: 68.0, netPnl: 64100 },
-      "RANGE_BOUND": { trades: 52, winRatePct: 48.0, netPnl: 4800 },
-      "EVENT_DRIVEN": { trades: 20, winRatePct: 45.0, netPnl: -3200 },
+      TRENDING_BULLISH: { trades: 62, winRatePct: 72.5, netPnl: 78500 },
+      TRENDING_BEARISH: { trades: 50, winRatePct: 68.0, netPnl: 64100 },
+      RANGE_BOUND: { trades: 52, winRatePct: 48.0, netPnl: 4800 },
+      EVENT_DRIVEN: { trades: 20, winRatePct: 45.0, netPnl: -3200 },
     },
   };
 
@@ -132,7 +169,8 @@ export function runStrategyBacktestValidation(
   const newsAware: ModelPerformanceMetrics = {
     modelId: "NEWS_AWARE",
     modelName: "3. News & Macro-Aware Strategy",
-    description: "Aligns directional signals with macroeconomic policy releases and geopolitical risk posture.",
+    description:
+      "Aligns directional signals with macroeconomic policy releases and geopolitical risk posture.",
     totalSignals: sampleSize,
     tradesExecuted: 198,
     tradesFilteredOut: 52,
@@ -148,10 +186,10 @@ export function runStrategyBacktestValidation(
     brierCalibrationScore: 0.228,
     averageTradeDurationMin: 45,
     regimeBreakdown: {
-      "TRENDING_BULLISH": { trades: 65, winRatePct: 70.7, netPnl: 74200 },
-      "TRENDING_BEARISH": { trades: 52, winRatePct: 67.3, netPnl: 61800 },
-      "RANGE_BOUND": { trades: 63, winRatePct: 41.2, netPnl: -14200 },
-      "EVENT_DRIVEN": { trades: 18, winRatePct: 61.1, netPnl: 6600 },
+      TRENDING_BULLISH: { trades: 65, winRatePct: 70.7, netPnl: 74200 },
+      TRENDING_BEARISH: { trades: 52, winRatePct: 67.3, netPnl: 61800 },
+      RANGE_BOUND: { trades: 63, winRatePct: 41.2, netPnl: -14200 },
+      EVENT_DRIVEN: { trades: 18, winRatePct: 61.1, netPnl: 6600 },
     },
   };
 
@@ -160,7 +198,8 @@ export function runStrategyBacktestValidation(
   const unifiedModel: ModelPerformanceMetrics = {
     modelId: "UNIFIED_MODEL",
     modelName: "4. Full Unified Model (InvestIQ)",
-    description: "Integrates Technicals, Greeks, Volatility, OI Positioning, Macro News, Liquidity, and Hard Risk Gates.",
+    description:
+      "Integrates Technicals, Greeks, Volatility, OI Positioning, Macro News, Liquidity, and Hard Risk Gates.",
     totalSignals: sampleSize,
     tradesExecuted: 146,
     tradesFilteredOut: 104, // 41.6% of trades safely filtered out by NO TRADE rules
@@ -176,16 +215,20 @@ export function runStrategyBacktestValidation(
     brierCalibrationScore: 0.174, // Substantially improved calibration accuracy
     averageTradeDurationMin: 34,
     regimeBreakdown: {
-      "TRENDING_BULLISH": { trades: 58, winRatePct: 77.5, netPnl: 89400 },
-      "TRENDING_BEARISH": { trades: 46, winRatePct: 73.9, netPnl: 76200 },
-      "RANGE_BOUND": { trades: 32, winRatePct: 56.2, netPnl: 12420 },
-      "EVENT_DRIVEN": { trades: 10, winRatePct: 70.0, netPnl: 1000 },
+      TRENDING_BULLISH: { trades: 58, winRatePct: 77.5, netPnl: 89400 },
+      TRENDING_BEARISH: { trades: 46, winRatePct: 73.9, netPnl: 76200 },
+      RANGE_BOUND: { trades: 32, winRatePct: 56.2, netPnl: 12420 },
+      EVENT_DRIVEN: { trades: 10, winRatePct: 70.0, netPnl: 1000 },
     },
   };
 
   return {
     instrument,
-    testPeriod: "Last 6 Months (Out-of-Sample Walk-Forward)",
+    isSimulated: true,
+    dataSource: "STATIC_REFERENCE_MODEL",
+    disclaimer:
+      "Illustrative reference figures. They are not computed from live market data or a verified signal ledger and must not be read as realised or expected performance.",
+    testPeriod: "Static reference model (illustrative, not a live backtest)",
     totalHistoricalEvents: sampleSize,
     models: [techOnly, greeksAware, newsAware, unifiedModel],
     comparativeInsight: {
@@ -197,7 +240,7 @@ export function runStrategyBacktestValidation(
       unifiedAlphaConclusion:
         "Filtering 41.6% of low-edge setups via NO TRADE rules reduced maximum drawdown from 18.4% to 8.8% while increasing Profit Factor from 1.34 to 2.14.",
       honestEvidenceSummary:
-        "The empirical evidence validates that multi-factor confluence with deterministic capital-preservation risk gates measurably outperforms single-source technical models after deducting full exchange statutory fees, taxes, and slippage.",
+        "These figures are an illustrative reference model, not verified empirical results. They show the intended relative behaviour of each strategy tier (risk gates and filters reduce trade count and drawdown) but have not been validated against historical market data.",
     },
     timestamp: new Date().toISOString(),
   };

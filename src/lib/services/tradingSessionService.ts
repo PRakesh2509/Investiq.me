@@ -11,12 +11,7 @@
  */
 
 export type SessionPhase =
-  | "PRE_MARKET"
-  | "NORMAL_SESSION"
-  | "POST_MARKET"
-  | "CLOSED"
-  | "WEEKEND"
-  | "HOLIDAY";
+  "PRE_MARKET" | "NORMAL_SESSION" | "POST_MARKET" | "CLOSED" | "WEEKEND" | "HOLIDAY";
 
 export interface TradingSessionInfo {
   isMarketOpen: boolean;
@@ -104,9 +99,14 @@ export class TradingSessionService {
     const minuteOfDay = hours * 60 + minutes;
 
     // Check if instrument is Global (US Equity & CME Derivatives)
-    const isGlobal = ["S&P 500", "NASDAQ 100", "DOW JONES", "SP500", "NASDAQ100", "DOWJONES"].includes(
-      (instrument || "").toUpperCase().replace(/[^A-Z0-9]/g, "")
-    ) || (instrument || "").includes("$") || (instrument || "").includes("S&P") || (instrument || "").includes("NASDAQ") || (instrument || "").includes("DOW");
+    const isGlobal =
+      ["S&P 500", "NASDAQ 100", "DOW JONES", "SP500", "NASDAQ100", "DOWJONES"].includes(
+        (instrument || "").toUpperCase().replace(/[^A-Z0-9]/g, ""),
+      ) ||
+      (instrument || "").includes("$") ||
+      (instrument || "").includes("S&P") ||
+      (instrument || "").includes("NASDAQ") ||
+      (instrument || "").includes("DOW");
 
     if (isGlobal) {
       // US / CME Globex hours:
@@ -131,7 +131,9 @@ export class TradingSessionService {
       return {
         isMarketOpen: true,
         phase: "NORMAL_SESSION",
-        sessionText: isRegularUsSession ? "US REGULAR SESSION LIVE (NYSE / NASDAQ / CBOE)" : "CME GLOBEX EXTENDED SESSION ACTIVE",
+        sessionText: isRegularUsSession
+          ? "US REGULAR SESSION LIVE (NYSE / NASDAQ / CBOE)"
+          : "CME GLOBEX EXTENDED SESSION ACTIVE",
         istTimeString: formattedTime,
         istDateString: isoDateString,
         nextSessionOpensAt: "Live continuous session active",

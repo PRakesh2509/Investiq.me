@@ -50,7 +50,10 @@ export async function getAiMarketAnalysis(
         return liveResult;
       }
     } catch (err) {
-      console.warn("[aiMarketAnalysis] Gemini API error, using structured fallback:", (err as Error).message);
+      console.warn(
+        "[aiMarketAnalysis] Gemini API error, using structured fallback:",
+        (err as Error).message,
+      );
     }
   }
 
@@ -69,13 +72,18 @@ async function queryGeminiMarketSynthesis(
   const models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest"];
 
   // Condense verified news into structured untrusted input text
-  const newsDigest = events.slice(0, 6).map((e, i) => `
+  const newsDigest = events
+    .slice(0, 6)
+    .map(
+      (e, i) => `
 [Event ${i + 1}] Category: ${e.categoryLabel}
 Source: ${e.source} (${e.publishedAt})
 Headline: ${e.headline}
 Fact: ${e.factSummary}
 Affected: ${e.affectedSectors.join(", ")} | Exposure: ${e.potentialIndianMarketExposure}
-`).join("\n");
+`,
+    )
+    .join("\n");
 
   const prompt = `You are a senior institutional macroeconomic and derivatives risk officer.
 Analyze the following VERIFIED real-world financial events for the Indian benchmark ${instrument}.
@@ -105,14 +113,12 @@ ${newsDigest}
 `;
 
   for (const model of models) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
-
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      // API key goes in a header, never in the URL (URLs leak into logs and error messages).
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -120,10 +126,8 @@ ${newsDigest}
             responseMimeType: "application/json",
           },
         }),
-        signal: controller.signal,
+        signal: AbortSignal.timeout(12_000),
       });
-
-      clearTimeout(timeout);
 
       if (!res.ok) {
         continue;
@@ -133,35 +137,67 @@ ${newsDigest}
       const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!rawText) continue;
 
-      const parsed = JSON.parse(rawText.replace(/```json/g, "").replace(/```/g, "").trim());
-      const modelDisplayName = model === "gemini-3.5-flash" ? "Google Gemini 3.5 Flash" : model === "gemini-3.8-flash" ? "Google Gemini 3.8 Flash" : "Google Gemini Flash";
+      const parsed = JSON.parse(
+        rawText
+          .replace(/```json/g, "")
+          .replace(/```/g, "")
+          .trim(),
+      );
+      const modelDisplayName =
+        model === "gemini-3.5-flash"
+          ? "Google Gemini 3.5 Flash"
+          : model === "gemini-3.8-flash"
+            ? "Google Gemini 3.8 Flash"
+            : "Google Gemini Flash";
 
       return {
-        marketSummary: parsed.marketSummary || "Macro factors reflect balanced domestic liquidity and steady policy.",
-        bias: (["BULLISH", "BEARISH", "NEUTRAL"].includes(parsed.bias) ? parsed.bias : "NEUTRAL") as any,
+        marketSummary:
+          parsed.marketSummary ||
+          "Macro factors reflect balanced domestic liquidity and steady policy.",
+        bias: (["BULLISH", "BEARISH", "NEUTRAL"].includes(parsed.bias)
+          ? parsed.bias
+          : "NEUTRAL") as any,
         confidenceScore: Math.min(85, Math.max(50, Number(parsed.confidenceScore) || 72)),
-        geopoliticalRiskStatus: (["BENIGN", "MODERATE", "ELEVATED", "CRITICAL"].includes(parsed.geopoliticalRiskStatus) ? parsed.geopoliticalRiskStatus : "MODERATE") as any,
-        geopoliticalSummary: parsed.geopoliticalSummary || "Crude prices remain in a bounded range with monitored sea-lane risks.",
-        macroSummary: parsed.macroSummary || "RBI rate stability and disinflating trends support equity valuation multiples.",
-        keyCatalysts: Array.isArray(parsed.keyCatalysts) && parsed.keyCatalysts.length > 0
-          ? parsed.keyCatalysts.slice(0, 3)
-          : ["Cooling crude import bill", "DII SIP equity absorption"],
-        keyRisks: Array.isArray(parsed.keyRisks) && parsed.keyRisks.length > 0
-          ? parsed.keyRisks.slice(0, 3)
-          : ["Geopolitical supply shocks", "FII portfolio rebalancing"],
-        sectorImpacts: Array.isArray(parsed.sectorImpacts) && parsed.sectorImpacts.length > 0
-          ? parsed.sectorImpacts.slice(0, 4)
-          : [
-              { sector: "Paints & Aviation", impact: "POSITIVE", reasoning: "Softening crude oil prices reduce direct input fuel costs." },
-              { sector: "Banking & Fin", impact: "POSITIVE", reasoning: "Resilient domestic credit demand and pristine loan asset quality." },
-            ],
+        geopoliticalRiskStatus: (["BENIGN", "MODERATE", "ELEVATED", "CRITICAL"].includes(
+          parsed.geopoliticalRiskStatus,
+        )
+          ? parsed.geopoliticalRiskStatus
+          : "MODERATE") as any,
+        geopoliticalSummary:
+          parsed.geopoliticalSummary ||
+          "Crude prices remain in a bounded range with monitored sea-lane risks.",
+        macroSummary:
+          parsed.macroSummary ||
+          "RBI rate stability and disinflating trends support equity valuation multiples.",
+        keyCatalysts:
+          Array.isArray(parsed.keyCatalysts) && parsed.keyCatalysts.length > 0
+            ? parsed.keyCatalysts.slice(0, 3)
+            : ["Cooling crude import bill", "DII SIP equity absorption"],
+        keyRisks:
+          Array.isArray(parsed.keyRisks) && parsed.keyRisks.length > 0
+            ? parsed.keyRisks.slice(0, 3)
+            : ["Geopolitical supply shocks", "FII portfolio rebalancing"],
+        sectorImpacts:
+          Array.isArray(parsed.sectorImpacts) && parsed.sectorImpacts.length > 0
+            ? parsed.sectorImpacts.slice(0, 4)
+            : [
+                {
+                  sector: "Paints & Aviation",
+                  impact: "POSITIVE",
+                  reasoning: "Softening crude oil prices reduce direct input fuel costs.",
+                },
+                {
+                  sector: "Banking & Fin",
+                  impact: "POSITIVE",
+                  reasoning: "Resilient domestic credit demand and pristine loan asset quality.",
+                },
+              ],
         analyzedAt: Date.now(),
         modelUsed: `${modelDisplayName} (Live Macro Synthesis)`,
         cached: false,
       };
     } catch {
-      clearTimeout(timeout);
-      // Try next model
+      // Timeout / network / bad JSON: try next model
     }
   }
 
@@ -181,7 +217,9 @@ function generateStructuredSynthesisFromFacts(
   const flowEvents = events.filter((e) => e.category === "VOLATILITY_FLOWS");
 
   // Analyze actual text in today's live geopolitical headlines
-  const allGeoText = geoEvents.map((e) => e.headline.toLowerCase() + " " + e.factSummary.toLowerCase()).join(" ");
+  const allGeoText = geoEvents
+    .map((e) => e.headline.toLowerCase() + " " + e.factSummary.toLowerCase())
+    .join(" ");
   const isCrudeEasing =
     allGeoText.includes("fall") ||
     allGeoText.includes("slip") ||
@@ -201,24 +239,25 @@ function generateStructuredSynthesisFromFacts(
   const bias: "BULLISH" | "BEARISH" | "NEUTRAL" = isCrudeEasing
     ? "BULLISH"
     : isCrudeSpiking
-    ? "BEARISH"
-    : "NEUTRAL";
+      ? "BEARISH"
+      : "NEUTRAL";
 
   const geopoliticalRisk: "BENIGN" | "MODERATE" | "ELEVATED" | "CRITICAL" = isCrudeSpiking
     ? "ELEVATED"
     : isCrudeEasing
-    ? "MODERATE"
-    : "MODERATE";
+      ? "MODERATE"
+      : "MODERATE";
 
   const geopoliticalSummary = isCrudeEasing
     ? "Renewed diplomatic dialogues between regional powers and Iran have eased immediate Middle East escalation premiums, softening crude oil prices toward $114-$115/bbl and providing substantial relief to Indian import costs."
     : isCrudeSpiking
-    ? "Active conflict friction points in the Middle East maintain supply disruption premiums on global crude benchmarks, placing temporary margin pressure on energy-intensive domestic sectors."
-    : "Crude oil benchmarks fluctuate within monitored ranges as market participants weigh ongoing Middle East peace initiatives against underlying shipping security risks.";
+      ? "Active conflict friction points in the Middle East maintain supply disruption premiums on global crude benchmarks, placing temporary margin pressure on energy-intensive domestic sectors."
+      : "Crude oil benchmarks fluctuate within monitored ranges as market participants weigh ongoing Middle East peace initiatives against underlying shipping security risks.";
 
-  const macroSummary = monetaryEvents.length > 0
-    ? `Domestic liquidity conditions remain resilient, with central bank policy rates anchoring sovereign bond yields while domestic retail credit demand continues double-digit expansion.`
-    : `RBI policy stability and moderating wholesale inflation trends support corporate borrowing velocity across the ${instrument} index.`;
+  const macroSummary =
+    monetaryEvents.length > 0
+      ? `Domestic liquidity conditions remain resilient, with central bank policy rates anchoring sovereign bond yields while domestic retail credit demand continues double-digit expansion.`
+      : `RBI policy stability and moderating wholesale inflation trends support corporate borrowing velocity across the ${instrument} index.`;
 
   return {
     marketSummary: `${instrument} is positioned with ${bias.toLowerCase()} momentum as ${
@@ -230,7 +269,9 @@ function generateStructuredSynthesisFromFacts(
     geopoliticalSummary,
     macroSummary,
     keyCatalysts: [
-      isCrudeEasing ? "Crude oil softening below $115/bbl easing India's trade deficit" : "Domestic economic resilience",
+      isCrudeEasing
+        ? "Crude oil softening below $115/bbl easing India's trade deficit"
+        : "Domestic economic resilience",
       "Persistent domestic mutual fund SIP monthly inflows (>₹22,000 Cr)",
       "Robust banking credit growth with historically low NPA levels",
     ],
@@ -250,7 +291,8 @@ function generateStructuredSynthesisFromFacts(
       {
         sector: "Banking & Financials",
         impact: "POSITIVE",
-        reasoning: "Healthy net interest margins and multi-year low bad loan provisions support earnings growth.",
+        reasoning:
+          "Healthy net interest margins and multi-year low bad loan provisions support earnings growth.",
       },
       {
         sector: "Energy & Oil (OMCs)",
@@ -262,7 +304,8 @@ function generateStructuredSynthesisFromFacts(
       {
         sector: "Auto & Consumer",
         impact: "POSITIVE",
-        reasoning: "Stable interest rate environment and festive channel replenishment maintain order velocity.",
+        reasoning:
+          "Stable interest rate environment and festive channel replenishment maintain order velocity.",
       },
     ],
     analyzedAt: now,
@@ -340,8 +383,8 @@ export async function analyzeMacroIntelligence(
       synthesis.bias === "BULLISH"
         ? "EXPANSIONARY / BULLISH"
         : synthesis.bias === "BEARISH"
-        ? "DEFENSIVE HEADWINDS"
-        : "CONSOLIDATION NEUTRAL",
+          ? "DEFENSIVE HEADWINDS"
+          : "CONSOLIDATION NEUTRAL",
     bias: synthesis.bias,
     confidenceScore: synthesis.confidenceScore,
     indiaMarketImpact: {

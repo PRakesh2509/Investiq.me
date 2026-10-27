@@ -43,7 +43,10 @@ test("simulateStrategyScenarios evaluates 6 stress-test scenarios for long call"
 
   assert.equal(report.scenarios.length, 6);
   assert.ok(report.aggregateGreeks.netDelta > 0.45 * 75, "Long call delta should be positive");
-  assert.ok(report.aggregateGreeks.netThetaPerDay < 0, "Long call theta should be negative (decaying)");
+  assert.ok(
+    report.aggregateGreeks.netThetaPerDay < 0,
+    "Long call theta should be negative (decaying)",
+  );
 
   // Scenario 1: Bullish move (+1.5%) should produce positive net P&L
   const bullScen = report.scenarios.find((s) => s.scenario.id === "bullish_thrust");
@@ -85,13 +88,7 @@ test("simulateStrategyScenarios aggregates Greeks for Bull Call Spread correctly
     },
   ];
 
-  const report = simulateStrategyScenarios(
-    "NIFTY Bull Call Spread",
-    legs,
-    25000,
-    7,
-    75,
-  );
+  const report = simulateStrategyScenarios("NIFTY Bull Call Spread", legs, 25000, 7, 75);
 
   // Vertical spread has lower net delta than single call
   assert.ok(report.aggregateGreeks.netDelta > 0);

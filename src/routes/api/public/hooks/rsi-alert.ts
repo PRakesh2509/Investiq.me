@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { hookFailure, hookResponse, readJsonBody, requireCronAuth } from "@/lib/cron-auth.server";
+import { escapeHtml, getBotToken, resolveChatIds, sendToMany } from "@/lib/telegram.server";
 
 const DEFAULT_SHEET_URL =
   "https://docs.google.com/spreadsheets/d/1WgMLvMlUewkeljWkwFH6Cmcryytn8cWgIXgsmlq1Syo/edit?usp=sharing";
 const DEFAULT_SHEET_NAME = "Sheet1";
 // Columns in the "Today Buy" section of the sheet
 const COL_RANK = 0; // A
-const COL_RSI = 1;  // B
+const COL_RSI = 1; // B
 const COL_NAME = 2; // C
 
 function parseCsv(text: string): string[][] {
@@ -37,39 +39,22 @@ async function readSheet(url: string, sheetName: string) {
   const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   if (!idMatch) throw new Error("Invalid sheet URL");
   const csvUrl = `https://docs.google.com/spreadsheets/d/${idMatch[1]}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
-  const res = await fetch(csvUrl);
+  const res = await fetch(csvUrl, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) throw new Error(`Sheet HTTP ${res.status}`);
   return parseCsv(await res.text());
-}
-
-// Permanent Telegram chat IDs — always receive the alert.
-const PERMANENT_CHAT_IDS = ["7350570004", "5589831995", "1840901163", "1360613728", "8155139346", "6799336293", "7280324188", "6698697147"];
-
-async function sendTelegram(token: string, chatId: string, text: string) {
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
-  });
-  const json = (await res.json()) as { ok: boolean; description?: string };
-  if (!json.ok) throw new Error(`Telegram(${chatId}): ${json.description ?? "unknown"}`);
 }
 
 export const Route = createFileRoute("/api/public/hooks/rsi-alert")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const denied = await requireCronAuth(request);
+        if (denied) return denied;
         try {
-          const body = (await request?.json().catch(() => ({}))) as { chatIds?: string[] } | undefined;
-          const token = process.env.TELEGRAM_BOT_TOKEN || "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc";
-
-          const envIds = (process.env.TELEGRAM_CHAT_ID ?? "")
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean);
-          const chatIds = body?.chatIds?.length
-            ? Array.from(new Set(body.chatIds.map((s) => String(s).trim()).filter(Boolean)))
-            : Array.from(new Set([...PERMANENT_CHAT_IDS, ...envIds]));
+          const body = await readJsonBody<{ chatIds: string[] }>(request);
+          const token = getBotToken();
+          if (!token) return hookFailure("TELEGRAM_BOT_TOKEN not configured", 503);
+          const chatIds = resolveChatIds(body.chatIds);
 
           const sheetUrl = process.env.RSI_SHEET_URL || DEFAULT_SHEET_URL;
           const sheetName = process.env.RSI_SHEET_NAME || DEFAULT_SHEET_NAME;
@@ -81,9 +66,7 @@ export const Route = createFileRoute("/api/public/hooks/rsi-alert")({
           let baseCol = -1;
           let startIdx = -1;
           for (let i = 0; i < rows.length; i++) {
-            const idx = rows[i].findIndex(
-              (c) => (c ?? "").trim().toLowerCase() === "today buy",
-            );
+            const idx = rows[i].findIndex((c) => (c ?? "").trim().toLowerCase() === "today buy");
             if (idx >= 0) {
               baseCol = idx;
               startIdx = i;
@@ -105,7 +88,7 @@ export const Route = createFileRoute("/api/public/hooks/rsi-alert")({
             .slice(0, 5);
 
           if (picks.length === 0) {
-            return Response.json({ ok: false, error: "No ETF rows found under Today Buy" }, { status: 404 });
+            return hookFailure("No ETF rows found under Today Buy", 404);
           }
 
           const today = new Date().toLocaleDateString("en-IN", {
@@ -117,7 +100,8 @@ export const Route = createFileRoute("/api/public/hooks/rsi-alert")({
           });
 
           const lines = picks.map(
-            (p, i) => `<b>#${i + 1}</b>  <code>${p.name}</code>  ·  RSI <b>${p.rsi.toFixed(2)}</b>`,
+            (p, i) =>
+              `<b>#${i + 1}</b>  <code>${escapeHtml(p.name)}</code>  ·  RSI <b>${p.rsi.toFixed(2)}</b>`,
           );
           const message =
             `📉 <b>InvestIQ — Top 5 Lowest RSI ETFs</b>\n` +
@@ -125,24 +109,18 @@ export const Route = createFileRoute("/api/public/hooks/rsi-alert")({
             lines.join("\n") +
             `\n\n<i>Not investment advice. RSI &lt; 30 = oversold zone.</i>`;
 
-          const results = await Promise.allSettled(
-            chatIds.map((id) => sendTelegram(token, id, message)),
-          );
-          const delivered = results.filter((r) => r.status === "fulfilled").length;
-          const errors = results
-            .filter((r): r is PromiseRejectedResult => r.status === "rejected")
-            .map((r) => (r.reason as Error).message);
-
-          return Response.json({
-            ok: delivered > 0,
-            sent: picks.length,
-            recipients: chatIds,
-            delivered,
-            errors,
+          const res = await sendToMany(token, chatIds, message, { delayMs: 150 });
+          return hookResponse({
+            sent: res.delivered,
+            skipped: 0,
+            errors: res.errors,
+            delivered: res.delivered,
+            recipients: chatIds.length,
             picks,
           });
         } catch (e) {
-          return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });
+          console.error("[rsi-alert]", (e as Error).message);
+          return hookFailure((e as Error).message);
         }
       },
     },

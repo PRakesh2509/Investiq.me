@@ -93,7 +93,8 @@ function scoreGmp(i: QuantInputs): FactorScore {
       label: "GMP Trend",
       weight: w,
       points: round1(w * NEUTRAL),
-      rationale: "No grey-market data available — excluded from the composite instead of dragging it to neutral.",
+      rationale:
+        "No grey-market data available — excluded from the composite instead of dragging it to neutral.",
       estimate: true,
       informative: false,
     };
@@ -107,7 +108,8 @@ function scoreGmp(i: QuantInputs): FactorScore {
   // 8-10% healthy, flat/negative weak.
   const level = clamp01(0.1 + (pct / 15) * 0.9);
   // Slope: rising series rewarded, decaying punished.
-  const slope = first === 0 ? (last > 0 ? 1 : 0.5) : clamp01(0.5 + (last - first) / (Math.abs(first) * 2));
+  const slope =
+    first === 0 ? (last > 0 ? 1 : 0.5) : clamp01(0.5 + (last - first) / (Math.abs(first) * 2));
   const ratio = clamp01(level * 0.65 + slope * 0.35);
   return {
     key: "gmp",
@@ -124,14 +126,17 @@ function scoreGmp(i: QuantInputs): FactorScore {
 function scoreDemand(i: QuantInputs): FactorScore {
   const w = FACTOR_WEIGHTS.demand;
   const s = i.subscription;
-  const vals = [s.qib, s.nii, s.retail, s.overall].filter((x): x is number => Number.isFinite(x as number));
+  const vals = [s.qib, s.nii, s.retail, s.overall].filter((x): x is number =>
+    Number.isFinite(x as number),
+  );
   if (vals.length === 0) {
     return {
       key: "demand",
       label: "Subscription Demand",
       weight: w,
       points: round1(w * NEUTRAL),
-      rationale: "Category-wise subscription not published yet — excluded from the composite until live NSE/BSE bid data arrives.",
+      rationale:
+        "Category-wise subscription not published yet — excluded from the composite until live NSE/BSE bid data arrives.",
       estimate: true,
       informative: false,
     };
@@ -148,7 +153,8 @@ function scoreDemand(i: QuantInputs): FactorScore {
   const ratio = clamp01(
     curve(s.qib) * 0.4 + curve(s.nii) * 0.25 + curve(s.retail) * 0.15 + curve(s.overall) * 0.2,
   );
-  const f = (x: number | null) => (Number.isFinite(x as number) ? `${(x as number).toFixed(2)}x` : "n/a");
+  const f = (x: number | null) =>
+    Number.isFinite(x as number) ? `${(x as number).toFixed(2)}x` : "n/a";
   return {
     key: "demand",
     label: "Subscription Demand",
@@ -173,7 +179,14 @@ function scoreFinancials(i: QuantInputs): FactorScore {
   if (Number.isFinite(i.patMarginPct as number)) {
     const m = i.patMarginPct as number;
     // Piecewise so a normal-margin manufacturer is not treated as distressed.
-    const mScore = m <= 0 ? clamp01(0.1 + m / 20) : m <= 5 ? 0.1 + (m / 5) * 0.4 : m <= 10 ? 0.5 + ((m - 5) / 5) * 0.2 : clamp01(0.7 + ((m - 10) / 10) * 0.3);
+    const mScore =
+      m <= 0
+        ? clamp01(0.1 + m / 20)
+        : m <= 5
+          ? 0.1 + (m / 5) * 0.4
+          : m <= 10
+            ? 0.5 + ((m - 5) / 5) * 0.2
+            : clamp01(0.7 + ((m - 10) / 10) * 0.3);
     parts.push(mScore);
     notes.push(`PAT margin ${m.toFixed(1)}%`);
   }
@@ -199,7 +212,9 @@ function scoreFinancials(i: QuantInputs): FactorScore {
     label: "Financial Health",
     weight: w,
     points: round1(w * ratio),
-    rationale: notes.length ? notes.join(" · ") : "Financial ratios not retrievable — excluded from the composite.",
+    rationale: notes.length
+      ? notes.join(" · ")
+      : "Financial ratios not retrievable — excluded from the composite.",
     estimate: !i.financialsVerified || parts.length < 3,
     informative: parts.length > 0,
   };
@@ -211,7 +226,9 @@ function scoreValuation(i: QuantInputs): FactorScore {
   const pe = i.peRatio;
   const peer = i.peerPeRatio;
   if (!Number.isFinite(pe as number) || !Number.isFinite(peer as number) || (peer as number) <= 0) {
-    const soloRatio = Number.isFinite(pe as number) ? clamp01(1 - ((pe as number) - 15) / 60) : NEUTRAL;
+    const soloRatio = Number.isFinite(pe as number)
+      ? clamp01(1 - ((pe as number) - 15) / 60)
+      : NEUTRAL;
     return {
       key: "valuation",
       label: "Valuation vs Peers",
@@ -256,7 +273,13 @@ function scoreIssueSize(i: QuantInputs): FactorScore {
   const v = cr as number;
   // ≤300 Cr → 1.0, 1000 Cr → 0.75, 5000 Cr → 0.4, ≥15000 Cr → 0.15
   const ratio =
-    v <= 300 ? 1 : v <= 1000 ? 1 - ((v - 300) / 700) * 0.25 : v <= 5000 ? 0.75 - ((v - 1000) / 4000) * 0.35 : clamp01(0.4 - ((v - 5000) / 10000) * 0.25);
+    v <= 300
+      ? 1
+      : v <= 1000
+        ? 1 - ((v - 300) / 700) * 0.25
+        : v <= 5000
+          ? 0.75 - ((v - 1000) / 4000) * 0.35
+          : clamp01(0.4 - ((v - 5000) / 10000) * 0.25);
   return {
     key: "issueSize",
     label: "Issue Size Moderation",
@@ -304,11 +327,15 @@ export function computeQuant(inputs: QuantInputs): QuantResult {
     : 50;
   const coverage = coveredWeight / 100;
   const { recommendation } = recommendationFromComposite(composite);
-  const verifiedWeight = factors.filter((f) => f.informative && !f.estimate).reduce((s, f) => s + f.weight, 0);
+  const verifiedWeight = factors
+    .filter((f) => f.informative && !f.estimate)
+    .reduce((s, f) => s + f.weight, 0);
   const confidence: QuantResult["confidence"] =
     coverage >= 0.7 && verifiedWeight >= 30 ? "High" : coverage >= 0.45 ? "Medium" : "Low";
   const tier = `${confidence} confidence`;
-  const ranked = [...(scored.length ? scored : factors)].sort((a, b) => b.points / b.weight - a.points / a.weight);
+  const ranked = [...(scored.length ? scored : factors)].sort(
+    (a, b) => b.points / b.weight - a.points / a.weight,
+  );
   const best = ranked[0];
   const worst = ranked[ranked.length - 1];
   const estimated = scored.filter((f) => f.estimate).map((f) => f.label);
@@ -318,8 +345,12 @@ export function computeQuant(inputs: QuantInputs): QuantResult {
     `Strongest factor: ${best.label} at ${best.points}/${best.weight} — ${best.rationale}`,
     `Weakest factor: ${worst.label} at ${worst.points}/${worst.weight} — ${worst.rationale}`,
     missing.length ? `Excluded for lack of data: ${missing.join(", ")}.` : "",
-    estimated.length ? `Estimated inputs (not filing-verified): ${estimated.join(", ")}.` : "All scored factors used verified inputs.",
-  ].filter(Boolean).join(" ");
+    estimated.length
+      ? `Estimated inputs (not filing-verified): ${estimated.join(", ")}.`
+      : "All scored factors used verified inputs.",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return {
     factors,
     composite,
@@ -329,7 +360,6 @@ export function computeQuant(inputs: QuantInputs): QuantResult {
     explanation,
   };
 }
-
 
 /**
  * Derive trend metrics from the company's own multi-year FY history.
@@ -344,7 +374,9 @@ export function deriveFinancialTrends(rows: FinancialRow[]): {
   profitableYearsPct: number | null;
   years: number;
 } {
-  const rev = rows.filter((r) => Number.isFinite(r.revenueCr as number) && (r.revenueCr as number) > 0);
+  const rev = rows.filter(
+    (r) => Number.isFinite(r.revenueCr as number) && (r.revenueCr as number) > 0,
+  );
   let revenueGrowthPct: number | null = null;
   if (rev.length >= 2) {
     const first = rev[0].revenueCr as number;
@@ -372,7 +404,6 @@ export function deriveFinancialTrends(rows: FinancialRow[]): {
 }
 
 export function parsePriceBandUpper(band: string): number | null {
-
   const nums = (band || "").replace(/,/g, "").match(/\d+(\.\d+)?/g);
   if (!nums?.length) return null;
   return Math.max(...nums.map(Number));

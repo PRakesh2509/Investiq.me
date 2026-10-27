@@ -59,7 +59,7 @@ export function normalCdf(x: number): number {
   const absX = Math.abs(x) / Math.SQRT2;
 
   const t = 1.0 / (1.0 + p * absX);
-  const y = 1.0 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t) * Math.exp(-absX * absX);
+  const y = 1.0 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-absX * absX);
 
   return 0.5 * (1.0 + sign * y);
 }
@@ -74,13 +74,7 @@ export function normalPdf(x: number): number {
  * Calculate Black-Scholes Option Price and Greeks
  */
 export function calculateGreeks(input: GreeksInput): GreeksOutput {
-  const {
-    spot,
-    strike,
-    type,
-    riskFreeRate = 0.068,
-    dividendYield = 0.012,
-  } = input;
+  const { spot, strike, type, riskFreeRate = 0.068, dividendYield = 0.012 } = input;
 
   const r = riskFreeRate;
   const q = dividendYield;
@@ -89,13 +83,12 @@ export function calculateGreeks(input: GreeksInput): GreeksOutput {
   const T = Math.max(0.0001, input.timeToExpiryYears);
   const daysToExpiry = +(T * 365).toFixed(2);
 
-  const intrinsicValue =
-    type === "CE" ? Math.max(0, spot - strike) : Math.max(0, strike - spot);
+  const intrinsicValue = type === "CE" ? Math.max(0, spot - strike) : Math.max(0, strike - spot);
 
   // Near-expiry boundary condition (< 15 minutes to expiry)
   if (T <= 0.0002) {
     const isCall = type === "CE";
-    const delta = isCall ? (spot > strike ? 1 : 0) : (spot < strike ? -1 : 0);
+    const delta = isCall ? (spot > strike ? 1 : 0) : spot < strike ? -1 : 0;
     return {
       price: intrinsicValue,
       delta,
@@ -240,7 +233,10 @@ export function calculateImpliedVolatility(
 /**
  * Calculate time to expiry in years from an ISO expiry date string (e.g. "2026-10-22")
  */
-export function calculateTimeToExpiryYears(expiryDateStr: string, referenceDate = new Date()): number {
+export function calculateTimeToExpiryYears(
+  expiryDateStr: string,
+  referenceDate = new Date(),
+): number {
   try {
     // NSE derivatives expire at 15:30:00 IST on the expiry date
     const [year, month, day] = expiryDateStr.split("-").map(Number);

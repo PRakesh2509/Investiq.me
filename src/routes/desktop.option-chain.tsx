@@ -13,7 +13,8 @@ export const Route = createFileRoute("/desktop/option-chain")({
       { property: "og:title", content: "InvestIQ · Live Option Chain" },
       {
         property: "og:description",
-        content: "Real-time option chain with greeks, PCR and max pain for NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY and SENSEX.",
+        content:
+          "Real-time option chain with greeks, PCR and max pain for NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY and SENSEX.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -28,7 +29,8 @@ function OptionChainPage() {
       <div>
         <h1 className="font-display text-3xl font-semibold">Live Option Chain</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Index &amp; stock options with OI, greeks, PCR and max pain — streamed through a secure server route.
+          Index &amp; stock options with OI, greeks, PCR and max pain — streamed through a secure
+          server route.
         </p>
       </div>
       <OptionChain />

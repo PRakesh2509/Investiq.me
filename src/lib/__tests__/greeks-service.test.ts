@@ -27,7 +27,7 @@ test("calculateGreeks returns valid Black-Scholes Greeks for ATM Call", () => {
   });
 
   // Call Delta for ATM should be around ~0.52 (slightly above 0.5 due to r > q)
-  assert.ok(res.delta > 0.45 && res.delta < 0.60, `Delta was ${res.delta}`);
+  assert.ok(res.delta > 0.45 && res.delta < 0.6, `Delta was ${res.delta}`);
   // Gamma must be strictly positive
   assert.ok(res.gamma > 0, `Gamma was ${res.gamma}`);
   // Theta for long call must be negative (decaying)
@@ -50,7 +50,7 @@ test("calculateGreeks returns valid Black-Scholes Greeks for ATM Put", () => {
   });
 
   // Put Delta for ATM should be around ~ -0.48
-  assert.ok(res.delta < -0.40 && res.delta > -0.60, `Put Delta was ${res.delta}`);
+  assert.ok(res.delta < -0.4 && res.delta > -0.6, `Put Delta was ${res.delta}`);
   // Gamma must be identical to Call Gamma
   assert.ok(res.gamma > 0, `Gamma was ${res.gamma}`);
   // Vega must be positive
