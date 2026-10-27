@@ -180,8 +180,9 @@ class SensibullContinuousEngine {
       const scoringInput: TradeScoringInput = {
         instrument,
         spotPrice: spot,
+        changePct: fnoSnapshot?.changePct ?? 0,
         intendedDirection: fnoSignalAnalysis.signalDirection === "CALL_FAVORED" ? "CALL" : "PUT",
-        technicalIndicators: {
+        technical: {
           rsi: 50.0,
           ema9: spot * 0.999,
           ema21: spot * 0.997,

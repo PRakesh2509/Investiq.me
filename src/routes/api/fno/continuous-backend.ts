@@ -27,10 +27,10 @@ export const Route = createFileRoute("/api/fno/continuous-backend")({
                 fnoSignalDirection: state.fnoSignalAnalysis?.signalDirection,
                 fnoConfluenceScore: state.fnoSignalAnalysis?.overallConfluenceScore,
                 tradeScore: state.tradeScore ? {
-                  score: state.tradeScore.score,
+                  score: state.tradeScore.overallScore,
                   confidence: state.tradeScore.confidenceLevel,
-                  hardRiskGatePassed: state.tradeScore.hardRiskGatePassed,
-                  factorsEvaluated: state.tradeScore.factors.length,
+                  hardRiskGatePassed: state.tradeScore.allHardRiskPassed,
+                  factorsEvaluated: state.tradeScore.factorBreakdown?.length ?? 0,
                 } : null,
                 candidatesGenerated: state.candidates?.candidates?.length ?? 0,
                 noTradeViolation: state.candidates?.noTradeDecision?.reason ?? null,
