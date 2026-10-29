@@ -60,6 +60,11 @@ export interface AdminSettings {
   externalTradingEndpoint: string;
   autoPushTradesEnabled: boolean;
   autoPushIntervalSeconds: number;
+
+  // DhanHQ Broker Configuration
+  dhanClientId: string;
+  /** Secret: DhanHQ Access Token (24-hr JWT token). Kept in memory/session. */
+  dhanAccessToken: string;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -67,7 +72,12 @@ export interface AdminSettings {
 /* -------------------------------------------------------------------------- */
 
 /** Settings fields that hold secrets: they live in memory only and are never written to storage. */
-const SECRET_FIELDS = ["telegramBotToken", "nseFnoApiKey", "globalApiKey"] as const;
+const SECRET_FIELDS = [
+  "telegramBotToken",
+  "nseFnoApiKey",
+  "globalApiKey",
+  "dhanAccessToken",
+] as const;
 
 const defaultSettings: AdminSettings = {
   masterEnabled: true,
@@ -91,6 +101,8 @@ const defaultSettings: AdminSettings = {
   externalTradingEndpoint: DEFAULT_LOVABLE_ENDPOINT,
   autoPushTradesEnabled: true,
   autoPushIntervalSeconds: 30,
+  dhanClientId: "1114340693",
+  dhanAccessToken: "",
 };
 
 const emptyKeyInfo: KeyInfo = { configured: false, createdAt: null, lastUsedAt: null };

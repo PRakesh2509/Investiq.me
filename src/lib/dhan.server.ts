@@ -14,6 +14,7 @@
  * isolates are ephemeral). Tokens are never placed in thrown/returned messages.
  */
 import dhanScripMap from "./dhan-scrip-map.json" with { type: "json" };
+import { readEnv } from "./api-auth.server.ts";
 import {
   TtlCache,
   allowMockData,
@@ -76,14 +77,27 @@ let runtimeCreds: DhanCredentials | null = null;
 
 export function setDhanRuntimeCredentials(creds: DhanCredentials | null) {
   runtimeCreds = creds;
+  (
+    globalThis as unknown as { __DHAN_CREDENTIALS__?: DhanCredentials | null }
+  ).__DHAN_CREDENTIALS__ = creds;
 }
 
 export function getDhanCredentials(): DhanCredentials | null {
   if (runtimeCreds?.clientId && runtimeCreds?.accessToken) {
     return runtimeCreds;
   }
-  const clientId = process.env.DHAN_CLIENT_ID?.trim();
-  const accessToken = process.env.DHAN_ACCESS_TOKEN?.trim();
+  const g = (globalThis as unknown as { __DHAN_CREDENTIALS__?: DhanCredentials | null })
+    .__DHAN_CREDENTIALS__;
+  if (g?.clientId && g?.accessToken) {
+    return g;
+  }
+  const clientId =
+    readEnv("DHAN_CLIENT_ID") ||
+    (typeof process !== "undefined" ? (process.env?.DHAN_CLIENT_ID ?? "").trim() : "") ||
+    "1114340693";
+  const accessToken =
+    readEnv("DHAN_ACCESS_TOKEN") ||
+    (typeof process !== "undefined" ? (process.env?.DHAN_ACCESS_TOKEN ?? "").trim() : "");
   if (clientId && accessToken) {
     return { clientId, accessToken };
   }

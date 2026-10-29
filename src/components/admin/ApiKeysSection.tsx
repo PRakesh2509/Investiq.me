@@ -1,6 +1,7 @@
 import { RotateCcw } from "lucide-react";
 import { useAdmin } from "@/context/AdminContext";
 import { ApiKeyCard } from "./ApiKeyCard";
+import { DhanApiKeyCard } from "./DhanApiKeyCard";
 import { HighProfitTradesPanel } from "./HighProfitTradesPanel";
 import { ResponseConsole } from "./ResponseConsole";
 import { TradeExecutionGuide } from "./TradeExecutionGuide";
@@ -8,11 +9,13 @@ import { useApiKeyTester } from "./useApiKeyTester";
 import { useKeyActions } from "./useKeyActions";
 
 export function ApiKeysSection() {
-  const { keyStatus } = useAdmin();
+  const { keyStatus, settings } = useAdmin();
   const { fresh, busy, rotate, revoke, dismiss } = useKeyActions();
   const { testingEndpoint, testResult, setTestResult, runLiveTest } = useApiKeyTester();
 
-  const activeCount = [keyStatus.nse, keyStatus.global].filter((k) => k.configured).length;
+  const activeCount =
+    [keyStatus.nse, keyStatus.global].filter((k) => k.configured).length +
+    (settings.dhanAccessToken ? 1 : 0);
 
   return (
     <div className="space-y-6">
@@ -22,15 +25,14 @@ export function ApiKeysSection() {
           <div className="flex items-center gap-2">
             <h3 className="font-display text-lg font-semibold">API Key Management</h3>
             <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
-              {activeCount} Active Dedicated {activeCount === 1 ? "Key" : "Keys"}
+              {activeCount} Active Credential{activeCount === 1 ? "" : "s"}
             </span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground max-w-2xl leading-relaxed">
-            Dedicated REST API keys for external paper trading webpages. Use the{" "}
-            <strong>1st Key</strong> to stream NSE F&amp;O signals &amp; option chain data, and the{" "}
-            <strong>2nd Key</strong> for Global index feeds and trade order execution. Keys are
-            generated in your browser and only their SHA-256 hash is stored — a new key is shown
-            once.
+            Manage your DhanHQ live broker access token alongside dedicated REST API keys. Use the{" "}
+            <strong>DhanHQ Token</strong> for ultra-low latency live NSE feeds and order routing,
+            the <strong>1st Key</strong> to stream NSE F&amp;O signals &amp; option chains, and the{" "}
+            <strong>2nd Key</strong> for Global index feeds.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -51,7 +53,10 @@ export function ApiKeysSection() {
         </div>
       </div>
 
-      {/* SECTION 1: 1st Dedicated Key - NSE F&O */}
+      {/* SECTION 1: DhanHQ Broker Access Token Card */}
+      <DhanApiKeyCard />
+
+      {/* SECTION 2: 1st Dedicated Key - NSE F&O */}
       <ApiKeyCard
         scope="nse"
         title="NSE F&O Signals & Trading Engine Key"

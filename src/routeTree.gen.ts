@@ -28,6 +28,7 @@ import { Route as DesktopFundsRouteImport } from './routes/desktop.funds'
 import { Route as DesktopIposRouteImport } from './routes/desktop.ipos'
 import { Route as DesktopOptionChainRouteImport } from './routes/desktop.option-chain'
 import { Route as DesktopTerminalRouteImport } from './routes/desktop.terminal'
+import { Route as ApiAdminDhanRouteImport } from './routes/api/admin/dhan'
 import { Route as ApiAdminKeysRouteImport } from './routes/api/admin/keys'
 import { Route as ApiAdminSessionRouteImport } from './routes/api/admin/session'
 import { Route as ApiFnoAnalysisRouteImport } from './routes/api/fno/analysis'
@@ -149,6 +150,11 @@ const DesktopTerminalRoute = DesktopTerminalRouteImport.update({
   id: '/terminal',
   path: '/terminal',
   getParentRoute: () => DesktopRoute,
+} as any)
+const ApiAdminDhanRoute = ApiAdminDhanRouteImport.update({
+  id: '/api/admin/dhan',
+  path: '/api/admin/dhan',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminKeysRoute = ApiAdminKeysRouteImport.update({
   id: '/api/admin/keys',
@@ -307,6 +313,7 @@ export interface FileRoutesByFullPath {
   '/desktop/option-chain': typeof DesktopOptionChainRoute
   '/desktop/terminal': typeof DesktopTerminalRoute
   '/desktop/': typeof DesktopIndexRoute
+  '/api/admin/dhan': typeof ApiAdminDhanRoute
   '/api/admin/keys': typeof ApiAdminKeysRoute
   '/api/admin/session': typeof ApiAdminSessionRoute
   '/api/fno/analysis': typeof ApiFnoAnalysisRoute
@@ -353,6 +360,7 @@ export interface FileRoutesByTo {
   '/desktop/option-chain': typeof DesktopOptionChainRoute
   '/desktop/terminal': typeof DesktopTerminalRoute
   '/desktop': typeof DesktopIndexRoute
+  '/api/admin/dhan': typeof ApiAdminDhanRoute
   '/api/admin/keys': typeof ApiAdminKeysRoute
   '/api/admin/session': typeof ApiAdminSessionRoute
   '/api/fno/analysis': typeof ApiFnoAnalysisRoute
@@ -401,6 +409,7 @@ export interface FileRoutesById {
   '/desktop/option-chain': typeof DesktopOptionChainRoute
   '/desktop/terminal': typeof DesktopTerminalRoute
   '/desktop/': typeof DesktopIndexRoute
+  '/api/admin/dhan': typeof ApiAdminDhanRoute
   '/api/admin/keys': typeof ApiAdminKeysRoute
   '/api/admin/session': typeof ApiAdminSessionRoute
   '/api/fno/analysis': typeof ApiFnoAnalysisRoute
@@ -450,6 +459,7 @@ export interface FileRouteTypes {
     | '/desktop/option-chain'
     | '/desktop/terminal'
     | '/desktop/'
+    | '/api/admin/dhan'
     | '/api/admin/keys'
     | '/api/admin/session'
     | '/api/fno/analysis'
@@ -496,6 +506,7 @@ export interface FileRouteTypes {
     | '/desktop/option-chain'
     | '/desktop/terminal'
     | '/desktop'
+    | '/api/admin/dhan'
     | '/api/admin/keys'
     | '/api/admin/session'
     | '/api/fno/analysis'
@@ -543,6 +554,7 @@ export interface FileRouteTypes {
     | '/desktop/option-chain'
     | '/desktop/terminal'
     | '/desktop/'
+    | '/api/admin/dhan'
     | '/api/admin/keys'
     | '/api/admin/session'
     | '/api/fno/analysis'
@@ -582,6 +594,7 @@ export interface RootRouteChildren {
   ApiOptionChainRoute: typeof ApiOptionChainRoute
   ApiSearchRoute: typeof ApiSearchRoute
   ApiTestTradeRoute: typeof ApiTestTradeRoute
+  ApiAdminDhanRoute: typeof ApiAdminDhanRoute
   ApiAdminKeysRoute: typeof ApiAdminKeysRoute
   ApiAdminSessionRoute: typeof ApiAdminSessionRoute
   ApiFnoAnalysisRoute: typeof ApiFnoAnalysisRoute
@@ -742,6 +755,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/desktop/terminal'
       preLoaderRoute: typeof DesktopTerminalRouteImport
       parentRoute: typeof DesktopRoute
+    }
+    '/api/admin/dhan': {
+      id: '/api/admin/dhan'
+      path: '/api/admin/dhan'
+      fullPath: '/api/admin/dhan'
+      preLoaderRoute: typeof ApiAdminDhanRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/admin/keys': {
       id: '/api/admin/keys'
@@ -970,6 +990,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOptionChainRoute: ApiOptionChainRoute,
   ApiSearchRoute: ApiSearchRoute,
   ApiTestTradeRoute: ApiTestTradeRoute,
+  ApiAdminDhanRoute: ApiAdminDhanRoute,
   ApiAdminKeysRoute: ApiAdminKeysRoute,
   ApiAdminSessionRoute: ApiAdminSessionRoute,
   ApiFnoAnalysisRoute: ApiFnoAnalysisRoute,
