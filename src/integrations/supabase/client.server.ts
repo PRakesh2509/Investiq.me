@@ -36,10 +36,19 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
 }
 
 function readEnv(name: string): string | undefined {
-  // `process.env` is populated on Workers via nodejs_compat; guard anyway.
-  if (typeof process === "undefined" || !process.env) return undefined;
-  const value = process.env[name];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  const cfEnv = (globalThis as unknown as { __env__?: Record<string, unknown> }).__env__;
+  if (cfEnv && typeof cfEnv[name] === "string" && (cfEnv[name] as string).trim()) {
+    return (cfEnv[name] as string).trim();
+  }
+  const g = globalThis as unknown as Record<string, unknown>;
+  if (typeof g[name] === "string" && (g[name] as string).trim()) {
+    return (g[name] as string).trim();
+  }
+  if (typeof process !== "undefined" && process?.env) {
+    const value = process.env[name];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
 }
 
 type ServiceClient = SupabaseClient<Database>;

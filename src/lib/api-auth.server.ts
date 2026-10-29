@@ -40,8 +40,21 @@ const LAST_USED_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 // ---------------------------------------------------------------------------
 
 export function readEnv(name: string): string {
-  if (typeof process === "undefined" || !process.env) return "";
-  return (process.env[name] ?? "").trim();
+  // 1. Cloudflare Workers env injected by Nitro onto globalThis.__env__
+  const cfEnv = (globalThis as unknown as { __env__?: Record<string, unknown> }).__env__;
+  if (cfEnv && typeof cfEnv[name] === "string" && (cfEnv[name] as string).trim()) {
+    return (cfEnv[name] as string).trim();
+  }
+  // 2. Direct globalThis binding
+  const g = globalThis as unknown as Record<string, unknown>;
+  if (typeof g[name] === "string" && (g[name] as string).trim()) {
+    return (g[name] as string).trim();
+  }
+  // 3. Node / Vite development process.env
+  if (typeof process !== "undefined" && process?.env && typeof process.env[name] === "string") {
+    return (process.env[name] ?? "").trim();
+  }
+  return "";
 }
 
 /** Split a comma-separated env value into trimmed, non-empty entries. */
