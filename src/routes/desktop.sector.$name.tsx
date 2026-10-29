@@ -61,11 +61,19 @@ function SectorPage() {
   }, [sector]);
 
   const gainers = useMemo(
-    () => [...quotes].filter((q) => q.changePct > 0).sort((a, b) => b.changePct - a.changePct),
+    () =>
+      [...quotes]
+        .filter((q) => q.changePct > 0)
+        .sort((a, b) => b.changePct - a.changePct)
+        .slice(0, 5),
     [quotes],
   );
   const losers = useMemo(
-    () => [...quotes].filter((q) => q.changePct <= 0).sort((a, b) => a.changePct - b.changePct),
+    () =>
+      [...quotes]
+        .filter((q) => q.changePct <= 0)
+        .sort((a, b) => a.changePct - b.changePct)
+        .slice(0, 5),
     [quotes],
   );
   const avgPct = quotes.length ? quotes.reduce((s, q) => s + q.changePct, 0) / quotes.length : 0;

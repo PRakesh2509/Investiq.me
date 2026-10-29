@@ -5,7 +5,7 @@ import { formatINR } from "@/lib/market-data";
 import { NEWS } from "@/lib/desktop-data";
 import { NIFTY_UNIVERSE, NIFTY_YAHOO_SYMBOLS } from "@/lib/nifty-universe";
 import { getYahooQuotes } from "@/lib/yahoo.functions";
-import { getIndianStockQuotes, LiveStockQuote } from "@/lib/indian-stocks.functions";
+import { getIndianStockQuotes } from "@/lib/indian-stocks.functions";
 import { useRecentViewed } from "@/lib/recent-viewed";
 import {
   ArrowDownRight,
@@ -20,7 +20,6 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { getDhanHoldings } from "@/lib/dhan.functions";
-import { IndianStocksLiveWatch } from "@/components/IndianStocksLiveWatch";
 import { DhanConnectModal } from "@/components/DhanConnectModal";
 
 export const Route = createFileRoute("/desktop/")({
@@ -42,7 +41,6 @@ function DesktopDashboard() {
   const recent = useRecentViewed();
   const navigate = useNavigate();
   const [quotes, setQuotes] = useState<LiveQuote[]>([]);
-  const [fullQuotes, setFullQuotes] = useState<LiveStockQuote[]>([]);
   const [indices, setIndices] = useState<LiveQuote[]>([]);
   const [feedSource, setFeedSource] = useState<string>("DhanHQ Live Direct Feed");
   const [dhanData, setDhanData] = useState<any>(null);
@@ -81,7 +79,6 @@ function DesktopDashboard() {
         setDhanData(dhanResult.value);
       }
       if (stocksRes?.ok && stocksRes.quotes?.length) {
-        setFullQuotes(stocksRes.quotes);
         setQuotes(
           stocksRes.quotes.map((q) => ({
             symbol: q.symbol,
@@ -169,6 +166,27 @@ function DesktopDashboard() {
       }))
       .sort((a, b) => b.avgPct - a.avgPct);
   }, [quotes]);
+
+  const [selectedSector, setSelectedSector] = useState<string | null>(null);
+
+  const activeSector = useMemo(() => {
+    if (selectedSector) {
+      const found = sectors.find((s) => s.sector.toLowerCase() === selectedSector.toLowerCase());
+      if (found) return found;
+    }
+    return sectors[0] ?? null;
+  }, [sectors, selectedSector]);
+
+  const activeSectorStocks = useMemo(() => {
+    if (!activeSector) return [];
+    return quotes
+      .filter((q) => {
+        const sec = NIFTY_UNIVERSE.find((s) => s.symbol === q.symbol)?.sector;
+        return sec?.toLowerCase() === activeSector.sector.toLowerCase();
+      })
+      .sort((a, b) => b.changePct - a.changePct)
+      .slice(0, 5); // strictly only 5 stocks
+  }, [quotes, activeSector]);
 
   const hasLive = quotes.length > 0;
 
@@ -417,67 +435,130 @@ function DesktopDashboard() {
         <MoverCard title="Top losers (live)" quotes={losers} />
       </div>
 
-      {/* Indian Stocks Live Screener */}
-      <IndianStocksLiveWatch
-        quotes={fullQuotes}
-        loading={loading}
-        feedSource={feedSource}
-        onOpenDhanModal={() => setDhanModalOpen(true)}
-      />
-
       <DhanConnectModal
         isOpen={dhanModalOpen}
         onClose={() => setDhanModalOpen(false)}
         onStatusChange={(src) => setFeedSource(src)}
       />
 
-      {/* Sector heatmap */}
-      <div className="rounded-2xl border border-border bg-surface/60 p-5">
-        <div className="mb-3 flex items-center justify-between">
+      {/* Trending sector — only 5 stocks */}
+      <div className="rounded-2xl border border-border bg-surface/60 p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-display text-lg font-semibold">Trending sectors</h2>
-            <p className="text-xs text-muted-foreground">
-              Average % change across tracked Nifty constituents
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-lg font-semibold">Trending sectors</h2>
+              {activeSector && (
+                <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                  {activeSector.sector} · Top 5 Stocks
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Select a trending sector to view its top 5 performing stocks
             </p>
           </div>
+          {activeSector && (
+            <Link
+              to="/desktop/sector/$name"
+              params={{ name: activeSector.sector }}
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+            >
+              <span>{activeSector.sector} sector view</span>
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          )}
         </div>
+
         {sectors.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Loading sector data…</p>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {sectors.map((s) => {
-              const pos = s.avgPct >= 0;
-              const width = Math.min(100, Math.abs(s.avgPct) * 40);
-              return (
-                <Link
-                  key={s.sector}
-                  to="/desktop/sector/$name"
-                  params={{ name: s.sector }}
-                  className="group rounded-xl border border-border bg-background/40 p-3 transition hover:border-primary/60 hover:bg-accent"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium group-hover:text-primary">{s.sector}</p>
-                    <p
-                      className={`text-sm font-semibold ${pos ? "text-success" : "text-destructive"}`}
+          <div className="space-y-4">
+            {/* Sector switcher pills */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {sectors.map((s) => {
+                const isActive = activeSector?.sector.toLowerCase() === s.sector.toLowerCase();
+                const pos = s.avgPct >= 0;
+                return (
+                  <button
+                    key={s.sector}
+                    type="button"
+                    onClick={() => setSelectedSector(s.sector)}
+                    className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
+                      isActive
+                        ? "border-primary bg-primary/15 text-primary shadow-sm"
+                        : "border-border bg-background/50 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    }`}
+                  >
+                    <span>{s.sector}</span>
+                    <span
+                      className={`text-[11px] font-semibold ${
+                        pos ? "text-success" : "text-destructive"
+                      }`}
                     >
                       {pos ? "+" : ""}
                       {s.avgPct.toFixed(2)}%
-                    </p>
-                  </div>
-                  <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>🟢 {s.up} up</span>
-                    <span>🔴 {s.down} down</span>
-                    <span className="ml-auto">{s.total} stocks →</span>
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-background">
-                    <div
-                      className={`h-full rounded-full ${pos ? "bg-success" : "bg-destructive"}`}
-                      style={{ width: `${width}%` }}
-                    />
-                  </div>
-                </Link>
-              );
-            })}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Exactly 5 Stocks for the Trending Sector */}
+            {activeSectorStocks.length === 0 ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">
+                No stock data available for {activeSector?.sector}.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                {activeSectorStocks.map((s, idx) => {
+                  const pos = s.changePct >= 0;
+                  return (
+                    <Link
+                      key={s.symbol}
+                      to="/desktop/charts"
+                      search={{ symbol: s.symbol }}
+                      className="group flex flex-col justify-between rounded-xl border border-border bg-background/50 p-3.5 transition hover:border-primary/60 hover:bg-accent hover:shadow-glow"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-mono text-xs font-bold text-primary group-hover:underline">
+                            {s.symbol}
+                          </span>
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+                            #{idx + 1}
+                          </span>
+                        </div>
+                        <p
+                          className="mt-1 line-clamp-1 text-[11px] text-muted-foreground"
+                          title={s.name}
+                        >
+                          {s.name}
+                        </p>
+                      </div>
+
+                      <div className="mt-3 flex items-end justify-between pt-2 border-t border-border/40">
+                        <span className="font-display text-sm font-semibold text-foreground">
+                          {formatINR(s.price)}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-0.5 text-xs font-semibold ${
+                            pos ? "text-success" : "text-destructive"
+                          }`}
+                        >
+                          {pos ? (
+                            <ArrowUpRight className="h-3.5 w-3.5" />
+                          ) : (
+                            <ArrowDownRight className="h-3.5 w-3.5" />
+                          )}
+                          {pos ? "+" : ""}
+                          {s.changePct.toFixed(2)}%
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
