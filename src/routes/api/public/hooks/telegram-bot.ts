@@ -114,7 +114,7 @@ const COMMON_ALIASES: Record<string, string> = {
   PAYTM: "PAYTM",
   NIFTY: "^NSEI",
   "NIFTY 50": "^NSEI",
-  "NIFTY50": "^NSEI",
+  NIFTY50: "^NSEI",
   BANKNIFTY: "^NSEBANK",
   "BANK NIFTY": "^NSEBANK",
   "NIFTY BANK": "^NSEBANK",
@@ -123,7 +123,7 @@ const COMMON_ALIASES: Record<string, string> = {
 };
 
 export function resolveSymbol(input: string): string {
-  let q = input
+  const q = input
     .trim()
     .toUpperCase()
     .replace(/^\/(SEARCH|STOCK|RESEARCH|QUOTE)\s+/i, "")
@@ -162,7 +162,9 @@ export function resolveSymbol(input: string): string {
   if (stripped && scripMapObj[stripped]) return `${stripped}.NS`;
 
   // Loose match by name contains
-  const loose = q ? NIFTY_UNIVERSE.find((s) => s.name.toUpperCase().includes(stripped || q)) : undefined;
+  const loose = q
+    ? NIFTY_UNIVERSE.find((s) => s.name.toUpperCase().includes(stripped || q))
+    : undefined;
   if (loose) return `${loose.symbol}.NS`;
 
   // Clean fallback ticker
@@ -182,7 +184,10 @@ async function handleSearch(token: string, chatId: number, input: string) {
   // If quote not found and symbol is .NS, try BSE (.BO) fallback
   if ((!q || !q.price) && symbol.endsWith(".NS")) {
     const bseSymbol = symbol.replace(/\.NS$/i, ".BO");
-    const [bseQ, bseCloses] = await Promise.all([fetchQuote(bseSymbol), fetchDailyCloses(bseSymbol, "6mo")]);
+    const [bseQ, bseCloses] = await Promise.all([
+      fetchQuote(bseSymbol),
+      fetchDailyCloses(bseSymbol, "6mo"),
+    ]);
     if (bseQ && bseQ.price) {
       symbol = bseSymbol;
       safeSymbol = escapeHtml(symbol);

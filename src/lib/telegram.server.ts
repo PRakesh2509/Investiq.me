@@ -136,7 +136,8 @@ export function resolveChatIds(
 /** Bot token from TELEGRAM_BOT_TOKEN (with safe default for production worker). */
 export function getBotToken(): string | null {
   const envToken = readEnv("TELEGRAM_BOT_TOKEN");
-  const procToken = typeof process !== "undefined" ? (process.env?.TELEGRAM_BOT_TOKEN ?? "").trim() : "";
+  const procToken =
+    typeof process !== "undefined" ? (process.env?.TELEGRAM_BOT_TOKEN ?? "").trim() : "";
   return envToken || procToken || DEFAULT_TELEGRAM_BOT_TOKEN;
 }
 
