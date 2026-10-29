@@ -48,19 +48,126 @@ function smaLast(closes: number[], n: number): number {
   return last ?? closes[closes.length - 1] ?? 0;
 }
 
-function resolveSymbol(input: string): string {
-  const q = input
+import dhanScripMap from "@/lib/dhan-scrip-map.json" with { type: "json" };
+
+const COMMON_ALIASES: Record<string, string> = {
+  IFCI: "IFCI",
+  "IFCI LIMITED": "IFCI",
+  "IFCI LTD": "IFCI",
+  SBI: "SBIN",
+  "STATE BANK": "SBIN",
+  "STATE BANK OF INDIA": "SBIN",
+  HDFC: "HDFCBANK",
+  "HDFC BANK": "HDFCBANK",
+  ICICI: "ICICIBANK",
+  "ICICI BANK": "ICICIBANK",
+  KOTAK: "KOTAKBANK",
+  "KOTAK BANK": "KOTAKBANK",
+  "KOTAK MAHINDRA": "KOTAKBANK",
+  "KOTAK MAHINDRA BANK": "KOTAKBANK",
+  AXIS: "AXISBANK",
+  "AXIS BANK": "AXISBANK",
+  "BAJAJ FINANCE": "BAJFINANCE",
+  "BAJAJ FINSERV": "BAJAJFINSV",
+  "TATA MOTORS": "TATAMOTORS",
+  "TATA POWER": "TATAPOWER",
+  "TATA STEEL": "TATASTEEL",
+  "TATA CONSUMER": "TATACONSUM",
+  "MARUTI SUZUKI": "MARUTI",
+  "M&M": "M&M",
+  MAHINDRA: "M&M",
+  "MAHINDRA & MAHINDRA": "M&M",
+  "L&T": "LT",
+  LARSEN: "LT",
+  "LARSEN & TOUBRO": "LT",
+  "BHARTI AIRTEL": "BHARTIARTL",
+  AIRTEL: "BHARTIARTL",
+  RELIANCE: "RELIANCE",
+  INFOSYS: "INFY",
+  WIPRO: "WIPRO",
+  "TECH MAHINDRA": "TECHM",
+  "HCL TECH": "HCLTECH",
+  HUL: "HINDUNILVR",
+  "HINDUSTAN UNILEVER": "HINDUNILVR",
+  "SUN PHARMA": "SUNPHARMA",
+  "DR REDDY": "DRREDDY",
+  "DR. REDDY": "DRREDDY",
+  "ASIAN PAINTS": "ASIANPAINT",
+  "COAL INDIA": "COALINDIA",
+  "POWER GRID": "POWERGRID",
+  ADANI: "ADANIENT",
+  "ADANI ENTERPRISES": "ADANIENT",
+  "ADANI PORTS": "ADANIPORTS",
+  "ADANI POWER": "ADANIPOWER",
+  "ADANI GREEN": "ADANIGREEN",
+  VEDANTA: "VEDL",
+  "AVENUE SUPERMARTS": "DMART",
+  DMART: "DMART",
+  SUZLON: "SUZLON",
+  YESBANK: "YESBANK",
+  "YES BANK": "YESBANK",
+  IREDA: "IREDA",
+  HUDCO: "HUDCO",
+  RVNL: "RVNL",
+  IRFC: "IRFC",
+  ZOMATO: "ZOMATO",
+  PAYTM: "PAYTM",
+  NIFTY: "^NSEI",
+  "NIFTY 50": "^NSEI",
+  "NIFTY50": "^NSEI",
+  BANKNIFTY: "^NSEBANK",
+  "BANK NIFTY": "^NSEBANK",
+  "NIFTY BANK": "^NSEBANK",
+  SENSEX: "^BSESN",
+  FINNIFTY: "NIFTY_FIN_SERVICE.NS",
+};
+
+export function resolveSymbol(input: string): string {
+  let q = input
     .trim()
     .toUpperCase()
-    .replace(/^\/SEARCH\s+/, "");
-  // Direct match to Nifty universe
-  const direct = NIFTY_UNIVERSE.find((s) => s.symbol === q || s.name.toUpperCase() === q);
+    .replace(/^\/(SEARCH|STOCK|RESEARCH|QUOTE)\s+/i, "")
+    .replace(/\b(SHARE|STOCK|PRICE|QUOTE|CHART|CMP|TARGET|LEVELS)\b/g, "")
+    .trim();
+
+  // Explicit Yahoo symbols with ^ or .
+  if (q.includes(".") || q.startsWith("^")) return q;
+
+  // Direct alias match
+  if (COMMON_ALIASES[q]) {
+    const target = COMMON_ALIASES[q];
+    return target.startsWith("^") || target.includes(".") ? target : `${target}.NS`;
+  }
+
+  // Strip common corporate suffixes
+  const stripped = q.replace(/\b(LIMITED|LTD\.?|CORP\.?|INDIA)\b/g, "").trim();
+  if (COMMON_ALIASES[stripped]) {
+    const target = COMMON_ALIASES[stripped];
+    return target.startsWith("^") || target.includes(".") ? target : `${target}.NS`;
+  }
+
+  // Direct match to NIFTY_UNIVERSE
+  const direct = NIFTY_UNIVERSE.find(
+    (s) =>
+      s.symbol === q ||
+      s.name.toUpperCase() === q ||
+      s.symbol === stripped ||
+      s.name.toUpperCase() === stripped,
+  );
   if (direct) return `${direct.symbol}.NS`;
+
+  // Dhan scrip map check (over 10,000 Indian NSE stocks)
+  const scripMapObj = dhanScripMap as Record<string, number>;
+  if (scripMapObj[q]) return `${q}.NS`;
+  if (stripped && scripMapObj[stripped]) return `${stripped}.NS`;
+
   // Loose match by name contains
-  const loose = q ? NIFTY_UNIVERSE.find((s) => s.name.toUpperCase().includes(q)) : undefined;
+  const loose = q ? NIFTY_UNIVERSE.find((s) => s.name.toUpperCase().includes(stripped || q)) : undefined;
   if (loose) return `${loose.symbol}.NS`;
-  // Fallback: assume user gave a Yahoo symbol
-  return q.includes(".") ? q : `${q}.NS`;
+
+  // Clean fallback ticker
+  const cleanTicker = (stripped || q).replace(/[^A-Z0-9&-]/g, "");
+  return cleanTicker ? `${cleanTicker}.NS` : `${q}.NS`;
 }
 
 function fmt(n: number, digits = 2) {
@@ -68,14 +175,27 @@ function fmt(n: number, digits = 2) {
 }
 
 async function handleSearch(token: string, chatId: number, input: string) {
-  const symbol = resolveSymbol(input.slice(0, 40));
-  const safeSymbol = escapeHtml(symbol);
-  const [q, closes] = await Promise.all([fetchQuote(symbol), fetchDailyCloses(symbol, "6mo")]);
+  let symbol = resolveSymbol(input.slice(0, 40));
+  let safeSymbol = escapeHtml(symbol);
+  let [q, closes] = await Promise.all([fetchQuote(symbol), fetchDailyCloses(symbol, "6mo")]);
+
+  // If quote not found and symbol is .NS, try BSE (.BO) fallback
+  if ((!q || !q.price) && symbol.endsWith(".NS")) {
+    const bseSymbol = symbol.replace(/\.NS$/i, ".BO");
+    const [bseQ, bseCloses] = await Promise.all([fetchQuote(bseSymbol), fetchDailyCloses(bseSymbol, "6mo")]);
+    if (bseQ && bseQ.price) {
+      symbol = bseSymbol;
+      safeSymbol = escapeHtml(symbol);
+      q = bseQ;
+      closes = bseCloses;
+    }
+  }
+
   if (!q || !q.price) {
     await sendMessage(
       token,
       chatId,
-      `❌ Could not find <code>${safeSymbol}</code>. Try a Nifty 50 ticker like <code>INFY</code> or <code>TCS</code>.`,
+      `❌ Could not find <code>${safeSymbol}</code>. Try a ticker like <code>IFCI</code>, <code>INFY</code>, <code>TCS</code>, or <code>RELIANCE</code>.`,
     );
     return;
   }

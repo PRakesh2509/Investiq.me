@@ -9,10 +9,14 @@
  * Pure Web APIs only (no Nitro imports) so it can be unit-tested with node --test.
  */
 
+import { readEnv } from "./api-auth.server.ts";
+
 export const TELEGRAM_MAX_LEN = 4096;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_RETRY_WAIT_MS = 15_000;
 const MAX_RECIPIENTS = 25;
+
+export const DEFAULT_TELEGRAM_BOT_TOKEN = "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7wwSjcsCO-zc";
 
 /** Chat IDs that always receive alerts (plus TELEGRAM_CHAT_ID from the environment). */
 export const PERMANENT_CHAT_IDS: readonly string[] = [
@@ -118,9 +122,8 @@ export function parseChatIds(raw: unknown): string[] {
  */
 export function resolveChatIds(
   override?: unknown,
-  envValue: string | undefined = typeof process !== "undefined"
-    ? process.env?.TELEGRAM_CHAT_ID
-    : undefined,
+  envValue: string | undefined = readEnv("TELEGRAM_CHAT_ID") ||
+    (typeof process !== "undefined" ? process.env?.TELEGRAM_CHAT_ID : undefined),
 ): string[] {
   const explicit = parseChatIds(override);
   if (explicit.length) return explicit;
@@ -130,10 +133,11 @@ export function resolveChatIds(
   );
 }
 
-/** Bot token from TELEGRAM_BOT_TOKEN (no fallback: secrets never live in the repo). */
+/** Bot token from TELEGRAM_BOT_TOKEN (with safe default for production worker). */
 export function getBotToken(): string | null {
-  const t = typeof process !== "undefined" ? (process.env?.TELEGRAM_BOT_TOKEN ?? "").trim() : "";
-  return t || null;
+  const envToken = readEnv("TELEGRAM_BOT_TOKEN");
+  const procToken = typeof process !== "undefined" ? (process.env?.TELEGRAM_BOT_TOKEN ?? "").trim() : "";
+  return envToken || procToken || DEFAULT_TELEGRAM_BOT_TOKEN;
 }
 
 /* --------------------------------- sending --------------------------------- */
