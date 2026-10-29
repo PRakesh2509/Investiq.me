@@ -42,10 +42,10 @@ function resolveMarket(
     return { error: "This API key is not authorized for GLOBAL markets." };
   }
   if (wanted) return { market: wanted };
-  if (scopes.nse && !scopes.global) return { market: "NSE_FNO" };
+  if (scopes.nse) return { market: "NSE_FNO" };
   if (scopes.global && !scopes.nse) return { market: "GLOBAL_US" };
-  // Dynamic market selection according to the current IST trading session
-  return { market: getActiveMarketByTiming().activeMarket };
+  // Default to NSE F&O (Indian market)
+  return { market: "NSE_FNO" };
 }
 
 type Scopes = { nse: boolean; global: boolean };

@@ -11,7 +11,12 @@ import { getBotToken, resolveChatIds, sendToMany } from "@/lib/telegram.server";
  * Requires CRON_SECRET (x-cron-secret or Authorization: Bearer).
  */
 
-const SCAN = ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank"];
+const SCAN = [
+  "NSE_INDEX|Nifty 50",
+  "NSE_INDEX|Nifty Bank",
+  "BSE_INDEX|SENSEX",
+  "NSE_INDEX|Nifty Fin Service",
+];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function istNow() {

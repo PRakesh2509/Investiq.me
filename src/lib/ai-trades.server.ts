@@ -324,8 +324,9 @@ export function buildFnoCard(plan: AiTradePlan, t: PremiumTrade) {
   L.push(padRow(` TP    : ${inr(t.target).padStart(12)}`));
   L.push(padRow(` SL    : ${inr(t.stop).padStart(12)}`));
   L.push(padRow(""));
+  const conf7 = Math.max(1, Math.min(7, Math.round((t.confidence / 100) * 7)));
   L.push(padRow(` R:R   ${meter(t.rr, 4)}  ${t.rr.toFixed(1)}x`));
-  L.push(padRow(` Conf  ${meter(t.confidence, 100)}  ${Math.round(t.confidence / 10)}/10`));
+  L.push(padRow(` Conf  ${meter(conf7, 7, 7)}  ${conf7}/7`));
   L.push("╚" + "═".repeat(CARD_W) + "╝");
 
   const time = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(11, 16);
@@ -336,7 +337,7 @@ export function buildFnoCard(plan: AiTradePlan, t: PremiumTrade) {
   ];
   if (t.rationale.length) {
     body.push("");
-    body.push(`🔍 <b>Why:</b> ${esc(t.rationale.slice(0, 3).join(" + "))}`);
+    body.push(`🔍 <b>Why:</b> Technical: ${esc(t.rationale.slice(0, 5).join(" + "))}`);
   }
 
   body.push("");
