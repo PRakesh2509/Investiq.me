@@ -23,6 +23,19 @@ export type PremiumTrade = {
   iv?: number;
   oiResistance?: number;
   oiSupport?: number;
+  // Sniper Institutional Fields (matching exact card image format)
+  tp1?: number;
+  tp2?: number;
+  tp3?: number;
+  lotSize?: number;
+  costPerLot?: number;
+  riskPerLot?: number;
+  structureBreak?: string;
+  structureReason?: string;
+  macroHeadwind?: string;
+  confluenceFamilies?: string;
+  sideFocus?: string;
+  sessionTrades?: string;
 };
 
 export type AiTradePlan = {
