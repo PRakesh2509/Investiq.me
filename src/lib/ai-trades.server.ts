@@ -6,28 +6,31 @@
  * Lovable AI Gateway for high-conviction option trades. Educational only.
  */
 
-import type { AiTradePlan, PremiumTrade } from "./ai-trades";
-import { appUrl } from "./app-url";
-import { escapeHtml, getBotToken, resolveChatIds, sendToMany } from "./telegram.server";
+import type { AiTradePlan, PremiumTrade } from "./ai-trades.ts";
+import { appUrl } from "./app-url.ts";
+import { escapeHtml, getBotToken, resolveChatIds, sendToMany } from "./telegram.server.ts";
 export type { AiTradePlan, PremiumTrade };
 
-const SYSTEM_PROMPT = `You are a senior Indian index/stock options derivatives strategist with 15+ years on an institutional F&O desk.
-You are given a live option-chain snapshot (spot, PCR, max pain, and per-strike OI, change in OI, volume, LTP, bid/ask, IV and greeks around ATM).
+const SYSTEM_PROMPT = `You are a senior institutional Indian index F&O derivatives strategist and quantitative risk manager specializing in Sensibull Greeks View analytics.
+You are given a live option-chain snapshot (spot, PCR, max pain, ATM strike, per-strike OI, change in OI, volume, LTP, bid/ask, IV and Black-Scholes Greeks: Delta, Gamma, Theta, Vega).
 
-Your job: identify the 2-4 highest-conviction ("premium") option trades available RIGHT NOW from this snapshot.
+Your job: identify strictly the single best (at most 2) highest-conviction ("premium" Grade A+) option trade setup available RIGHT NOW from this snapshot. Do NOT generate low-quality trades or overflow the portfolio.
 
-RULES
-1. Use only the supplied data. Never invent strikes, prices or OI that are not in the snapshot.
-2. Entry must be near the option's live LTP/ask (buy) or bid (sell). Target and stop must be realistic option premium levels, not index levels.
-3. Every trade needs a reward:risk of at least 1.5. Reject ideas that do not clear it.
-4. Rationale must cite specific evidence from the snapshot (OI build-up, unwinding, PCR, max pain, IV skew, delta/theta, volume).
-5. Grade A+ only when OI, IV and price action all agree. Grade B is a scalp-quality idea.
-6. Confidence is 40-90, derived from confluence count. Never claim certainty.
-7. If the snapshot is inconclusive (thin volume, flat OI), return an empty trades array and explain why in marketView.
+RULES:
+1. Strict Quality Filter: Only provide high-conviction Grade A+ setups with Reward:Risk >= 1.5x. Never overflow trades (limit to 1-2 ideas max).
+2. Sensibull Greeks View Analysis:
+   - Delta (Δ): Cite option Delta (e.g. +0.48 to +0.58 for ATM/near-the-money buys).
+   - Gamma (Γ): Note gamma acceleration & peak gamma strike.
+   - Theta (Θ): Account for time decay (₹/day) to ensure favorable holding horizon.
+   - Vega (V): Assess sensitivity to volatility expansion/crush.
+   - IV & Skew: Compare Call IV vs Put IV relative to India VIX.
+   - OI Walls: Identify major Call OI (resistance) and Put OI (support) strikes.
+3. Entry must be near the option's live LTP. Target and stop loss must be realistic option premium levels (₹).
+4. Invalidation: Define a hard index spot level or technical exit rule.
 
 Return ONLY minified JSON, no markdown fences, matching exactly:
-{"marketView":"","caution":"","trades":[{"rank":1,"grade":"A+","strategy":"","strike":0,"optionType":"CE","direction":"BUY","entry":0,"target":0,"stop":0,"rr":0,"confidence":0,"bias":"BULLISH","rationale":["","",""],"invalidation":""}]}
-marketView: 1-2 sentences on the directional read from OI/PCR/max pain.
+{"marketView":"","caution":"","trades":[{"rank":1,"grade":"A+","strategy":"","strike":0,"optionType":"CE","direction":"BUY","entry":0,"target":0,"stop":0,"rr":0,"confidence":0,"bias":"BULLISH","delta":0.5,"gamma":0.002,"theta":-12.5,"vega":8.5,"iv":15.2,"oiResistance":23200,"oiSupport":22800,"rationale":["","",""],"invalidation":""}]}
+marketView: 1-2 sentences on the directional read from OI/PCR/max pain and Greeks.
 caution: one short risk line (educational only, not investment advice).`;
 
 type Side = {
@@ -93,34 +96,82 @@ function condense(chain: Chain, span = 8) {
 
 const asNum = (v: unknown, d = 0) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 
-function normalizeTrades(raw: unknown): PremiumTrade[] {
+function normalizeTrades(raw: unknown, chain?: Chain): PremiumTrade[] {
   if (!Array.isArray(raw)) return [];
+
+  // Identify institutional OI walls from the option chain
+  let callWall = 0;
+  let putWall = 0;
+  if (chain?.rows?.length) {
+    let maxC = -1;
+    let maxP = -1;
+    for (const r of chain.rows) {
+      if (r.call.oi > maxC) {
+        maxC = r.call.oi;
+        callWall = r.strike;
+      }
+      if (r.put.oi > maxP) {
+        maxP = r.put.oi;
+        putWall = r.strike;
+      }
+    }
+  }
+
   return raw
-    .slice(0, 4)
+    .slice(0, 2) // Never overflow: cap strictly to top 1-2 highest conviction setups
     .map((t: any, i): PremiumTrade => {
       const entry = asNum(t?.entry);
       const target = asNum(t?.target);
       const stop = asNum(t?.stop);
       const risk = Math.abs(entry - stop);
+      const strike = asNum(t?.strike);
+      const optionType = t?.optionType === "PE" ? ("PE" as const) : ("CE" as const);
+
+      let delta = typeof t?.delta === "number" ? t.delta : undefined;
+      let gamma = typeof t?.gamma === "number" ? t.gamma : undefined;
+      let theta = typeof t?.theta === "number" ? t.theta : undefined;
+      let vega = typeof t?.vega === "number" ? t.vega : undefined;
+      let iv = typeof t?.iv === "number" ? t.iv : undefined;
+
+      // Calibrate with mathematical Greeks from chain if missing
+      if (chain?.rows) {
+        const row = chain.rows.find((r) => r.strike === strike);
+        if (row) {
+          const side = optionType === "PE" ? row.put : row.call;
+          if (delta === undefined && typeof side.delta === "number") delta = side.delta;
+          if (gamma === undefined && typeof side.gamma === "number") gamma = side.gamma;
+          if (theta === undefined && typeof side.theta === "number") theta = side.theta;
+          if (vega === undefined && typeof side.vega === "number") vega = side.vega;
+          if (iv === undefined && typeof side.iv === "number") iv = side.iv;
+        }
+      }
+
       return {
         rank: asNum(t?.rank, i + 1),
-        grade: (["A+", "A", "B"] as const).includes(t?.grade) ? t.grade : "A",
+        grade: (["A+", "A", "B"] as const).includes(t?.grade) ? t.grade : "A+",
         strategy: String(t?.strategy ?? "Directional option buy").slice(0, 80),
-        strike: asNum(t?.strike),
-        optionType: t?.optionType === "PE" ? ("PE" as const) : ("CE" as const),
+        strike,
+        optionType,
         direction: t?.direction === "SELL" ? ("SELL" as const) : ("BUY" as const),
         entry,
         target,
         stop,
-        rr: risk ? Number((Math.abs(target - entry) / risk).toFixed(2)) : asNum(t?.rr),
-        confidence: Math.max(40, Math.min(90, asNum(t?.confidence, 55))),
+        rr: risk ? Number((Math.abs(target - entry) / risk).toFixed(2)) : asNum(t?.rr, 1.8),
+        confidence: Math.max(40, Math.min(95, asNum(t?.confidence, 80))),
         bias: (["BULLISH", "BEARISH", "NEUTRAL"] as const).includes(t?.bias)
           ? (t.bias as PremiumTrade["bias"])
-          : ("NEUTRAL" as const),
+          : ("BULLISH" as const),
         rationale: Array.isArray(t?.rationale)
           ? t.rationale.slice(0, 5).map((s: unknown) => String(s))
           : [],
         invalidation: String(t?.invalidation ?? "Exit if premium closes below stop on 15m candle."),
+        delta,
+        gamma,
+        theta,
+        vega,
+        iv,
+        oiResistance: typeof t?.oiResistance === "number" ? t.oiResistance : (callWall || undefined),
+        oiSupport: typeof t?.oiSupport === "number" ? t.oiSupport : (putWall || undefined),
       };
     })
     .filter((t) => t.strike > 0 && t.entry > 0);
@@ -157,10 +208,22 @@ export async function generatePremiumTrades(symbol: string, chain: Chain): Promi
   }[] = [];
   if (geminiKey) {
     providers.push({
-      name: "Gemini",
+      name: "Gemini 3.5 Flash",
       endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${geminiKey}` },
-      model: "gemini-3.8-flash",
+      model: "gemini-3.5-flash",
+    });
+    providers.push({
+      name: "Gemini 3.5 Flash Lite",
+      endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${geminiKey}` },
+      model: "gemini-3.5-flash-lite",
+    });
+    providers.push({
+      name: "Gemini 3.6 Flash",
+      endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${geminiKey}` },
+      model: "gemini-3.6-flash",
     });
   }
   if (lovableKey) {
@@ -218,15 +281,40 @@ export async function generatePremiumTrades(symbol: string, chain: Chain): Promi
     parsed = {};
   }
 
+  // Calculate support and resistance walls
+  let callWall = 0;
+  let putWall = 0;
+  if (chain.rows?.length) {
+    let maxC = -1;
+    let maxP = -1;
+    for (const r of chain.rows) {
+      if (r.call.oi > maxC) {
+        maxC = r.call.oi;
+        callWall = r.strike;
+      }
+      if (r.put.oi > maxP) {
+        maxP = r.put.oi;
+        putWall = r.strike;
+      }
+    }
+  }
+
+  const atmRow = chain.rows.find((r) => r.strike === chain.atmStrike);
+  const atmIv = atmRow ? (atmRow.call.iv + atmRow.put.iv) / 2 : undefined;
+
   return {
     symbol,
     expiry: chain.expiry,
     spot: chain.spot,
     pcr: chain.pcr,
     maxPain: chain.maxPain,
+    atmStrike: chain.atmStrike,
+    atmIv: atmIv ? Number(atmIv.toFixed(1)) : undefined,
+    oiResistanceWall: callWall || undefined,
+    oiSupportWall: putWall || undefined,
     marketView: String(parsed?.marketView ?? "AI could not form a clear view from this snapshot."),
     caution: String(parsed?.caution ?? "Educational only — not investment advice."),
-    trades: normalizeTrades(parsed?.trades),
+    trades: normalizeTrades(parsed?.trades, chain),
     generatedAt: Date.now(),
   };
 }
@@ -333,16 +421,34 @@ export function buildFnoCard(plan: AiTradePlan, t: PremiumTrade) {
   const body = [
     `<pre>${esc(L.join("\n"))}</pre>`,
     `<b>${esc(t.strike + " " + t.optionType)} · ${esc(t.strategy)}</b>`,
-    `Expiry ${esc(plan.expiry)} · Spot ₹${inr(plan.spot)} · PCR ${plan.pcr.toFixed(2)}`,
+    `Expiry ${esc(plan.expiry)} · Spot ₹${inr(plan.spot)} · PCR ${plan.pcr.toFixed(2)} · Max Pain ${plan.maxPain}`,
   ];
+
+  // Sensibull Greeks View Breakdown
+  const greeksLines: string[] = [];
+  if (t.delta !== undefined) greeksLines.push(`• <b>Delta (Δ):</b> ${t.delta > 0 ? "+" : ""}${t.delta.toFixed(2)}`);
+  if (t.gamma !== undefined) greeksLines.push(`• <b>Gamma (Γ):</b> ${t.gamma.toFixed(4)}`);
+  if (t.theta !== undefined) greeksLines.push(`• <b>Theta (Θ):</b> ₹${t.theta.toFixed(1)}/day decay`);
+  if (t.vega !== undefined) greeksLines.push(`• <b>Vega (V):</b> +₹${t.vega.toFixed(1)}/1% IV`);
+  if (t.iv !== undefined) greeksLines.push(`• <b>IV:</b> ${t.iv.toFixed(1)}%`);
+  if (t.oiSupport || t.oiResistance) {
+    greeksLines.push(`• <b>OI Walls:</b> Support ₹${inr(t.oiSupport ?? 0)} · Resist ₹${inr(t.oiResistance ?? 0)}`);
+  }
+
+  if (greeksLines.length) {
+    body.push("");
+    body.push(`⚡ <b>SENSIBULL GREEKS VIEW</b>`);
+    body.push(greeksLines.join("\n"));
+  }
+
   if (t.rationale.length) {
     body.push("");
-    body.push(`🔍 <b>Why:</b> Technical: ${esc(t.rationale.slice(0, 5).join(" + "))}`);
+    body.push(`🔍 <b>Confluence:</b> ${esc(t.rationale.slice(0, 5).join(" • "))}`);
   }
 
   body.push("");
-  body.push(`⛔ ${esc(t.invalidation)}`);
-  body.push(`🕐 <i>${time} IST · ${esc(plan.symbol.toUpperCase())} · ${t.grade} confluence</i>`);
+  body.push(`⛔ <b>Invalidation:</b> ${esc(t.invalidation)}`);
+  body.push(`🕐 <i>${time} IST · ${esc(plan.symbol.toUpperCase())} · ${t.grade} institutional setup</i>`);
   return body.join("\n");
 }
 

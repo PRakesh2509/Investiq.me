@@ -15,6 +15,14 @@ export type PremiumTrade = {
   bias: "BULLISH" | "BEARISH" | "NEUTRAL";
   rationale: string[];
   invalidation: string;
+  // Sensibull Greeks View & Market Metrics
+  delta?: number;
+  gamma?: number;
+  theta?: number;
+  vega?: number;
+  iv?: number;
+  oiResistance?: number;
+  oiSupport?: number;
 };
 
 export type AiTradePlan = {
@@ -27,4 +35,10 @@ export type AiTradePlan = {
   trades: PremiumTrade[];
   caution: string;
   generatedAt: number;
+  atmStrike?: number;
+  atmIv?: number;
+  peakGammaStrike?: number;
+  maxThetaBurn?: number;
+  oiResistanceWall?: number;
+  oiSupportWall?: number;
 };
