@@ -21,13 +21,7 @@ export const DEFAULT_TELEGRAM_BOT_TOKEN = "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7ww
 /** Chat IDs that always receive alerts (plus TELEGRAM_CHAT_ID from the environment). */
 export const PERMANENT_CHAT_IDS: readonly string[] = [
   "7350570004",
-  "5589831995",
-  "1840901163",
-  "1360613728",
-  "8155139346",
   "6799336293",
-  "7280324188",
-  "6698697147",
 ];
 
 /* --------------------------------- escaping -------------------------------- */
