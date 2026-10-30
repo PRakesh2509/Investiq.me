@@ -1,22 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { hookFailure, hookResponse, readJsonBody, requireCronAuth } from "@/lib/cron-auth.server";
-import { getBotToken, resolveChatIds, sendToMany } from "@/lib/telegram.server";
+import { getBotToken, resolveChatIds } from "@/lib/telegram.server";
 
 /**
- * Auto A+ trade alerts.
+ * Auto Grade A+ F&O sniper trade alerts.
  *
- * Scans the live option chain for the configured indices, asks the AI engine
- * for premium trades and pushes ONLY grade "A+" ideas to Telegram. Each
- * (symbol, expiry, strike, type, direction) is sent once per day.
+ * Scans the live derivatives chain for major Indian indices (NIFTY 50, BANK NIFTY),
+ * prompts the institutional derivative quant engine, and pushes ONLY Grade A+
+ * sniper setups directly to Telegram using the verified boxed card layout.
+ * Enforces strict 1-trade cap per index to prevent overflow.
+ *
  * Requires CRON_SECRET (x-cron-secret or Authorization: Bearer).
  */
 
-const SCAN = [
-  "NSE_INDEX|Nifty 50",
-  "NSE_INDEX|Nifty Bank",
-  "BSE_INDEX|SENSEX",
-  "NSE_INDEX|Nifty Fin Service",
-];
+const SCAN = ["NIFTY", "BANKNIFTY"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function istNow() {
@@ -39,8 +36,8 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
         const denied = await requireCronAuth(request);
         if (denied) return denied;
 
-        const body = await readJsonBody<{ force: boolean; chatIds: string[] }>(request);
-        const force = !!body.force;
+        const body = await readJsonBody<{ force?: boolean; chatIds?: string[] }>(request);
+        const force = !!body?.force;
         try {
           if (!force && !marketOpen()) {
             return hookResponse({
@@ -52,15 +49,12 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
           }
           const token = getBotToken();
           if (!token) return hookFailure("TELEGRAM_BOT_TOKEN not configured", 503);
-          const chatIds = resolveChatIds(body.chatIds);
+          const chatIds = resolveChatIds(body?.chatIds);
 
-          const { getAccessToken, fetchExpiries, fetchOptionChain, INDEX_UNDERLYINGS } =
-            await import("@/lib/upstox.server");
-          const { generatePremiumTrades, buildTradeMessage } =
-            await import("@/lib/ai-trades.server");
-          const { claimOnce, releaseClaim } = await import("@/lib/hook-dedupe.server");
+          const { getLiveDerivativesChain, generatePremiumTrades, sendFnoAlerts } =
+            await import("@/lib/ai-trades.server.ts");
+          const { claimOnce, releaseClaim } = await import("@/lib/hook-dedupe.server.ts");
 
-          const accessToken = getAccessToken();
           const today = istNow().toISOString().slice(0, 10);
           const results: Record<string, unknown>[] = [];
           const errors: string[] = [];
@@ -68,17 +62,9 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
           let skipped = 0;
           let dedupeUnavailable = false;
 
-          for (const key of SCAN) {
-            const label = INDEX_UNDERLYINGS.find((u) => u.key === key)?.label ?? key;
+          for (const label of SCAN) {
             try {
-              const expiries = await fetchExpiries(key, accessToken);
-              const expiry = expiries[0];
-              if (!expiry) {
-                skipped++;
-                results.push({ symbol: label, skipped: "no expiry" });
-                continue;
-              }
-              const chain = await fetchOptionChain(key, expiry, accessToken);
+              const chain = await getLiveDerivativesChain(label);
               const plan = await generatePremiumTrades(label, chain);
               const aplus = plan.trades.filter((t) => t.grade === "A+");
               if (!aplus.length) {
@@ -87,15 +73,11 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
                 continue;
               }
 
-              // Dedupe: one alert per unique A+ trade per day (insert-first, race-safe).
-              const fresh: typeof aplus = [];
-              const claimed: string[] = [];
-              for (const t of aplus) {
-                const tradeKey = `${label}|${expiry}|${t.strike}|${t.optionType}|${t.direction}`;
-                if (force) {
-                  fresh.push(t);
-                  continue;
-                }
+              // Top 1 highest conviction trade
+              const bestTrade = aplus[0];
+              const tradeKey = `${label}|${plan.expiry}|${bestTrade.strike}|${bestTrade.optionType}|${bestTrade.direction}`;
+
+              if (!force) {
                 const claim = await claimOnce(
                   "ai_trade_sent",
                   { trade_key: tradeKey, sent_date: today },
@@ -103,36 +85,33 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
                 );
                 if (claim === "duplicate") {
                   skipped++;
+                  results.push({ symbol: label, skipped: "already sent today" });
                   continue;
                 }
                 if (claim === "unavailable") dedupeUnavailable = true;
-                else claimed.push(tradeKey);
-                fresh.push(t);
-              }
-              if (!fresh.length) {
-                results.push({ symbol: label, aplus: aplus.length, new: 0 });
-                continue;
               }
 
-              const text = buildTradeMessage({ ...plan, trades: fresh });
-              const res = await sendToMany(token, chatIds, text, { delayMs: 300 });
-              sent += res.delivered;
-              errors.push(...res.errors);
-              if (res.delivered === 0) {
-                // Nobody got it: free the claims so the next run retries.
-                for (const k of claimed) {
-                  await releaseClaim(
-                    "ai_trade_sent",
-                    { trade_key: k, sent_date: today },
-                    `${k}|${today}`,
-                  );
-                }
+              // Send the single best setup in the sniper card format
+              const notify = await sendFnoAlerts(
+                { ...plan, trades: [bestTrade] },
+                chatIds,
+                1,
+              );
+              sent += notify.sent;
+
+              if (notify.sent === 0 && !force) {
+                await releaseClaim(
+                  "ai_trade_sent",
+                  { trade_key: tradeKey, sent_date: today },
+                  `${tradeKey}|${today}`,
+                );
               }
+
               results.push({
                 symbol: label,
-                aplus: aplus.length,
-                new: fresh.length,
-                delivered: res.delivered,
+                strike: bestTrade.strike,
+                type: bestTrade.optionType,
+                delivered: notify.sent,
               });
             } catch (e) {
               const msg = `${label}: ${(e as Error).message}`;
