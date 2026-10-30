@@ -140,12 +140,24 @@ export function getDhanSecurityId(symbol: string): number | null {
 
 /* ----------------------------------- HTTP plumbing ------------------------------------ */
 
+export function sanitizeDhanToken(token: string): string {
+  if (!token) return "";
+  return token
+    .trim()
+    .replace(/^Bearer\s+/i, "")
+    .replace(/^["'`]|["'`]$/g, "")
+    .trim();
+}
+
 function authHeaders(creds: DhanCredentials): Record<string, string> {
+  const token = sanitizeDhanToken(creds.accessToken);
+  const cid = (creds.clientId || "").trim();
   return {
     "Content-Type": "application/json",
     Accept: "application/json",
-    "client-id": creds.clientId,
-    "access-token": creds.accessToken,
+    "client-id": cid,
+    "access-token": token,
+    dhanClientId: cid,
   };
 }
 
@@ -177,30 +189,67 @@ const EXPIRY_TTL_MS = 10 * 60_000;
 
 export async function testDhanConnection(
   creds: DhanCredentials,
-): Promise<{ ok: boolean; message?: string }> {
+): Promise<{ ok: boolean; status?: number; message?: string }> {
+  const cleanToken = sanitizeDhanToken(creds.accessToken);
+  const cleanClientId = (creds.clientId || "").trim();
+  const sanitizedCreds = { clientId: cleanClientId, accessToken: cleanToken };
+
+  if (!cleanToken) {
+    return { ok: false, status: 400, message: "Dhan Access Token cannot be empty" };
+  }
+
   try {
-    const res = await fetchJsonWithRetry(
+    // 1. Try fundlimit (universal account verification supported on all Dhan accounts)
+    const fundRes = await fetchJsonWithRetry(
+      `${DHAN_BASE}/v2/fundlimit`,
+      {
+        method: "GET",
+        headers: authHeaders(sanitizedCreds),
+      },
+      { timeoutMs: 5000, retries: 0 },
+    );
+
+    if (fundRes.ok) {
+      return { ok: true, status: 200, message: "DhanHQ API authenticated successfully" };
+    }
+
+    // 2. Try marketfeed LTP as second verification
+    const ltpRes = await fetchJsonWithRetry(
       `${DHAN_BASE}/v2/marketfeed/ltp`,
       {
         method: "POST",
-        headers: authHeaders(creds),
+        headers: authHeaders(sanitizedCreds),
         body: JSON.stringify({ NSE_EQ: [2885] }), // RELIANCE
       },
-      { timeoutMs: 6000, retries: 0 },
+      { timeoutMs: 5000, retries: 0 },
     );
-    if (res.ok && parseDhanMarketFeed(res.json).length > 0) {
-      return { ok: true, message: "DhanHQ API authenticated successfully" };
+
+    if (ltpRes.ok && parseDhanMarketFeed(ltpRes.json).length > 0) {
+      return { ok: true, status: 200, message: "DhanHQ API authenticated successfully" };
     }
+
+    const errStatus = fundRes.status !== 200 ? fundRes.status : ltpRes.status;
+    const errPayload = (fundRes.json || ltpRes.json) as any;
+    const remarks =
+      errPayload?.remarks ||
+      errPayload?.message ||
+      errPayload?.error ||
+      (errStatus === 401
+        ? "Invalid credentials or expired token (Dhan tokens expire every 24 hours)"
+        : `DhanHQ returned HTTP status ${errStatus}`);
+
     return {
       ok: false,
-      message: `DhanHQ returned status ${res.status}: invalid credentials or expired token`,
+      status: errStatus,
+      message: remarks,
     };
   } catch (err) {
     return {
       ok: false,
+      status: 500,
       message: safeErrorMessage(err, "Failed to reach DhanHQ servers", [
-        creds.accessToken,
-        creds.clientId,
+        cleanToken,
+        cleanClientId,
       ]),
     };
   }

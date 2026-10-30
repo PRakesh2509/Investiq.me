@@ -4,6 +4,7 @@ import {
   getDhanCredentials,
   setDhanRuntimeCredentials,
   testDhanConnection,
+  sanitizeDhanToken,
   writeDhanEnvFile,
   type DhanCredentials,
 } from "@/lib/dhan.server";
@@ -48,7 +49,9 @@ export const Route = createFileRoute("/api/admin/dhan")({
           (typeof body.clientId === "string" ? body.clientId.trim() : "") ||
           readEnv("DHAN_CLIENT_ID") ||
           "1114340693";
-        const accessToken = typeof body.accessToken === "string" ? body.accessToken.trim() : "";
+        const accessToken = sanitizeDhanToken(
+          typeof body.accessToken === "string" ? body.accessToken : ""
+        );
 
         if (!accessToken) {
           return adminJson({ ok: false, error: "Dhan Access Token cannot be empty." }, 400);
@@ -65,15 +68,31 @@ export const Route = createFileRoute("/api/admin/dhan")({
         if (body.action === "test") {
           return adminJson({
             ok: test.ok,
+            status: test.status || (test.ok ? 200 : 401),
             message:
               test.message ||
               (test.ok ? "Connected to DhanHQ successfully" : "Authentication failed"),
-            latencyMs,
+            latencyMs: test.ok ? latencyMs : null,
           });
         }
 
-        // Action is "save" or default:
-        // Update runtime in-memory credentials + globalThis
+        // Action is "save":
+        if (!test.ok) {
+          // Authentication failed: do NOT overwrite runtime or .env with dead token
+          return adminJson(
+            {
+              ok: false,
+              verified: false,
+              error: `DhanHQ Authentication Failed (${test.status || 401}): ${test.message}. Please generate a fresh 24-hour token from Dhan Web.`,
+              message: test.message,
+              feedSource: "NSE Live Feed (DhanHQ Offline)",
+              latencyMs: null,
+            },
+            400,
+          );
+        }
+
+        // Authentication succeeded: save credentials
         setDhanRuntimeCredentials(creds);
         if (typeof process !== "undefined" && process.env) {
           process.env.DHAN_CLIENT_ID = creds.clientId;
@@ -85,10 +104,8 @@ export const Route = createFileRoute("/api/admin/dhan")({
 
         return adminJson({
           ok: true,
-          verified: test.ok,
-          message: test.ok
-            ? `DhanHQ account connected! Direct live feed is active (${latencyMs}ms).`
-            : `DhanHQ credentials saved. Note: DhanHQ server returned: "${test.message}". (Tokens expire every 24 hours).`,
+          verified: true,
+          message: `DhanHQ account connected! Direct live feed is active (${latencyMs}ms).`,
           feedSource: "DhanHQ Live Direct Feed v2",
           latencyMs,
         });

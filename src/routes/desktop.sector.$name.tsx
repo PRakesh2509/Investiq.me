@@ -78,6 +78,11 @@ function SectorPage() {
   );
   const avgPct = quotes.length ? quotes.reduce((s, q) => s + q.changePct, 0) / quotes.length : 0;
   const pos = avgPct >= 0;
+  const advances = quotes.filter((q) => q.changePct > 0).length;
+  const declines = quotes.filter((q) => q.changePct < 0).length;
+  const totalAdvDec = advances + declines;
+  const upPct = totalAdvDec > 0 ? (advances / totalAdvDec) * 100 : 50;
+  const downPct = 100 - upPct;
 
   if (members.length === 0) {
     return (
@@ -137,6 +142,43 @@ function SectorPage() {
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           Refresh
         </button>
+      </div>
+
+      {/* Advance / Decline Split Bar matching UI/UX */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-surface/60 p-4">
+        <div>
+          <h3 className="font-display text-sm font-semibold">Advance / Decline Ratio</h3>
+          <p className="text-xs text-muted-foreground">Market breadth across {quotes.length} {sector} stocks</p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums">
+            {advances}
+          </span>
+          <div className="w-32 sm:w-56 md:w-72 h-2.5 rounded-full overflow-hidden flex bg-muted/40 shrink-0">
+            {totalAdvDec === 0 ? (
+              <div className="h-full w-full bg-muted/30" />
+            ) : (
+              <>
+                {advances > 0 && (
+                  <div
+                    className="h-full bg-emerald-500 transition-all duration-300"
+                    style={{ width: `${declines === 0 ? 100 : upPct}%` }}
+                  />
+                )}
+                {declines > 0 && (
+                  <div
+                    className="h-full bg-rose-500 transition-all duration-300"
+                    style={{ width: `${advances === 0 ? 100 : downPct}%` }}
+                  />
+                )}
+              </>
+            )}
+          </div>
+          <span className="font-mono text-sm font-bold text-rose-400 tabular-nums">
+            {declines}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">

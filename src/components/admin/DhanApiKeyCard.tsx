@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Activity,
+  AlertCircle,
   Check,
   Clipboard,
   ExternalLink,
@@ -19,12 +20,14 @@ import { useAdmin } from "@/context/AdminContext";
 interface DhanStatusState {
   loading: boolean;
   configured: boolean;
+  verified: boolean;
   clientId: string;
   maskedClientId: string;
   hasToken: boolean;
   feedSource: string;
   latencyMs: number | null;
   lastTestedAt: string | null;
+  errorMessage: string | null;
 }
 
 export function DhanApiKeyCard() {
@@ -39,12 +42,14 @@ export function DhanApiKeyCard() {
   const [status, setStatus] = useState<DhanStatusState>({
     loading: true,
     configured: false,
+    verified: false,
     clientId: "1114340693",
     maskedClientId: "111****693",
     hasToken: false,
     feedSource: "Checking...",
     latencyMs: null,
     lastTestedAt: null,
+    errorMessage: null,
   });
 
   const fetchStatus = async () => {
@@ -59,6 +64,7 @@ export function DhanApiKeyCard() {
           ...prev,
           loading: false,
           configured: data.configured,
+          verified: data.verified ?? data.configured,
           clientId: data.clientId || "1114340693",
           maskedClientId: data.maskedClientId || "111****693",
           hasToken: data.hasToken,
@@ -114,13 +120,21 @@ export function DhanApiKeyCard() {
       if (data.ok) {
         setStatus((prev) => ({
           ...prev,
+          verified: true,
           latencyMs: data.latencyMs,
           lastTestedAt: new Date().toLocaleTimeString(),
+          errorMessage: null,
         }));
         toast.success(
           `DhanHQ API authenticated! Live quote ping verified (${data.latencyMs ?? 100}ms)`,
         );
       } else {
+        setStatus((prev) => ({
+          ...prev,
+          verified: false,
+          latencyMs: null,
+          errorMessage: data.message || data.error || "Authentication failed",
+        }));
         toast.error(`DhanHQ test failed: ${data.message || data.error || "Authentication failed"}`);
       }
     } catch (e) {
@@ -148,7 +162,7 @@ export function DhanApiKeyCard() {
         }),
       });
       const data = await res.json();
-      if (data.ok) {
+      if (data.ok && data.verified) {
         updateSettings({
           dhanClientId: clientId.trim(),
           dhanAccessToken: tokenToSave,
@@ -156,14 +170,24 @@ export function DhanApiKeyCard() {
         setStatus((prev) => ({
           ...prev,
           configured: true,
+          verified: true,
           hasToken: true,
           feedSource: data.feedSource || "DhanHQ Live Direct Feed v2",
           latencyMs: data.latencyMs ?? null,
           lastTestedAt: new Date().toLocaleTimeString(),
+          errorMessage: null,
         }));
-        toast.success(data.message || "DhanHQ access token saved and activated!");
+        toast.success(data.message || "DhanHQ access token verified and activated!");
       } else {
-        toast.error(data.error || "Failed to save DhanHQ token");
+        setStatus((prev) => ({
+          ...prev,
+          configured: false,
+          verified: false,
+          feedSource: "NSE Live Feed (DhanHQ Offline)",
+          latencyMs: null,
+          errorMessage: data.error || data.message || "Authentication failed (401)",
+        }));
+        toast.error(data.error || data.message || "Failed to authenticate DhanHQ token");
       }
     } catch (e) {
       toast.error(`Save error: ${(e as Error).message}`);
@@ -186,9 +210,11 @@ export function DhanApiKeyCard() {
         setStatus((prev) => ({
           ...prev,
           configured: false,
+          verified: false,
           hasToken: false,
           feedSource: "NSE Live Feed (DhanHQ Offline)",
           latencyMs: null,
+          errorMessage: null,
         }));
         toast.info(data.message || "DhanHQ token cleared");
       }
@@ -199,7 +225,8 @@ export function DhanApiKeyCard() {
     }
   };
 
-  const isLive = status.configured || status.hasToken || Boolean(accessToken.trim());
+  const isLive = status.configured && status.verified;
+  const isError = Boolean(status.errorMessage);
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-surface/80 via-surface/60 to-amber-950/10 p-6 backdrop-blur shadow-lg space-y-6">
@@ -216,17 +243,37 @@ export function DhanApiKeyCard() {
             <span className="relative flex h-2 w-2">
               <span
                 className={`absolute inline-flex h-full w-full animate-ping rounded-full ${
-                  isLive ? "bg-amber-400 opacity-75" : "bg-muted-foreground opacity-30"
+                  isLive
+                    ? "bg-amber-400 opacity-75"
+                    : isError
+                    ? "bg-rose-500 opacity-75"
+                    : "bg-muted-foreground opacity-30"
                 }`}
               />
               <span
                 className={`relative inline-flex h-2 w-2 rounded-full ${
-                  isLive ? "bg-amber-500" : "bg-muted-foreground"
+                  isLive
+                    ? "bg-amber-500"
+                    : isError
+                    ? "bg-rose-500"
+                    : "bg-muted-foreground"
                 }`}
               />
             </span>
-            <span className={isLive ? "text-amber-400 font-semibold" : "text-muted-foreground"}>
-              {isLive ? "LIVE FEED ACTIVE (v2)" : "NOT CONFIGURED / NSE FALLBACK"}
+            <span
+              className={
+                isLive
+                  ? "text-amber-400 font-semibold"
+                  : isError
+                  ? "text-rose-400 font-semibold"
+                  : "text-muted-foreground"
+              }
+            >
+              {isLive
+                ? "LIVE FEED ACTIVE (v2)"
+                : isError
+                ? "TOKEN EXPIRED / AUTH FAILED (401)"
+                : "NOT CONFIGURED / NSE FALLBACK"}
             </span>
           </span>
         </div>
@@ -345,8 +392,12 @@ export function DhanApiKeyCard() {
             Token Status
           </span>
           <span className="text-xs font-medium mt-0.5 block">
-            {accessToken.trim() || status.hasToken ? (
-              <span className="text-emerald-400 font-semibold">Configured</span>
+            {isLive ? (
+              <span className="text-emerald-400 font-semibold">Active &amp; Verified</span>
+            ) : isError ? (
+              <span className="text-rose-400 font-semibold">Invalid / Expired (401)</span>
+            ) : status.hasToken ? (
+              <span className="text-amber-400 font-semibold">Configured (Unverified)</span>
             ) : (
               <span className="text-muted-foreground">Not Set</span>
             )}
@@ -358,15 +409,46 @@ export function DhanApiKeyCard() {
             Ping Latency
           </span>
           <span className="text-xs font-mono text-foreground mt-0.5 block">
-            {status.latencyMs !== null ? `${status.latencyMs}ms` : "—"}
-            {status.lastTestedAt ? (
-              <span className="text-[10px] text-muted-foreground ml-1">
-                ({status.lastTestedAt})
-              </span>
-            ) : null}
+            {isLive && status.latencyMs !== null ? (
+              <>
+                {`${status.latencyMs}ms`}
+                {status.lastTestedAt ? (
+                  <span className="text-[10px] text-muted-foreground ml-1">
+                    ({status.lastTestedAt})
+                  </span>
+                ) : null}
+              </>
+            ) : isError ? (
+              <span className="text-rose-400 font-sans text-xs font-semibold">Failed (401)</span>
+            ) : (
+              "—"
+            )}
           </span>
         </div>
       </div>
+
+      {/* Error Alert Banner when Token Fails */}
+      {status.errorMessage && (
+        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs text-rose-300 flex items-start gap-2.5">
+          <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-rose-200">DhanHQ Authentication Error</p>
+            <p className="text-rose-300/90 leading-relaxed">{status.errorMessage}</p>
+            <p className="text-[11px] text-muted-foreground pt-0.5">
+              Tip: DhanHQ access tokens expire every 24 hours. Log in to{" "}
+              <a
+                href="https://web.dhan.co"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-amber-400 hover:text-amber-300 font-medium"
+              >
+                Dhan Web &gt; My Profile &gt; DhanHQ APIs
+              </a>{" "}
+              to generate a fresh daily token.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-border/40">

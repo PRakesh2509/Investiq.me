@@ -18,6 +18,10 @@ import {
   Briefcase,
   Zap,
   ShieldCheck,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Layers,
 } from "lucide-react";
 import { getDhanHoldings } from "@/lib/dhan.functions";
 import { DhanConnectModal } from "@/components/DhanConnectModal";
@@ -168,14 +172,22 @@ function DesktopDashboard() {
   }, [quotes]);
 
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
+  const [sectorFilter, setSectorFilter] = useState<"top5" | "gainers" | "losers" | "all">("top5");
+
+  const displayedSectors = useMemo(() => {
+    if (sectorFilter === "top5") return sectors.slice(0, 5);
+    if (sectorFilter === "gainers") return sectors.filter((s) => s.avgPct > 0);
+    if (sectorFilter === "losers") return sectors.filter((s) => s.avgPct < 0);
+    return sectors;
+  }, [sectors, sectorFilter]);
 
   const activeSector = useMemo(() => {
     if (selectedSector) {
       const found = sectors.find((s) => s.sector.toLowerCase() === selectedSector.toLowerCase());
       if (found) return found;
     }
-    return sectors[0] ?? null;
-  }, [sectors, selectedSector]);
+    return displayedSectors[0] ?? sectors[0] ?? null;
+  }, [sectors, displayedSectors, selectedSector]);
 
   const activeSectorStocks = useMemo(() => {
     if (!activeSector) return [];
@@ -441,122 +453,283 @@ function DesktopDashboard() {
         onStatusChange={(src) => setFeedSource(src)}
       />
 
-      {/* Trending sector — only 5 stocks */}
+      {/* Trending sectors — advance/decline split format */}
       <div className="rounded-2xl border border-border bg-surface/60 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
+              <Layers className="h-5 w-5 text-primary" />
               <h2 className="font-display text-lg font-semibold">Trending sectors</h2>
               {activeSector && (
                 <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-                  {activeSector.sector} · Top 5 Stocks
+                  {activeSector.sector}
                 </span>
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Select a trending sector to view its top 5 performing stocks
+              Live advance-decline momentum &amp; average sector performance
             </p>
           </div>
-          {activeSector && (
-            <Link
-              to="/desktop/sector/$name"
-              params={{ name: activeSector.sector }}
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
-            >
-              <span>{activeSector.sector} sector view</span>
-              <ExternalLink className="h-3 w-3" />
-            </Link>
-          )}
+
+          <div className="flex items-center gap-2">
+            {/* Filter pills */}
+            <div className="inline-flex rounded-lg border border-border bg-background/50 p-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setSectorFilter("top5")}
+                className={`rounded-md px-2.5 py-1 font-medium transition cursor-pointer ${
+                  sectorFilter === "top5"
+                    ? "bg-primary text-primary-foreground font-semibold shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Top 5
+              </button>
+              <button
+                type="button"
+                onClick={() => setSectorFilter("gainers")}
+                className={`rounded-md px-2.5 py-1 font-medium transition cursor-pointer ${
+                  sectorFilter === "gainers"
+                    ? "bg-emerald-500/20 text-emerald-400 font-semibold shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Gainers
+              </button>
+              <button
+                type="button"
+                onClick={() => setSectorFilter("losers")}
+                className={`rounded-md px-2.5 py-1 font-medium transition cursor-pointer ${
+                  sectorFilter === "losers"
+                    ? "bg-rose-500/20 text-rose-400 font-semibold shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Losers
+              </button>
+              <button
+                type="button"
+                onClick={() => setSectorFilter("all")}
+                className={`rounded-md px-2.5 py-1 font-medium transition cursor-pointer ${
+                  sectorFilter === "all"
+                    ? "bg-primary text-primary-foreground font-semibold shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                All ({sectors.length})
+              </button>
+            </div>
+
+            {activeSector && (
+              <Link
+                to="/desktop/sector/$name"
+                params={{ name: activeSector.sector }}
+                className="hidden sm:inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium ml-1"
+              >
+                <span>{activeSector.sector} page</span>
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+            )}
+          </div>
         </div>
 
         {sectors.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Loading sector data…</p>
         ) : (
           <div className="space-y-4">
-            {/* Sector switcher pills */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-              {sectors.map((s) => {
+            {/* Advance/Decline Sector Rows matching requested format */}
+            <div className="divide-y divide-border/60 rounded-xl border border-border/70 bg-background/50 overflow-hidden shadow-inner">
+              {displayedSectors.map((s) => {
                 const isActive = activeSector?.sector.toLowerCase() === s.sector.toLowerCase();
                 const pos = s.avgPct >= 0;
+                const totalUpDown = s.up + s.down;
+                const upPct = totalUpDown > 0 ? (s.up / totalUpDown) * 100 : 50;
+                const downPct = 100 - upPct;
+
                 return (
-                  <button
+                  <div
                     key={s.sector}
-                    type="button"
                     onClick={() => setSelectedSector(s.sector)}
-                    className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-medium transition cursor-pointer ${
+                    className={`group flex items-center justify-between gap-3 sm:gap-6 px-4 py-3.5 sm:px-5 transition-all cursor-pointer ${
                       isActive
-                        ? "border-primary bg-primary/15 text-primary shadow-sm"
-                        : "border-border bg-background/50 text-muted-foreground hover:bg-accent hover:text-foreground"
+                        ? "bg-primary/10 border-l-4 border-l-primary"
+                        : "hover:bg-accent/40"
                     }`}
                   >
-                    <span>{s.sector}</span>
-                    <span
-                      className={`text-[11px] font-semibold ${
-                        pos ? "text-success" : "text-destructive"
-                      }`}
-                    >
-                      {pos ? "+" : ""}
-                      {s.avgPct.toFixed(2)}%
-                    </span>
-                  </button>
+                    {/* Sector Name */}
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <span
+                        className={`font-semibold text-xs sm:text-sm md:text-base truncate transition-colors ${
+                          isActive ? "text-primary font-bold" : "text-foreground group-hover:text-primary"
+                        }`}
+                      >
+                        {s.sector}
+                      </span>
+                      {isActive && (
+                        <span className="hidden sm:inline-flex items-center rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          Active
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Advance / Decline Bar & Counts */}
+                    <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                      <span className="w-5 sm:w-6 text-right font-mono text-xs sm:text-sm font-bold text-emerald-400 tabular-nums">
+                        {s.up}
+                      </span>
+                      <div className="w-24 sm:w-48 md:w-64 lg:w-80 h-2 sm:h-2.5 rounded-full overflow-hidden flex bg-muted/40 shrink-0">
+                        {totalUpDown === 0 ? (
+                          <div className="h-full w-full bg-muted/30" />
+                        ) : (
+                          <>
+                            {s.up > 0 && (
+                              <div
+                                className="h-full bg-emerald-500 transition-all duration-300"
+                                style={{ width: `${s.down === 0 ? 100 : upPct}%` }}
+                              />
+                            )}
+                            {s.down > 0 && (
+                              <div
+                                className="h-full bg-rose-500 transition-all duration-300"
+                                style={{ width: `${s.up === 0 ? 100 : downPct}%` }}
+                              />
+                            )}
+                          </>
+                        )}
+                      </div>
+                      <span className="w-5 sm:w-6 text-left font-mono text-xs sm:text-sm font-bold text-rose-400 tabular-nums">
+                        {s.down}
+                      </span>
+                    </div>
+
+                    {/* Sector Return & Chevron Link */}
+                    <div className="flex items-center justify-end gap-1.5 shrink-0 min-w-[80px] sm:min-w-[105px] text-right">
+                      <span
+                        className={`font-mono text-xs sm:text-sm font-bold tabular-nums ${
+                          pos ? "text-emerald-400" : "text-rose-400"
+                        }`}
+                      >
+                        {pos ? "+" : ""}
+                        {s.avgPct.toFixed(2)}%
+                      </span>
+                      <Link
+                        to="/desktop/sector/$name"
+                        params={{ name: s.sector }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/60 transition group-hover:translate-x-0.5"
+                        title={`Open ${s.sector} sector details`}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Link>
+                    </div>
+                  </div>
                 );
               })}
             </div>
 
-            {/* Exactly 5 Stocks for the Trending Sector */}
-            {activeSectorStocks.length === 0 ? (
-              <p className="py-6 text-center text-xs text-muted-foreground">
-                No stock data available for {activeSector?.sector}.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                {activeSectorStocks.map((s, idx) => {
-                  const pos = s.changePct >= 0;
-                  return (
-                    <Link
-                      key={s.symbol}
-                      to="/desktop/charts"
-                      search={{ symbol: s.symbol }}
-                      className="group flex flex-col justify-between rounded-xl border border-border bg-background/50 p-3.5 transition hover:border-primary/60 hover:bg-accent hover:shadow-glow"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="font-mono text-xs font-bold text-primary group-hover:underline">
-                            {s.symbol}
-                          </span>
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
-                            #{idx + 1}
-                          </span>
-                        </div>
-                        <p
-                          className="mt-1 line-clamp-1 text-[11px] text-muted-foreground"
-                          title={s.name}
-                        >
-                          {s.name}
-                        </p>
-                      </div>
+            {/* Helper footer */}
+            <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+              <span>
+                Click any sector row to display its top 5 stocks below
+              </span>
+              {sectors.length > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setSectorFilter(sectorFilter === "top5" ? "all" : "top5")}
+                  className="inline-flex items-center gap-1 font-medium text-primary hover:underline cursor-pointer"
+                >
+                  {sectorFilter === "top5" ? (
+                    <>
+                      <span>Show all {sectors.length} sectors</span>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </>
+                  ) : (
+                    <>
+                      <span>Show top 5 only</span>
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
 
-                      <div className="mt-3 flex items-end justify-between pt-2 border-t border-border/40">
-                        <span className="font-display text-sm font-semibold text-foreground">
-                          {formatINR(s.price)}
-                        </span>
-                        <span
-                          className={`inline-flex items-center gap-0.5 text-xs font-semibold ${
-                            pos ? "text-success" : "text-destructive"
-                          }`}
+            {/* Exactly 5 Stocks for the Selected Trending Sector */}
+            {activeSector && (
+              <div className="pt-3 border-t border-border/50">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-display text-sm font-semibold">
+                      Top 5 stocks in {activeSector.sector}
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground">
+                      Ranked by performance in the {activeSector.sector} sector
+                    </p>
+                  </div>
+                  <Link
+                    to="/desktop/sector/$name"
+                    params={{ name: activeSector.sector }}
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                  >
+                    <span>Full {activeSector.sector} sector view</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </div>
+
+                {activeSectorStocks.length === 0 ? (
+                  <p className="py-6 text-center text-xs text-muted-foreground">
+                    No stock data available for {activeSector?.sector}.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    {activeSectorStocks.map((s, idx) => {
+                      const pos = s.changePct >= 0;
+                      return (
+                        <Link
+                          key={s.symbol}
+                          to="/desktop/charts"
+                          search={{ symbol: s.symbol }}
+                          className="group flex flex-col justify-between rounded-xl border border-border bg-background/50 p-3.5 transition hover:border-primary/60 hover:bg-accent hover:shadow-glow"
                         >
-                          {pos ? (
-                            <ArrowUpRight className="h-3.5 w-3.5" />
-                          ) : (
-                            <ArrowDownRight className="h-3.5 w-3.5" />
-                          )}
-                          {pos ? "+" : ""}
-                          {s.changePct.toFixed(2)}%
-                        </span>
-                      </div>
-                    </Link>
-                  );
-                })}
+                          <div>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-mono text-xs font-bold text-primary group-hover:underline">
+                                {s.symbol}
+                              </span>
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+                                #{idx + 1}
+                              </span>
+                            </div>
+                            <p
+                              className="mt-1 line-clamp-1 text-[11px] text-muted-foreground"
+                              title={s.name}
+                            >
+                              {s.name}
+                            </p>
+                          </div>
+
+                          <div className="mt-3 flex items-end justify-between pt-2 border-t border-border/40">
+                            <span className="font-display text-sm font-semibold text-foreground">
+                              {formatINR(s.price)}
+                            </span>
+                            <span
+                              className={`inline-flex items-center gap-0.5 text-xs font-semibold ${
+                                pos ? "text-success" : "text-destructive"
+                              }`}
+                            >
+                              {pos ? (
+                                <ArrowUpRight className="h-3.5 w-3.5" />
+                              ) : (
+                                <ArrowDownRight className="h-3.5 w-3.5" />
+                              )}
+                              {pos ? "+" : ""}
+                              {s.changePct.toFixed(2)}%
+                            </span>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
