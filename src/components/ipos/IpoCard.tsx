@@ -34,7 +34,9 @@ export function IpoCard({
         ? "border-border bg-surface text-muted-foreground"
         : ipo.status === "allotted"
           ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
-          : "border-blue-500/30 bg-blue-500/10 text-blue-400";
+          : ipo.status === "listed"
+            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold"
+            : "border-blue-500/30 bg-blue-500/10 text-blue-400";
 
   return (
     <article

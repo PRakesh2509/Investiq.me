@@ -99,7 +99,7 @@ function IPOTracker() {
   // Group IPOs by tab status
   const grouped = useMemo(() => {
     const open = rawIpos.filter((i) => i.status === "open");
-    const closed = rawIpos.filter((i) => i.status === "closed" || i.status === "allotted");
+    const closed = rawIpos.filter((i) => i.status === "closed" || i.status === "allotted" || i.status === "listed");
     const upcoming = rawIpos.filter((i) => i.status === "upcoming");
     return { open, closed, upcoming };
   }, [rawIpos]);
