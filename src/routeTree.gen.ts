@@ -14,10 +14,12 @@ import { Route as DesktopRouteImport } from './routes/desktop'
 import { Route as ApiAiTradesRouteImport } from './routes/api/ai-trades'
 import { Route as ApiExpiriesRouteImport } from './routes/api/expiries'
 import { Route as ApiFnoAlertRouteImport } from './routes/api/fno-alert'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiMarketFeedRouteImport } from './routes/api/market-feed'
 import { Route as ApiOptionAlertRouteImport } from './routes/api/option-alert'
 import { Route as ApiOptionChainRouteImport } from './routes/api/option-chain'
 import { Route as ApiSearchRouteImport } from './routes/api/search'
+import { Route as ApiSignalsRouteImport } from './routes/api/signals'
 import { Route as ApiTestTradeRouteImport } from './routes/api/test-trade'
 import { Route as DesktopIndexRouteImport } from './routes/desktop.index'
 import { Route as DesktopAdminRouteImport } from './routes/desktop.admin'
@@ -81,6 +83,11 @@ const ApiFnoAlertRoute = ApiFnoAlertRouteImport.update({
   path: '/api/fno-alert',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiMarketFeedRoute = ApiMarketFeedRouteImport.update({
   id: '/api/market-feed',
   path: '/api/market-feed',
@@ -99,6 +106,11 @@ const ApiOptionChainRoute = ApiOptionChainRouteImport.update({
 const ApiSearchRoute = ApiSearchRouteImport.update({
   id: '/api/search',
   path: '/api/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSignalsRoute = ApiSignalsRouteImport.update({
+  id: '/api/signals',
+  path: '/api/signals',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiTestTradeRoute = ApiTestTradeRouteImport.update({
@@ -299,10 +311,12 @@ export interface FileRoutesByFullPath {
   '/api/ai-trades': typeof ApiAiTradesRoute
   '/api/expiries': typeof ApiExpiriesRoute
   '/api/fno-alert': typeof ApiFnoAlertRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/market-feed': typeof ApiMarketFeedRoute
   '/api/option-alert': typeof ApiOptionAlertRoute
   '/api/option-chain': typeof ApiOptionChainRoute
   '/api/search': typeof ApiSearchRoute
+  '/api/signals': typeof ApiSignalsRoute
   '/api/test-trade': typeof ApiTestTradeRoute
   '/desktop/admin': typeof DesktopAdminRoute
   '/desktop/charts': typeof DesktopChartsRoute
@@ -346,10 +360,12 @@ export interface FileRoutesByTo {
   '/api/ai-trades': typeof ApiAiTradesRoute
   '/api/expiries': typeof ApiExpiriesRoute
   '/api/fno-alert': typeof ApiFnoAlertRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/market-feed': typeof ApiMarketFeedRoute
   '/api/option-alert': typeof ApiOptionAlertRoute
   '/api/option-chain': typeof ApiOptionChainRoute
   '/api/search': typeof ApiSearchRoute
+  '/api/signals': typeof ApiSignalsRoute
   '/api/test-trade': typeof ApiTestTradeRoute
   '/desktop/admin': typeof DesktopAdminRoute
   '/desktop/charts': typeof DesktopChartsRoute
@@ -395,10 +411,12 @@ export interface FileRoutesById {
   '/api/ai-trades': typeof ApiAiTradesRoute
   '/api/expiries': typeof ApiExpiriesRoute
   '/api/fno-alert': typeof ApiFnoAlertRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/market-feed': typeof ApiMarketFeedRoute
   '/api/option-alert': typeof ApiOptionAlertRoute
   '/api/option-chain': typeof ApiOptionChainRoute
   '/api/search': typeof ApiSearchRoute
+  '/api/signals': typeof ApiSignalsRoute
   '/api/test-trade': typeof ApiTestTradeRoute
   '/desktop/admin': typeof DesktopAdminRoute
   '/desktop/charts': typeof DesktopChartsRoute
@@ -445,10 +463,12 @@ export interface FileRouteTypes {
     | '/api/ai-trades'
     | '/api/expiries'
     | '/api/fno-alert'
+    | '/api/health'
     | '/api/market-feed'
     | '/api/option-alert'
     | '/api/option-chain'
     | '/api/search'
+    | '/api/signals'
     | '/api/test-trade'
     | '/desktop/admin'
     | '/desktop/charts'
@@ -492,10 +512,12 @@ export interface FileRouteTypes {
     | '/api/ai-trades'
     | '/api/expiries'
     | '/api/fno-alert'
+    | '/api/health'
     | '/api/market-feed'
     | '/api/option-alert'
     | '/api/option-chain'
     | '/api/search'
+    | '/api/signals'
     | '/api/test-trade'
     | '/desktop/admin'
     | '/desktop/charts'
@@ -540,10 +562,12 @@ export interface FileRouteTypes {
     | '/api/ai-trades'
     | '/api/expiries'
     | '/api/fno-alert'
+    | '/api/health'
     | '/api/market-feed'
     | '/api/option-alert'
     | '/api/option-chain'
     | '/api/search'
+    | '/api/signals'
     | '/api/test-trade'
     | '/desktop/admin'
     | '/desktop/charts'
@@ -589,10 +613,12 @@ export interface RootRouteChildren {
   ApiAiTradesRoute: typeof ApiAiTradesRoute
   ApiExpiriesRoute: typeof ApiExpiriesRoute
   ApiFnoAlertRoute: typeof ApiFnoAlertRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   ApiMarketFeedRoute: typeof ApiMarketFeedRoute
   ApiOptionAlertRoute: typeof ApiOptionAlertRoute
   ApiOptionChainRoute: typeof ApiOptionChainRoute
   ApiSearchRoute: typeof ApiSearchRoute
+  ApiSignalsRoute: typeof ApiSignalsRoute
   ApiTestTradeRoute: typeof ApiTestTradeRoute
   ApiAdminDhanRoute: typeof ApiAdminDhanRoute
   ApiAdminKeysRoute: typeof ApiAdminKeysRoute
@@ -658,6 +684,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFnoAlertRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/market-feed': {
       id: '/api/market-feed'
       path: '/api/market-feed'
@@ -684,6 +717,13 @@ declare module '@tanstack/react-router' {
       path: '/api/search'
       fullPath: '/api/search'
       preLoaderRoute: typeof ApiSearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/signals': {
+      id: '/api/signals'
+      path: '/api/signals'
+      fullPath: '/api/signals'
+      preLoaderRoute: typeof ApiSignalsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/test-trade': {
@@ -985,10 +1025,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiTradesRoute: ApiAiTradesRoute,
   ApiExpiriesRoute: ApiExpiriesRoute,
   ApiFnoAlertRoute: ApiFnoAlertRoute,
+  ApiHealthRoute: ApiHealthRoute,
   ApiMarketFeedRoute: ApiMarketFeedRoute,
   ApiOptionAlertRoute: ApiOptionAlertRoute,
   ApiOptionChainRoute: ApiOptionChainRoute,
   ApiSearchRoute: ApiSearchRoute,
+  ApiSignalsRoute: ApiSignalsRoute,
   ApiTestTradeRoute: ApiTestTradeRoute,
   ApiAdminDhanRoute: ApiAdminDhanRoute,
   ApiAdminKeysRoute: ApiAdminKeysRoute,
