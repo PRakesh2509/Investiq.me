@@ -17,6 +17,7 @@ import { useAdmin } from "@/context/AdminContext";
 import { NIFTY_UNIVERSE } from "@/lib/nifty-universe";
 import { toast } from "sonner";
 import AvgPriceCalculator from "@/components/AvgPriceCalculator";
+import { ThemeToggle } from "@/components/ThemeToggle";
 const logoAsset = { url: "/investiq-logo.png" };
 
 export const Route = createFileRoute("/desktop")({
@@ -206,6 +207,7 @@ function DesktopLayout() {
           <button className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface/60 hover:bg-accent">
             <Bell className="h-4 w-4" />
           </button>
+          <ThemeToggle />
           <Link
             to="/"
             className="rounded-lg border border-border bg-surface/60 px-3 py-2 text-xs font-medium hover:bg-accent"

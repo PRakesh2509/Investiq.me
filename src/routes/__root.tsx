@@ -14,6 +14,8 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { OnboardingProvider } from "@/context/OnboardingContext";
 import { AdminProvider } from "@/context/AdminContext";
+import { ThemeProvider } from "@/context/ThemeContext";
+import { themeInitScript } from "@/lib/theme";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -83,7 +85,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=1280" },
-      { name: "theme-color", content: "#0b0f14" },
+      { name: "theme-color", content: "#070b12" },
       { title: "InvestIQ — Deep Research for Indian Stocks" },
       {
         name: "description",
@@ -111,7 +113,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap",
       },
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
@@ -126,9 +128,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <HeadContent />
+        {/* Resolves dark/light before first paint so there is no flash. */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
         {children}
@@ -143,12 +147,14 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <OnboardingProvider>
-        <AdminProvider>
-          <Outlet />
-          <Toaster />
-        </AdminProvider>
-      </OnboardingProvider>
+      <ThemeProvider>
+        <OnboardingProvider>
+          <AdminProvider>
+            <Outlet />
+            <Toaster />
+          </AdminProvider>
+        </OnboardingProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

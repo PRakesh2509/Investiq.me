@@ -71,7 +71,7 @@ export default function WorkstationTradingChart({
       layout: {
         background: { color: "transparent" },
         textColor: "#94a3b8",
-        fontFamily: "Space Grotesk, Inter, ui-sans-serif",
+        fontFamily: "Hanken Grotesk, ui-sans-serif",
       },
       grid: {
         vertLines: { color: "rgba(148, 163, 184, 0.07)" },

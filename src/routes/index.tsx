@@ -1,19 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import {
-  ArrowRight,
-  BarChart3,
-  Brain,
-  ShieldCheck,
-  Search,
-  TrendingUp,
-  Zap,
-  DollarSign,
-  Bitcoin,
-  Sparkles,
-} from "lucide-react";
+import { ArrowRight, BarChart3, Bitcoin, Brain, DollarSign, Search, Sparkles } from "lucide-react";
 import { DisclaimerModal, useDisclaimerAcknowledged } from "@/components/DisclaimerModal";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { NIFTY_UNIVERSE, NIFTY_YAHOO_SYMBOLS } from "@/lib/nifty-universe";
 import { getYahooQuotes } from "@/lib/yahoo.functions";
 import { formatINR } from "@/lib/market-data";
@@ -30,7 +20,9 @@ type LiveQuote = {
   changePct: number;
 };
 
-// India market hours: 09:15–15:30 IST, Mon–Fri
+type MarketState = "open" | "pre" | "closed";
+
+// India market hours: pre-open 09:00–09:15, regular 09:15–15:30 IST, Mon–Fri
 function useMarketStatus() {
   // Start null so SSR and the first client render agree, then tick on the client.
   const [now, setNow] = useState<Date | null>(null);
@@ -42,9 +34,11 @@ function useMarketStatus() {
   const ist = new Date((now ?? new Date(0)).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
   const day = ist.getDay();
   const mins = ist.getHours() * 60 + ist.getMinutes();
+  const preMin = 9 * 60;
   const openMin = 9 * 60 + 15;
   const closeMin = 15 * 60 + 30;
   const isWeekday = day >= 1 && day <= 5;
+  const isPre = isWeekday && mins >= preMin && mins < openMin;
   const isOpen = isWeekday && mins >= openMin && mins < closeMin;
   let target: Date;
   if (isOpen) {
@@ -67,13 +61,27 @@ function useMarketStatus() {
   const hrs = Math.max(0, Math.floor(diffMs / 3_600_000));
   const mns = Math.max(0, Math.floor((diffMs % 3_600_000) / 60_000));
   const secs = Math.max(0, Math.floor((diffMs % 60_000) / 1000));
+  const state: MarketState = !now ? "closed" : isOpen ? "open" : isPre ? "pre" : "closed";
   return {
-    isOpen: now ? isOpen : false,
-    countdown: now
-      ? `${String(hrs).padStart(2, "0")}:${String(mns).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
-      : "--:--:--",
-    label: isOpen ? "Closes in" : "Opens in",
+    state,
+    isOpen: state === "open",
+    countdown:
+      now === null
+        ? "--:--:--"
+        : `${String(hrs).padStart(2, "0")}:${String(mns).padStart(2, "0")}:${String(secs).padStart(2, "0")}`,
+    label: state === "open" ? "Market open" : state === "pre" ? "Pre-open" : "Market closed",
+    countdownLabel: state === "open" ? "Closes in" : "Opens in",
   };
+}
+
+function deltaClass(changePct: number) {
+  if (changePct > 0) return "iq-delta iq-delta--up iq-num";
+  if (changePct < 0) return "iq-delta iq-delta--down iq-num";
+  return "iq-delta iq-delta--flat iq-num";
+}
+
+function deltaText(changePct: number) {
+  return `${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%`;
 }
 
 function LandingPage() {
@@ -85,6 +93,7 @@ function LandingPage() {
   const [quotes, setQuotes] = useState<LiveQuote[]>([]);
   const fetchQuotes = useServerFn(getYahooQuotes);
   const market = useMarketStatus();
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -111,6 +120,24 @@ function LandingPage() {
       window.clearInterval(id);
     };
   }, [fetchQuotes]);
+
+  // "/" jumps to search, Escape dismisses the suggestion list.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el?.isContentEditable === true;
+      if (e.key === "/" && !typing) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (e.key === "Escape") setShowSuggest(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const trending = useMemo(
     () => [...quotes].sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct)).slice(0, 8),
@@ -156,304 +183,354 @@ function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-hero">
-      {/* Nav */}
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <div className="flex items-center gap-2">
-          <img
-            src={logoAsset.url}
-            alt="InvestIQ logo"
-            className="h-9 w-9 rounded-xl object-contain"
-          />
+    <div className="iq-page">
+      <a className="iq-sr-only" href="#main">
+        Skip to content
+      </a>
 
-          <span className="font-display text-xl font-semibold tracking-tight">
-            <span className="text-gradient">Invest</span>IQ
-          </span>
+      <header className="iq-header">
+        <div className="iq-container iq-header__bar">
+          <a className="iq-logo" href="/" aria-label="InvestIQ home">
+            <img src={logoAsset.url} alt="" />
+            <span>
+              <span className="iq-logo__mark">Invest</span>IQ
+            </span>
+          </a>
+          <nav className="iq-nav" aria-label="Sections">
+            <a className="iq-nav__link" href="#trending">
+              Trending
+            </a>
+            <a className="iq-nav__link" href="#top-rated">
+              Top rated
+            </a>
+            <a className="iq-nav__link" href="#features">
+              Features
+            </a>
+            <a className="iq-nav__link" href="#trust">
+              Disclaimer
+            </a>
+            <ThemeToggle className="iq-nav__toggle" />
+            <button
+              type="button"
+              className="iq-btn iq-btn--primary iq-btn--sm"
+              onClick={() => go("/desktop")}
+            >
+              Enter desk
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </nav>
         </div>
-        <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">
-          <a href="#trending" className="transition hover:text-foreground">
-            Trending
-          </a>
-          <a href="#features" className="transition hover:text-foreground">
-            Features
-          </a>
-          <a href="#trust" className="transition hover:text-foreground">
-            Disclaimer
-          </a>
-        </nav>
       </header>
 
-      {/* Hero */}
-      <section className="mx-auto max-w-6xl px-6 pb-10 pt-6 text-center md:pt-10">
-        <img
-          src={logoAsset.url}
-          alt="InvestIQ — Invest smarter. Grow better."
-          className="mx-auto h-20 w-20 rounded-2xl object-contain"
-        />
-
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <h1 className="font-display text-5xl font-semibold tracking-tight md:text-6xl">
-            <span className="text-gradient">Invest</span>IQ
-          </h1>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-primary">
-            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-            F&amp;O Live
-          </span>
-        </div>
-        <p className="mx-auto mt-4 max-w-xl text-base text-muted-foreground md:text-lg">
-          Deep research for Indian stocks.
-        </p>
-
-        {/* Feature row */}
-        <div className="mx-auto mt-8 grid max-w-3xl grid-cols-3 gap-3">
-          {[
-            { icon: Brain, label: "Analysis" },
-            { icon: Zap, label: "Live Prices" },
-            { icon: ShieldCheck, label: "Risk Scoring" },
-          ].map(({ icon: Icon, label }) => (
-            <div
-              key={label}
-              className="flex items-center justify-center gap-2 rounded-xl border border-border bg-surface/60 px-4 py-3 text-sm"
-            >
-              <Icon className="h-4 w-4 text-primary" />
-              <span className="font-medium">{label}</span>
+      <main id="main">
+        {/* Hero */}
+        <section className="iq-hero">
+          <div className="iq-container">
+            <div className="iq-hero__meta">
+              <span className="iq-status" data-state={market.state}>
+                <span className="iq-status__dot" aria-hidden="true" />
+                <span>{market.label}</span>
+                <span className="iq-muted">·</span>
+                <span>
+                  {market.countdownLabel}{" "}
+                  <span className="iq-status__time iq-num">{market.countdown}</span>
+                </span>
+              </span>
+              <ul className="iq-chips">
+                <li className="iq-chip iq-chip--live">F&amp;O live</li>
+                <li className="iq-chip">NSE / BSE · IST</li>
+              </ul>
             </div>
-          ))}
-        </div>
 
-        {/* Market status */}
-        <div className="mx-auto mt-6 flex max-w-3xl items-center justify-between rounded-xl border border-border bg-surface/60 px-5 py-3 text-sm">
-          <div className="flex items-center gap-2">
-            <span
-              className={`inline-block h-2 w-2 rounded-full ${
-                market.isOpen ? "bg-success animate-pulse" : "bg-destructive"
-              }`}
-            />
-            <span className="font-medium">{market.isOpen ? "Market Open" : "Market Closed"}</span>
-            <span className="text-xs text-muted-foreground">· NSE / BSE · IST</span>
+            <div className="iq-hero__copy">
+              <p className="iq-eyebrow">Equity research desk</p>
+              <h1 className="iq-h1">
+                Deep research for <br />
+                Indian stocks.
+              </h1>
+              <p className="iq-lede">
+                Fundamentals, technicals and sentiment synthesised into a decisive BUY / HOLD / SELL
+                read — with live prices, F&amp;O signals and IPO notes in the same desk.
+              </p>
+            </div>
+
+            <form
+              role="search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                runSearch(query);
+              }}
+              className="iq-search"
+            >
+              <Search className="iq-search__icon" aria-hidden="true" />
+              <label className="iq-sr-only" htmlFor="iq-search-input">
+                Search a stock
+              </label>
+              <input
+                id="iq-search-input"
+                ref={searchRef}
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setShowSuggest(true);
+                }}
+                onFocus={() => setShowSuggest(true)}
+                onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
+                placeholder="Search any stock — INFY, Reliance, TCS…"
+                autoComplete="off"
+                className="iq-search__input"
+              />
+              <kbd className="iq-kbd" aria-hidden="true">
+                /
+              </kbd>
+              <button type="submit" className="iq-btn iq-btn--primary iq-search__submit">
+                Search
+              </button>
+              {showSuggest && suggestions.length > 0 && (
+                <div className="iq-search__results" role="listbox">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s.symbol}
+                      type="button"
+                      role="option"
+                      aria-selected="false"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        runSearch(s.symbol);
+                      }}
+                      className="iq-search__option"
+                    >
+                      <span className="iq-symbol">{s.symbol}</span>
+                      <span className="iq-muted">
+                        {s.name} · {s.sector}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </form>
+
+            <div className="iq-hero__actions">
+              <button
+                type="button"
+                className="iq-btn iq-btn--primary"
+                onClick={() => go("/desktop")}
+              >
+                Enter research desk
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <a className="iq-btn iq-btn--ghost" href="#trending">
+                See today&apos;s movers
+              </a>
+            </div>
+
+            <div className="iq-coverage">
+              <Bitcoin className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Crypto live</span>
+              <span aria-hidden="true">·</span>
+              <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Forex live</span>
+              <span aria-hidden="true">·</span>
+              <span>24/7 global coverage</span>
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground">
-            {market.label} <span className="font-mono text-foreground">{market.countdown}</span>
+        </section>
+
+        {/* Trending stocks */}
+        <section id="trending" className="iq-section">
+          <div className="iq-container">
+            <div className="iq-section__head">
+              <div>
+                <h2 className="iq-h2">Trending today</h2>
+                <p className="iq-section__sub">
+                  Highest absolute movers from the Nifty universe · refreshes every 15s
+                </p>
+              </div>
+              <button type="button" className="iq-link" onClick={() => go("/desktop")}>
+                View all →
+              </button>
+            </div>
+
+            {trending.length === 0 ? (
+              <div className="iq-panel iq-table" aria-busy="true">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="iq-row iq-row--quote">
+                    <span className="iq-skeleton" style={{ height: "0.9rem", width: "55%" }} />
+                    <span className="iq-skeleton" style={{ height: "0.9rem", width: "70%" }} />
+                    <span className="iq-skeleton" style={{ height: "0.9rem", width: "80%" }} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="iq-panel iq-table">
+                <div className="iq-row iq-row--quote iq-row--head" aria-hidden="true">
+                  <span>Company</span>
+                  <span className="iq-row__price">Last</span>
+                  <span className="iq-row__change">1D</span>
+                </div>
+                {trending.map((q) => (
+                  <button
+                    key={q.symbol}
+                    type="button"
+                    onClick={() => go("/desktop/charts", { symbol: q.symbol })}
+                    className="iq-row iq-row--quote"
+                  >
+                    <span>
+                      <span className="iq-symbol">{q.symbol}</span>
+                      <span className="iq-symbol__name">{q.name}</span>
+                    </span>
+                    <span className="iq-row__price iq-num">{formatINR(q.price)}</span>
+                    <span className={deltaClass(q.changePct)}>{deltaText(q.changePct)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
+        </section>
 
-        {/* Crypto & Forex banner */}
-        <div className="mx-auto mt-3 flex max-w-3xl items-center justify-center gap-6 rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 via-transparent to-primary/10 px-5 py-3 text-xs">
-          <span className="inline-flex items-center gap-1.5 font-medium">
-            <Bitcoin className="h-3.5 w-3.5 text-primary" /> Crypto Live
-          </span>
-          <span className="text-muted-foreground">·</span>
-          <span className="inline-flex items-center gap-1.5 font-medium">
-            <DollarSign className="h-3.5 w-3.5 text-primary" /> Forex Live
-          </span>
-          <span className="text-muted-foreground">· 24/7 global coverage</span>
-        </div>
+        {/* Top rated */}
+        <section id="top-rated" className="iq-section">
+          <div className="iq-container">
+            <div className="iq-section__head">
+              <div>
+                <h2 className="iq-h2">Top rated</h2>
+                <p className="iq-section__sub">
+                  Strongest gainers right now — ranked by 1-day change
+                </p>
+              </div>
+            </div>
 
-        {/* Central search */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            runSearch(query);
-          }}
-          className="relative mx-auto mt-6 max-w-2xl"
-        >
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setShowSuggest(true);
-            }}
-            onFocus={() => setShowSuggest(true)}
-            onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
-            placeholder="Search any stock — INFY, Reliance, TCS…"
-            className="h-14 w-full rounded-2xl border border-border bg-surface/80 pl-12 pr-32 text-base outline-none placeholder:text-muted-foreground focus:border-primary"
-          />
-          <button
-            type="submit"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-gradient-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-glow"
-          >
-            Search
-          </button>
-          {showSuggest && suggestions.length > 0 && (
-            <div className="absolute left-0 right-0 top-16 z-40 overflow-hidden rounded-xl border border-border bg-background text-left shadow-elegant">
-              {suggestions.map((s) => (
-                <button
-                  key={s.symbol}
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    runSearch(s.symbol);
-                  }}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-sm hover:bg-accent"
+            {topRated.length === 0 ? (
+              <div className="iq-panel iq-table" aria-busy="true">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="iq-row iq-row--quote">
+                    <span className="iq-skeleton" style={{ height: "0.9rem", width: "55%" }} />
+                    <span className="iq-skeleton" style={{ height: "0.9rem", width: "70%" }} />
+                    <span className="iq-skeleton" style={{ height: "0.9rem", width: "80%" }} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="iq-panel iq-table">
+                <div className="iq-row iq-row--quote iq-row--head" aria-hidden="true">
+                  <span>Company</span>
+                  <span className="iq-row__price">Last</span>
+                  <span className="iq-row__change">1D</span>
+                </div>
+                {topRated.map((q, i) => (
+                  <button
+                    key={q.symbol}
+                    type="button"
+                    onClick={() => go("/desktop/charts", { symbol: q.symbol })}
+                    className="iq-row iq-row--quote"
+                  >
+                    <span className="iq-row__lead">
+                      <span className="iq-rank iq-num">{String(i + 1).padStart(2, "0")}</span>
+                      <span>
+                        <span className="iq-symbol">{q.symbol}</span>
+                        <span className="iq-symbol__name">{q.name}</span>
+                      </span>
+                    </span>
+                    <span className="iq-row__price iq-num">{formatINR(q.price)}</span>
+                    <span className={deltaClass(q.changePct)}>{deltaText(q.changePct)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Features */}
+        <section id="features" className="iq-section">
+          <div className="iq-container">
+            <div className="iq-section__head">
+              <div>
+                <h2 className="iq-h2">Built for serious market research</h2>
+                <p className="iq-section__sub">
+                  Three desks, one method — evidence first, opinions last.
+                </p>
+              </div>
+              <a className="iq-link" href="#trust">
+                How we disclose →
+              </a>
+            </div>
+
+            <div className="iq-features">
+              {[
+                {
+                  icon: Brain,
+                  title: "AI stock insights",
+                  body: "Fundamentals, technicals and sentiment synthesised into a decisive BUY / HOLD / SELL view — with the reasoning shown, not hidden.",
+                  lead: true,
+                },
+                {
+                  icon: BarChart3,
+                  title: "Live charts & F&O signals",
+                  body: "Real-time Yahoo Finance data with CPR, Camarilla and pivot-confluence F&O setups.",
+                  lead: false,
+                },
+                {
+                  icon: Sparkles,
+                  title: "IPO & mutual fund research",
+                  body: "Institutional-grade IPO notes, live NAV graphs and Telegram alerts on every event.",
+                  lead: false,
+                },
+              ].map(({ icon: Icon, title, body, lead }) => (
+                <article
+                  key={title}
+                  className={`iq-panel iq-feature${lead ? " iq-feature--lead" : ""}`}
                 >
-                  <span className="font-medium">{s.symbol}</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {s.name} · {s.sector}
+                  <span className="iq-feature__icon">
+                    <Icon className="h-5 w-5" aria-hidden="true" />
                   </span>
-                </button>
+                  <h3 className="iq-h3">{title}</h3>
+                  <p className="iq-feature__text">{body}</p>
+                </article>
               ))}
             </div>
-          )}
-        </form>
+          </div>
+        </section>
 
-        <div className="mt-6 flex flex-wrap justify-center gap-3">
-          <button
-            onClick={() => go("/desktop")}
-            className="group inline-flex items-center gap-2 rounded-xl bg-gradient-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-glow transition hover:opacity-95"
-          >
-            Enter research desk
-            <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-          </button>
-        </div>
-      </section>
-
-      {/* Trending Stocks */}
-      <section id="trending" className="mx-auto max-w-6xl px-6 pb-10">
-        <div className="mb-4 flex items-end justify-between">
-          <div>
-            <h2 className="font-display text-2xl font-semibold tracking-tight">Trending Stocks</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Highest absolute movers from the Nifty universe · live
+        {/* Disclosure */}
+        <section className="iq-section">
+          <div className="iq-container">
+            <p className="iq-notice">
+              <strong>InvestIQ is not a SEBI-registered portal.</strong> This is an educational
+              research platform only. Consult a SEBI-registered financial advisor before making
+              investment decisions — all market investments carry risk of loss.
             </p>
           </div>
-          <button onClick={() => go("/desktop")} className="text-xs text-primary hover:underline">
-            View all →
-          </button>
-        </div>
-        {trending.length === 0 ? (
-          <div className="grid grid-cols-4 gap-3">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-24 animate-pulse rounded-xl border border-border bg-surface/40"
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-4 gap-3">
-            {trending.map((q) => {
-              const pos = q.changePct >= 0;
-              return (
-                <button
-                  key={q.symbol}
-                  onClick={() => go("/desktop/charts", { symbol: q.symbol })}
-                  className="group rounded-xl border border-border bg-surface/60 p-4 text-left transition hover:border-primary/40 hover:bg-surface"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                      {q.symbol}
-                    </span>
-                    <TrendingUp
-                      className={`h-3.5 w-3.5 transition ${
-                        pos ? "text-success" : "-rotate-90 text-destructive"
-                      }`}
-                    />
-                  </div>
-                  <p className="mt-2 truncate text-xs text-muted-foreground">{q.name}</p>
-                  <p className="mt-2 font-display text-lg font-semibold">{formatINR(q.price)}</p>
-                  <p className={`text-xs font-medium ${pos ? "text-success" : "text-destructive"}`}>
-                    {pos ? "+" : ""}
-                    {q.changePct.toFixed(2)}%
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
+        </section>
+      </main>
 
-      {/* Top Rated Stocks */}
-      <section className="mx-auto max-w-6xl px-6 pb-16">
-        <div className="mb-4 flex items-end justify-between">
+      <footer id="trust" className="iq-footer">
+        <div className="iq-container iq-footer__inner">
           <div>
-            <h2 className="font-display text-2xl font-semibold tracking-tight">Top Rated Stocks</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Strongest gainers right now — sorted by 1-day change
-            </p>
-          </div>
-        </div>
-        {topRated.length === 0 ? (
-          <div className="grid grid-cols-3 gap-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-20 animate-pulse rounded-xl border border-border bg-surface/40"
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-3">
-            {topRated.map((q, i) => (
-              <button
-                key={q.symbol}
-                onClick={() => go("/desktop/charts", { symbol: q.symbol })}
-                className="flex items-center justify-between rounded-xl border border-border bg-surface/60 px-4 py-3 text-left transition hover:border-primary/40"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-primary text-xs font-bold text-primary-foreground">
-                    #{i + 1}
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold">{q.symbol}</p>
-                    <p className="truncate text-[11px] text-muted-foreground">{q.name}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm">{formatINR(q.price)}</p>
-                  <p className="text-xs font-medium text-success">+{q.changePct.toFixed(2)}%</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Features */}
-      <section id="features" className="mx-auto max-w-6xl px-6 pb-16">
-        <h2 className="font-display text-3xl font-semibold tracking-tight md:text-4xl">
-          Built for serious market research
-        </h2>
-        <div className="mt-8 grid gap-5 md:grid-cols-3">
-          {[
-            {
-              icon: Brain,
-              title: "AI stock insights",
-              body: "Fundamentals, technicals, and sentiment — synthesized into a decisive BUY/HOLD/SELL view.",
-            },
-            {
-              icon: BarChart3,
-              title: "Live charts & F&O signals",
-              body: "Real-time Yahoo Finance data with CPR, Camarilla, and pivot-confluence F&O setups.",
-            },
-            {
-              icon: Sparkles,
-              title: "IPO & Mutual Fund research",
-              body: "Institutional-grade IPO notes, live NAV graphs, and Telegram alerts on every event.",
-            },
-          ].map(({ icon: Icon, title, body }) => (
-            <div
-              key={title}
-              className="rounded-2xl border border-border bg-gradient-card p-6 shadow-elegant"
-            >
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-primary/15 text-primary">
-                <Icon className="h-5 w-5" />
+            <a className="iq-logo" href="/">
+              <img src={logoAsset.url} alt="" />
+              <span>
+                <span className="iq-logo__mark">Invest</span>IQ
               </span>
-              <h3 className="mt-5 font-display text-lg font-semibold">{title}</h3>
-              <p className="mt-2 text-sm text-muted-foreground">{body}</p>
+            </a>
+            <div className="iq-footer__meta">
+              <span>Deep research for Indian stocks · NSE / BSE · IST</span>
+              <span>© {new Date().getFullYear()} InvestIQ · Education &amp; research only</span>
             </div>
-          ))}
-        </div>
-      </section>
-
-      <footer id="trust" className="border-t border-border">
-        <div className="mx-auto max-w-6xl space-y-2 px-6 py-8 text-xs text-muted-foreground">
-          <p className="text-foreground/80">
-            Disclaimer: InvestIQ is NOT a SEBI-registered portal. This is an educational research
-            platform only. Please consult a SEBI-registered financial advisor before making any
-            investment decisions. All market investments carry risk of loss.
-          </p>
-          <p>© {new Date().getFullYear()} InvestIQ · Built for education & research purposes.</p>
+          </div>
+          <nav className="iq-nav" aria-label="Footer">
+            <a className="iq-nav__link" href="#trending">
+              Trending
+            </a>
+            <a className="iq-nav__link" href="#top-rated">
+              Top rated
+            </a>
+            <a className="iq-nav__link" href="#features">
+              Features
+            </a>
+            <button type="button" className="iq-link" onClick={() => go("/desktop")}>
+              Enter desk →
+            </button>
+          </nav>
         </div>
       </footer>
 

@@ -128,11 +128,11 @@ export default function LiveIndexChart({
                   <stop offset="100%" stopColor={stroke} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis
                 dataKey="t"
                 tickFormatter={(t) => fmtTime(t as number, intraday)}
-                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                 tickLine={false}
                 axisLine={false}
                 minTickGap={60}
@@ -142,7 +142,7 @@ export default function LiveIndexChart({
                 tickFormatter={(v) =>
                   (v as number).toLocaleString("en-IN", { maximumFractionDigits: 0 })
                 }
-                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                 tickLine={false}
                 axisLine={false}
                 width={70}
@@ -150,8 +150,8 @@ export default function LiveIndexChart({
               />
               <Tooltip
                 contentStyle={{
-                  background: "hsl(var(--surface))",
-                  border: "1px solid hsl(var(--border))",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
                   borderRadius: 10,
                   fontSize: 12,
                 }}
