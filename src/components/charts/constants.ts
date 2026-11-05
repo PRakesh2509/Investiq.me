@@ -8,7 +8,16 @@ export const INTERVALS: Array<{ id: string; label: string; interval: string; ran
   { id: "5y", label: "5Y", interval: "1mo", range: "5y" },
   { id: "all", label: "ALL", interval: "1mo", range: "max" },
 ];
-export type Point = { t: string; price: number; volume: number };
+export type Point = {
+  t: string;
+  price: number;
+  volume: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  fullTime?: string;
+  timestamp?: number;
+};
 export type Tab = "overview" | "financials" | "news";
 
 export const SECTOR_PALETTE = [

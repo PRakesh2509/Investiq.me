@@ -7,7 +7,7 @@ import {
   getYahooNews,
   getYahooHoldings,
 } from "@/lib/yahoo.functions";
-import { getLiveStockChart } from "@/lib/indian-stocks.functions";
+import { getLiveStockChart, type StockChartMeta } from "@/lib/indian-stocks.functions";
 import type { INTERVALS, Point } from "./constants";
 import type { Financials, Fundamentals, Holdings, News } from "./types";
 
@@ -23,6 +23,7 @@ const failed = (e: unknown) =>
  */
 export function useStockCharts(symbol: string, interval: IntervalOption, live: boolean) {
   const [data, setData] = useState<Point[]>([]);
+  const [stockMeta, setStockMeta] = useState<StockChartMeta | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedSource, setFeedSource] = useState<string>("DhanHQ / NSE Live");
@@ -52,6 +53,7 @@ export function useStockCharts(symbol: string, interval: IntervalOption, live: b
       if (id !== requestId.current) return;
       if (res.ok && res.points.length) {
         setData(res.points);
+        if (res.meta) setStockMeta(res.meta);
         setFeedSource(res.feedSource);
         setIsSimulated(Boolean(res.isSimulated));
         setError(null);
@@ -62,19 +64,65 @@ export function useStockCharts(symbol: string, interval: IntervalOption, live: b
       });
       if (id !== requestId.current) return;
       if (fallbackRes.ok && fallbackRes.points.length) {
-        const intraday = interval.range === "1d" || interval.range === "5d";
+        const is1d = interval.range === "1d";
+        const is5d = interval.range === "5d";
         setData(
-          fallbackRes.points.map((p) => ({
-            t: new Date(p.t).toLocaleString("en-IN", {
-              ...(intraday ? { hour: "2-digit", minute: "2-digit" } : {}),
-              day: "2-digit",
-              month: "short",
-              ...(interval.range === "5y" || interval.range === "max" ? { year: "numeric" } : {}),
-            }),
-            price: p.price,
-            volume: p.volume ?? 0,
-          })),
+          fallbackRes.points.map((p) => {
+            const d = new Date(p.t);
+            const t = is1d
+              ? d.toLocaleTimeString("en-IN", {
+                  timeZone: "Asia/Kolkata",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                })
+              : is5d
+                ? d.toLocaleString("en-IN", {
+                    timeZone: "Asia/Kolkata",
+                    day: "2-digit",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: true,
+                  })
+                : d.toLocaleString("en-IN", {
+                    timeZone: "Asia/Kolkata",
+                    day: "2-digit",
+                    month: "short",
+                    ...(interval.range === "5y" || interval.range === "max"
+                      ? { year: "numeric" }
+                      : {}),
+                  });
+            const fullTime =
+              d.toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata",
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+              }) + " IST";
+            return {
+              t,
+              fullTime,
+              price: p.price,
+              volume: p.volume ?? 0,
+              timestamp: p.t,
+            };
+          }),
         );
+        setStockMeta({
+          open: fallbackRes.points[0]?.price ?? 0,
+          dayHigh: fallbackRes.dayHigh,
+          dayLow: fallbackRes.dayLow,
+          regularMarketVolume: fallbackRes.regularMarketVolume,
+          fiftyTwoWeekHigh: fallbackRes.fiftyTwoWeekHigh,
+          fiftyTwoWeekLow: fallbackRes.fiftyTwoWeekLow,
+          regularMarketPrice: fallbackRes.regularMarketPrice,
+          previousClose: fallbackRes.previousClose,
+          currency: fallbackRes.currency,
+        });
         setFeedSource("NSE Live Feed");
         setIsSimulated(false);
         setError(null);
@@ -92,6 +140,7 @@ export function useStockCharts(symbol: string, interval: IntervalOption, live: b
   // New symbol: drop everything from the previous one before loading.
   useEffect(() => {
     setData([]);
+    setStockMeta(null);
     setError(null);
     setFund(null);
     setFin(null);
@@ -133,6 +182,7 @@ export function useStockCharts(symbol: string, interval: IntervalOption, live: b
 
   return {
     data,
+    stockMeta,
     loading,
     error,
     feedSource,

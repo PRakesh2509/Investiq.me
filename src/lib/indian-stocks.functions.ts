@@ -185,6 +185,20 @@ export interface StockChartPoint {
   open: number;
   high: number;
   low: number;
+  fullTime?: string;
+  timestamp?: number;
+}
+
+export interface StockChartMeta {
+  open?: number;
+  dayHigh?: number;
+  dayLow?: number;
+  regularMarketVolume?: number;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
+  regularMarketPrice?: number;
+  previousClose?: number;
+  currency?: string;
 }
 
 export const getLiveStockChart = createServerFn({ method: "GET" })
@@ -203,6 +217,7 @@ export const getLiveStockChart = createServerFn({ method: "GET" })
     }): Promise<{
       ok: boolean;
       points: StockChartPoint[];
+      meta?: StockChartMeta;
       feedSource: string;
       isSimulated?: boolean;
     }> => {
@@ -214,20 +229,60 @@ export const getLiveStockChart = createServerFn({ method: "GET" })
         try {
           const dhanCandles = await getDhanChartCandles(cleanSym, data.range);
           if (dhanCandles && dhanCandles.length > 0) {
-            const points: StockChartPoint[] = dhanCandles.map((c) => ({
-              t: new Date(c.t).toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              price: round2(c.price),
-              volume: c.volume,
-              open: round2(c.open),
-              high: round2(c.high),
-              low: round2(c.low),
-            }));
-            return { ok: true, points, feedSource: "DhanHQ Historical", isSimulated: false };
+            const is1d = data.range === "1d";
+            const is5d = data.range === "5d";
+            const points: StockChartPoint[] = dhanCandles.map((c) => {
+              const d = new Date(c.t);
+              const t = is1d
+                ? d.toLocaleTimeString("en-IN", {
+                    timeZone: "Asia/Kolkata",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: true,
+                  })
+                : is5d
+                  ? d.toLocaleString("en-IN", {
+                      timeZone: "Asia/Kolkata",
+                      day: "2-digit",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: true,
+                    })
+                  : d.toLocaleString("en-IN", {
+                      timeZone: "Asia/Kolkata",
+                      day: "2-digit",
+                      month: "short",
+                      ...(data.range === "5y" || data.range === "max" ? { year: "numeric" } : {}),
+                    });
+              const fullTime =
+                d.toLocaleString("en-IN", {
+                  timeZone: "Asia/Kolkata",
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                }) + " IST";
+              return {
+                t,
+                fullTime,
+                price: round2(c.price),
+                volume: c.volume,
+                open: round2(c.open),
+                high: round2(c.high),
+                low: round2(c.low),
+                timestamp: d.getTime(),
+              };
+            });
+            const chartMeta: StockChartMeta = {
+              open: round2(dhanCandles[0].open),
+              dayHigh: round2(Math.max(...dhanCandles.map((c) => c.high))),
+              dayLow: round2(Math.min(...dhanCandles.map((c) => c.low))),
+              regularMarketVolume: dhanCandles.reduce((s, c) => s + c.volume, 0),
+            };
+            return { ok: true, points, meta: chartMeta, feedSource: "DhanHQ Historical", isSimulated: false };
           }
         } catch {
           /* fall through to Yahoo Finance */
@@ -237,26 +292,81 @@ export const getLiveStockChart = createServerFn({ method: "GET" })
       // 2. Fallback to Yahoo Finance Chart
       const r = await fetchYahooChart(`${cleanSym}.NS`, data.interval, data.range);
       if (r) {
-        const { bars, points: closes } = r.chart;
+        const { bars, points: closes, meta: yMeta } = r.chart;
         const byTime = new Map(bars.map((b) => [b.time, b]));
-        const intraday = data.range === "1d" || data.range === "5d";
+        const is1d = data.range === "1d";
+        const is5d = data.range === "5d";
         const points: StockChartPoint[] = closes.map((p) => {
           const b = byTime.get(p.time);
-          return {
-            t: new Date(p.time * 1000).toLocaleString("en-IN", {
-              ...(intraday ? { hour: "2-digit", minute: "2-digit" } : {}),
+          const d = new Date(p.time * 1000);
+          const t = is1d
+            ? d.toLocaleTimeString("en-IN", {
+                timeZone: "Asia/Kolkata",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : is5d
+              ? d.toLocaleString("en-IN", {
+                  timeZone: "Asia/Kolkata",
+                  day: "2-digit",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                })
+              : d.toLocaleString("en-IN", {
+                  timeZone: "Asia/Kolkata",
+                  day: "2-digit",
+                  month: "short",
+                  ...(data.range === "5y" || data.range === "max" ? { year: "numeric" } : {}),
+                });
+          const fullTime =
+            d.toLocaleString("en-IN", {
+              timeZone: "Asia/Kolkata",
               day: "2-digit",
               month: "short",
-              ...(data.range === "5y" || data.range === "max" ? { year: "numeric" } : {}),
-            }),
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            }) + " IST";
+          return {
+            t,
+            fullTime,
             price: round2(p.close),
             volume: p.volume,
             open: round2(b?.open ?? p.close),
             high: round2(b?.high ?? p.close),
             low: round2(b?.low ?? p.close),
+            timestamp: p.time * 1000,
           };
         });
-        return { ok: true, points, feedSource: "NSE Live Feed", isSimulated: false };
+
+        const chartMeta: StockChartMeta = {
+          open: round2(bars[0]?.open ?? closes[0]?.close ?? 0),
+          dayHigh: round2(
+            yMeta.regularMarketDayHigh ??
+              (bars.length ? Math.max(...bars.map((b) => b.high)) : closes[0]?.close ?? 0),
+          ),
+          dayLow: round2(
+            yMeta.regularMarketDayLow ??
+              (bars.length ? Math.min(...bars.map((b) => b.low)) : closes[0]?.close ?? 0),
+          ),
+          regularMarketVolume:
+            yMeta.regularMarketVolume ?? closes.reduce((sum, c) => sum + c.volume, 0),
+          fiftyTwoWeekHigh: yMeta.fiftyTwoWeekHigh ? round2(yMeta.fiftyTwoWeekHigh) : undefined,
+          fiftyTwoWeekLow: yMeta.fiftyTwoWeekLow ? round2(yMeta.fiftyTwoWeekLow) : undefined,
+          regularMarketPrice: yMeta.regularMarketPrice
+            ? round2(yMeta.regularMarketPrice)
+            : round2(closes[closes.length - 1]?.close ?? 0),
+          previousClose: round2(
+            yMeta.chartPreviousClose ?? yMeta.previousClose ?? closes[0]?.close ?? 0,
+          ),
+          currency: yMeta.currency ?? "INR",
+        };
+
+        return { ok: true, points, meta: chartMeta, feedSource: "NSE Live Feed", isSimulated: false };
       }
 
       return { ok: false, points: [], feedSource: "Unavailable", isSimulated: false };

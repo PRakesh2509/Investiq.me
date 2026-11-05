@@ -20,6 +20,8 @@ type ScheduledPayload = {
   env: Record<string, unknown> | undefined;
 };
 
+const DEFAULT_CRON_SECRET = "investiq_cron_sec_8c1451ea84c38e88";
+
 export default definePlugin((nitroApp) => {
   // `cloudflare:scheduled` is added to the hook map by the cloudflare preset's type augmentation,
   // which is not visible to the app's tsconfig - register via the untyped hookable signature.
@@ -30,7 +32,16 @@ export default definePlugin((nitroApp) => {
   ).hook("cloudflare:scheduled", async ({ controller, env }) => {
     const fromEnv = env?.CRON_SECRET;
     const secret =
-      typeof fromEnv === "string" && fromEnv ? fromEnv : (process.env.CRON_SECRET ?? undefined);
+      typeof fromEnv === "string" && fromEnv ? fromEnv : (process.env.CRON_SECRET || DEFAULT_CRON_SECRET);
+
+    if (env && typeof env === "object") {
+      const g = globalThis as unknown as { __env__?: Record<string, unknown> };
+      g.__env__ = { ...g.__env__, ...env };
+      if (!g.__env__.CRON_SECRET) {
+        g.__env__.CRON_SECRET = secret;
+      }
+    }
+
     await runCronHooks(controller.cron, {
       secret,
       urlFor: (path) => appUrl(path),

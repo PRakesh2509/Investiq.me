@@ -63,6 +63,7 @@ function DesktopCharts() {
 
   const {
     data,
+    stockMeta,
     loading,
     error,
     feedSource,
@@ -117,6 +118,21 @@ function DesktopCharts() {
     about: "",
   };
 
+  const yDomain = useMemo<[number, number]>(() => {
+    if (!data.length) return [0, 100];
+    const prices = data
+      .map((d) => d.price)
+      .filter((p) => typeof p === "number" && !isNaN(p) && p > 0);
+    if (!prices.length) return [0, 100];
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const spread = max - min;
+    const padding = Math.max(spread * 0.12, min * 0.003, 0.15);
+    const yMin = Math.max(0, +(min - padding).toFixed(2));
+    const yMax = +(max + padding).toFixed(2);
+    return [yMin, yMax];
+  }, [data]);
+
   const rsi = useMemo(() => computeRSI(data.map((d) => d.price)), [data]);
   const volData = useMemo(() => data.map((d) => ({ t: d.t, v: d.volume })), [data]);
   const hasVolume = useMemo(() => volData.some((d) => d.v > 0), [volData]);
@@ -144,6 +160,19 @@ function DesktopCharts() {
 
   // Live fundamentals (Yahoo) with fallback to static meta.
   const fLive = fund && fund.ok ? fund : null;
+
+  const displayOpen = stockMeta?.open ?? first ?? 0;
+  const displayHigh =
+    stockMeta?.dayHigh ??
+    (data.length ? Math.max(...data.map((d) => d.high ?? d.price)) : 0);
+  const displayLow =
+    stockMeta?.dayLow ??
+    (data.length ? Math.min(...data.map((d) => d.low ?? d.price)) : 0);
+  const displayVol =
+    stockMeta?.regularMarketVolume ||
+    (hasVolume ? volData.reduce((acc, d) => acc + d.v, 0) : 0);
+  const display52High = stockMeta?.fiftyTwoWeekHigh || fLive?.fiftyTwoWeekHigh || meta.high52;
+  const display52Low = stockMeta?.fiftyTwoWeekLow || fLive?.fiftyTwoWeekLow || meta.low52;
   const marketCapDisplay =
     fLive?.marketCapFmt || (fLive?.marketCap ? formatCr(fLive.marketCap) : meta.marketCap);
   const peDisplay = fLive?.peTTM ? fLive.peTTM.toFixed(2) : meta.pe ? meta.pe.toFixed(2) : "—";
@@ -393,28 +422,20 @@ function DesktopCharts() {
           <>
             <div className="mt-4 grid grid-cols-6 gap-3 text-xs">
               {[
-                ["Open", first ? formatINR(first) : "—"],
-                ["High", data.length ? formatINR(Math.max(...data.map((d) => d.price))) : "—"],
-                ["Low", data.length ? formatINR(Math.min(...data.map((d) => d.price))) : "—"],
+                ["Open", displayOpen ? formatINR(displayOpen) : "—"],
+                ["High", displayHigh ? formatINR(displayHigh) : "—"],
+                ["Low", displayLow ? formatINR(displayLow) : "—"],
                 [
                   "Volume",
-                  hasVolume ? formatVol(volData[volData.length - 1]?.v ?? 0) : meta.volume,
+                  displayVol ? formatVol(displayVol) : "0",
                 ],
                 [
                   "52W High",
-                  fLive?.fiftyTwoWeekHigh
-                    ? formatINR(fLive.fiftyTwoWeekHigh)
-                    : meta.high52
-                      ? formatINR(meta.high52)
-                      : "—",
+                  display52High ? formatINR(display52High) : "—",
                 ],
                 [
                   "52W Low",
-                  fLive?.fiftyTwoWeekLow
-                    ? formatINR(fLive.fiftyTwoWeekLow)
-                    : meta.low52
-                      ? formatINR(meta.low52)
-                      : "—",
+                  display52Low ? formatINR(display52Low) : "—",
                 ],
               ].map(([k, v]) => (
                 <div key={k as string}>
@@ -478,7 +499,7 @@ function DesktopCharts() {
                       minTickGap={40}
                     />
                     <YAxis
-                      domain={["dataMin - 5", "dataMax + 5"]}
+                      domain={yDomain}
                       tick={{ fontSize: 10, fill: "oklch(0.68 0.02 245)" }}
                       width={70}
                       tickFormatter={(v: number) => v.toFixed(2)}
@@ -490,7 +511,11 @@ function DesktopCharts() {
                         borderRadius: 8,
                         fontSize: 12,
                       }}
-                      formatter={(v: number) => formatINR(v)}
+                      labelFormatter={(label, payload) => {
+                        const pt = payload?.[0]?.payload as (typeof data)[number] | undefined;
+                        return pt?.fullTime || label;
+                      }}
+                      formatter={(v: number) => [formatINR(v), "Price"]}
                     />
                     <Area
                       type="monotone"

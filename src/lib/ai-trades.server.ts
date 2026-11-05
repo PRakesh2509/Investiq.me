@@ -9,7 +9,6 @@
 import type { AiTradePlan, PremiumTrade } from "./ai-trades.ts";
 import { appUrl } from "./app-url.ts";
 import { escapeHtml, getBotToken, resolveChatIds, sendToMany } from "./telegram.server.ts";
-import { fetchQuote } from "./yahoo.server.ts";
 import { calculateGreeks, calculateTimeToExpiryYears } from "./greeks-service.ts";
 import { nextThursdayISO } from "./provider-utils.ts";
 export type { AiTradePlan, PremiumTrade };
@@ -233,6 +232,18 @@ export async function generatePremiumTrades(symbol: string, chain: Chain): Promi
       endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${geminiKey}` },
       model: "gemini-3.6-flash",
+    });
+    providers.push({
+      name: "Gemini 2.5 Flash",
+      endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${geminiKey}` },
+      model: "gemini-2.5-flash",
+    });
+    providers.push({
+      name: "Gemini 1.5 Flash",
+      endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${geminiKey}` },
+      model: "gemini-1.5-flash",
     });
   }
   if (lovableKey) {
@@ -573,53 +584,148 @@ export async function getLiveDerivativesChain(rawSymbol: string): Promise<Chain>
   const isBank = sym.includes("BANK");
   const isSensex = sym.includes("SENSEX");
   const isFin = sym.includes("FIN");
+  const isMidcap = sym.includes("MID");
 
   let cleanLabel = "NIFTY";
-  let yahooSym = "^NSEI";
   let step = 50;
-  let defaultSpot = 23000;
+  let defaultSpot = 24000;
 
   if (isBank) {
     cleanLabel = "BANKNIFTY";
-    yahooSym = "^NSEBANK";
     step = 100;
-    defaultSpot = 54900;
+    defaultSpot = 55000;
   } else if (isSensex) {
     cleanLabel = "SENSEX";
-    yahooSym = "^BSESN";
     step = 100;
-    defaultSpot = 80000;
+    defaultSpot = 84000;
   } else if (isFin) {
     cleanLabel = "FINNIFTY";
-    yahooSym = "NIFTY_FIN_SERVICE.NS";
     step = 50;
-    defaultSpot = 24000;
+    defaultSpot = 24500;
+  } else if (isMidcap) {
+    cleanLabel = "MIDCPNIFTY";
+    step = 25;
+    defaultSpot = 13000;
   }
 
-  // Attempt live Upstox data first if credentials exist
+  // 1. Primary: Direct authorized DhanHQ Live Option Chain (Real-time Broker feed)
   try {
-    const { getAccessToken, fetchExpiries, fetchOptionChain } = await import("./upstox.server.ts");
-    const token = getAccessToken();
-    const instKey = isBank
-      ? "NSE_INDEX|Nifty Bank"
-      : isSensex
-        ? "BSE_INDEX|SENSEX"
-        : isFin
-          ? "NSE_INDEX|Nifty Fin Service"
-          : "NSE_INDEX|Nifty 50";
-    const expiries = await fetchExpiries(instKey, token);
-    if (expiries?.[0]) {
-      const upstoxChain = await fetchOptionChain(instKey, expiries[0], token);
-      if (upstoxChain && upstoxChain.rows?.length) {
-        return upstoxChain as Chain;
+    const { getDhanCredentials, getDhanOptionChain } = await import("./dhan.server.ts");
+    const creds = getDhanCredentials();
+    if (creds?.accessToken) {
+      const dhanChain = await getDhanOptionChain(cleanLabel);
+      if (dhanChain && dhanChain.rows?.length > 0) {
+        const spot = dhanChain.spot && dhanChain.spot > 0 ? dhanChain.spot : defaultSpot;
+        const atmStrike = Math.round(spot / step) * step;
+        const expiry = dhanChain.expiry || nextThursdayISO();
+        const tY = calculateTimeToExpiryYears(expiry);
+
+        let totalCallOi = 0;
+        let totalPutOi = 0;
+
+        const rows: Row[] = dhanChain.rows.map((r) => {
+          const strike = r.strike;
+          const ceLtp = r.ce.ltp ?? 0;
+          const peLtp = r.pe.ltp ?? 0;
+          const ceOi = r.ce.oi ?? 0;
+          const peOi = r.pe.oi ?? 0;
+          totalCallOi += ceOi;
+          totalPutOi += peOi;
+
+          const cIv = r.ce.iv && r.ce.iv > 0 ? r.ce.iv : 14.5;
+          const pIv = r.pe.iv && r.pe.iv > 0 ? r.pe.iv : 14.5;
+
+          const cGk =
+            r.ce.delta !== undefined && r.ce.theta !== undefined
+              ? { delta: r.ce.delta, gamma: r.ce.gamma ?? 0, theta: r.ce.theta, vega: r.ce.vega ?? 0, price: ceLtp }
+              : calculateGreeks({ spot, strike, timeToExpiryYears: tY, volatility: cIv / 100, type: "CE" });
+
+          const pGk =
+            r.pe.delta !== undefined && r.pe.theta !== undefined
+              ? { delta: r.pe.delta, gamma: r.pe.gamma ?? 0, theta: r.pe.theta, vega: r.pe.vega ?? 0, price: peLtp }
+              : calculateGreeks({ spot, strike, timeToExpiryYears: tY, volatility: pIv / 100, type: "PE" });
+
+          return {
+            strike,
+            call: {
+              ltp: ceLtp > 0 ? ceLtp : Math.round(Math.max(1, cGk.price) * 100) / 100,
+              close: ceLtp > 0 ? ceLtp : Math.round(Math.max(1, cGk.price * 0.98) * 100) / 100,
+              volume: r.ce.volume ?? 0,
+              oi: ceOi,
+              prevOi: r.ce.prevOi ?? ceOi,
+              oiChange: ceOi - (r.ce.prevOi ?? ceOi),
+              bid: r.ce.bid ?? (ceLtp > 0 ? Math.round(ceLtp * 0.99 * 100) / 100 : 0),
+              ask: r.ce.ask ?? (ceLtp > 0 ? Math.round(ceLtp * 1.01 * 100) / 100 : 0),
+              iv: cIv,
+              delta: cGk.delta,
+              gamma: cGk.gamma,
+              theta: cGk.theta,
+              vega: cGk.vega,
+            },
+            put: {
+              ltp: peLtp > 0 ? peLtp : Math.round(Math.max(1, pGk.price) * 100) / 100,
+              close: peLtp > 0 ? peLtp : Math.round(Math.max(1, pGk.price * 0.98) * 100) / 100,
+              volume: r.pe.volume ?? 0,
+              oi: peOi,
+              prevOi: r.pe.prevOi ?? peOi,
+              oiChange: peOi - (r.pe.prevOi ?? peOi),
+              bid: r.pe.bid ?? (peLtp > 0 ? Math.round(peLtp * 0.99 * 100) / 100 : 0),
+              ask: r.pe.ask ?? (peLtp > 0 ? Math.round(peLtp * 1.01 * 100) / 100 : 0),
+              iv: pIv,
+              delta: pGk.delta,
+              gamma: pGk.gamma,
+              theta: pGk.theta,
+              vega: pGk.vega,
+            },
+          };
+        });
+
+        // Compute Max Pain
+        let maxPain = atmStrike;
+        let minLoss = Number.POSITIVE_INFINITY;
+        for (const row of rows) {
+          let loss = 0;
+          for (const other of rows) {
+            if (other.strike < row.strike) loss += (row.strike - other.strike) * other.call.oi;
+            if (other.strike > row.strike) loss += (other.strike - row.strike) * other.put.oi;
+          }
+          if (loss < minLoss) {
+            minLoss = loss;
+            maxPain = row.strike;
+          }
+        }
+
+        const pcr = totalCallOi > 0 ? Number((totalPutOi / totalCallOi).toFixed(2)) : 1.0;
+
+        return {
+          expiry,
+          spot,
+          atmStrike,
+          pcr,
+          maxPain,
+          totalCallOi,
+          totalPutOi,
+          rows,
+        };
       }
     }
-  } catch {
-    // Proceed to live quote + calibrated Greeks engine
+  } catch (err) {
+    console.warn(`[ai-trades] Dhan live option chain error for ${cleanLabel}:`, (err as Error).message);
   }
 
-  const quote = await fetchQuote(yahooSym);
-  const spot = quote?.price ?? defaultSpot;
+  // 2. Secondary: Dhan Live OHLC marketfeed tick for spot price (No Yahoo Finance)
+  let liveSpot = defaultSpot;
+  try {
+    const { getDhanOhlc } = await import("./dhan.server.ts");
+    const ohlc = await getDhanOhlc([cleanLabel]);
+    if (ohlc?.[cleanLabel]?.price && ohlc[cleanLabel].price > 0) {
+      liveSpot = ohlc[cleanLabel].price;
+    }
+  } catch {
+    // Proceed with calibrated baseline
+  }
+
+  const spot = liveSpot;
   const atmStrike = Math.round(spot / step) * step;
   const expiry = nextThursdayISO();
   const tY = calculateTimeToExpiryYears(expiry);

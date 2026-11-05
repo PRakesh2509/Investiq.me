@@ -157,3 +157,4 @@ describe("API Routes Handlers - End to End", () => {
     assert.ok(!bodyUS.signals.some((s: any) => s.id === "sig_india_test_banknifty_1"));
   });
 });
+

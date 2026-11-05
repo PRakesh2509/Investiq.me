@@ -3,19 +3,15 @@ import { hookFailure, readJsonBody, requireCronAuth } from "@/lib/cron-auth.serv
 import { parseChatIds } from "@/lib/telegram.server";
 
 /**
- * F&O alert test dispatcher.
+ * F&O alert dispatcher (manual & test trigger).
  *
- * Generates AI option trades from the live chain and pushes them to Telegram
- * as boxed F&O alert cards with an "F&O Alerts" button. Educational only.
- * Requires CRON_SECRET (x-cron-secret or Authorization: Bearer).
+ * Pulls live derivatives data from DhanHQ v2, generates Grade A+ sniper trades,
+ * and pushes them directly to Telegram using the boxed card layout with
+ * the F&O Alerts button.
+ * Requires CRON_SECRET or Admin Session.
  */
 
-const ALLOWED: Record<string, string> = {
-  NIFTY: "NSE_INDEX|Nifty 50",
-  NIFTY50: "NSE_INDEX|Nifty 50",
-  BANKNIFTY: "NSE_INDEX|Nifty Bank",
-  SENSEX: "BSE_INDEX|SENSEX",
-};
+const ALLOWED = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY", "MIDCPNIFTY"];
 
 export const Route = createFileRoute("/api/fno-alert")({
   server: {
@@ -24,82 +20,47 @@ export const Route = createFileRoute("/api/fno-alert")({
         const denied = await requireCronAuth(request);
         if (denied) return denied;
         try {
-          const body = await readJsonBody<{ symbol: string; chatIds: string[] }>(request);
-          const raw = String(body.symbol ?? "NIFTY")
+          const body = await readJsonBody<{ symbol?: string; chatIds?: string[] }>(request);
+          const raw = String(body?.symbol ?? "NIFTY")
             .toUpperCase()
             .replace(/[\s_-]/g, "");
-          const instrumentKey = ALLOWED[raw];
-          if (!instrumentKey) {
-            return hookFailure("symbol must be NIFTY, BANKNIFTY or SENSEX", 400);
-          }
-          const label = raw === "NIFTY50" ? "NIFTY" : raw;
+          const label =
+            raw === "NIFTY50" ? "NIFTY" : raw === "BANK" ? "BANKNIFTY" : raw;
 
-          const { generatePremiumTrades, sendFnoAlerts } = await import("@/lib/ai-trades.server");
-          const { buildMockChain, buildMockPlan } = await import("@/lib/mock-chain.server");
-
-          // Live Upstox data first. A simulated chain/plan is used only when
-          // ALLOW_MOCK_DATA=true is set explicitly; otherwise nothing is sent.
-          const mockAllowed = process.env.ALLOW_MOCK_DATA === "true";
-          let chain;
-          let expiry = "";
-          let simulated = false;
-          const errors: string[] = [];
-          try {
-            const { getAccessToken, fetchExpiries, fetchOptionChain } =
-              await import("@/lib/upstox.server");
-            const token = getAccessToken();
-            const expiries = await fetchExpiries(instrumentKey, token);
-            expiry = expiries[0] ?? "";
-            if (!expiry) throw new Error("No expiry available");
-            chain = await fetchOptionChain(instrumentKey, expiry, token);
-          } catch (liveErr) {
-            errors.push(`live chain: ${(liveErr as Error).message}`);
-            if (!mockAllowed) {
-              return hookFailure(
-                `Live option chain unavailable (${(liveErr as Error).message}). Set ALLOW_MOCK_DATA=true to send flagged simulated test data.`,
-                503,
-              );
-            }
-            console.warn("[fno-alert] live chain unavailable, using simulated test data");
-            chain = buildMockChain(label);
-            expiry = chain.expiry;
-            simulated = true;
+          if (!ALLOWED.includes(label)) {
+            return hookFailure(`symbol must be one of: ${ALLOWED.join(", ")}`, 400);
           }
 
-          let plan;
-          try {
-            plan = await generatePremiumTrades(label, chain);
-            if (!plan.trades.length) throw new Error("AI returned no trades");
-          } catch (aiErr) {
-            errors.push(`ai: ${(aiErr as Error).message}`);
-            if (!mockAllowed || !simulated) {
-              // Never replace a failed AI plan on a REAL chain with sample trades.
-              return hookFailure(
-                `AI trade generation failed (${(aiErr as Error).message}); nothing sent.`,
-                502,
-              );
-            }
-            plan = buildMockPlan(label, chain);
-            simulated = true;
+          const { getLiveDerivativesChain, generatePremiumTrades, sendFnoAlerts } =
+            await import("@/lib/ai-trades.server");
+
+          const chain = await getLiveDerivativesChain(label);
+          const expiry = chain.expiry;
+          const plan = await generatePremiumTrades(label, chain);
+          if (!plan.trades.length) {
+            return hookFailure(`No A+ trade setups identified for ${label} at this moment.`, 404);
           }
 
-          const chatIds = parseChatIds(body.chatIds);
-          const notified = await sendFnoAlerts(plan, chatIds.length ? chatIds : undefined);
+          const chatIds = parseChatIds(body?.chatIds);
+          const notified = await sendFnoAlerts(
+            plan,
+            chatIds.length ? chatIds : undefined,
+            1,
+          );
 
           console.log(
-            `[fno-alert] ${label} ${expiry} simulated=${simulated} cards=${notified.cards} sent=${notified.sent}/${notified.total}`,
+            `[fno-alert] ${label} ${expiry} trades=${plan.trades.length} sent=${notified.sent}/${notified.total}`,
           );
           return Response.json(
             {
               ok: notified.sent > 0,
               sent: notified.sent,
-              skipped: 0,
-              errors,
+              total: notified.total,
               symbol: label,
               expiry,
-              simulated,
               trades: plan.trades.length,
               notified,
+              feedSource: "DhanHQ Live Direct Feed v2",
             },
             { headers: { "cache-control": "no-store" } },
           );

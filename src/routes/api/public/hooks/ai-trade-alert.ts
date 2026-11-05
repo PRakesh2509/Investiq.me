@@ -5,7 +5,7 @@ import { getBotToken, resolveChatIds } from "@/lib/telegram.server";
 /**
  * Auto Grade A+ F&O sniper trade alerts.
  *
- * Scans the live derivatives chain for major Indian indices (NIFTY 50, BANK NIFTY),
+ * Scans the live derivatives chain for major Indian indices (NIFTY 50, BANK NIFTY, SENSEX, FIN NIFTY),
  * prompts the institutional derivative quant engine, and pushes ONLY Grade A+
  * sniper setups directly to Telegram using the verified boxed card layout.
  * Enforces strict 1-trade cap per index to prevent overflow.
@@ -13,19 +13,21 @@ import { getBotToken, resolveChatIds } from "@/lib/telegram.server";
  * Requires CRON_SECRET (x-cron-secret or Authorization: Bearer).
  */
 
-const SCAN = ["NIFTY", "BANKNIFTY"];
+const SCAN = ["NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function istNow() {
-  return new Date(Date.now() + 5.5 * 3600 * 1000);
+function getIstTime() {
+  const d = new Date(Date.now() + 5.5 * 3600 * 1000);
+  const day = d.getUTCDay();
+  const mins = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const dateStr = d.toISOString().slice(0, 10);
+  return { day, mins, dateStr };
 }
 
 /** Mon–Fri, 09:15–15:30 IST */
 function marketOpen() {
-  const d = istNow();
-  const day = d.getUTCDay();
+  const { day, mins } = getIstTime();
   if (day === 0 || day === 6) return false;
-  const mins = d.getUTCHours() * 60 + d.getUTCMinutes();
   return mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;
 }
 
@@ -55,7 +57,7 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
             await import("@/lib/ai-trades.server.ts");
           const { claimOnce, releaseClaim } = await import("@/lib/hook-dedupe.server.ts");
 
-          const today = istNow().toISOString().slice(0, 10);
+          const { dateStr: today } = getIstTime();
           const results: Record<string, unknown>[] = [];
           const errors: string[] = [];
           let sent = 0;

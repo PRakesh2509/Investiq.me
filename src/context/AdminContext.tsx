@@ -45,6 +45,7 @@ export interface AdminSettings {
   notifyPostMarket: boolean;
   notifyIpo: boolean;
   notifyFunds: boolean;
+  notifyFno: boolean;
   sheetUrl: string;
   sheetName: string;
   colName: string;
@@ -90,6 +91,7 @@ const defaultSettings: AdminSettings = {
   notifyPostMarket: true,
   notifyIpo: true,
   notifyFunds: true,
+  notifyFno: true,
   sheetUrl:
     "https://docs.google.com/spreadsheets/d/1WgMLvMlUewkeljWkwFH6Cmcryytn8cWgIXgsmlq1Syo/edit?usp=sharing",
   sheetName: "Sheet1",

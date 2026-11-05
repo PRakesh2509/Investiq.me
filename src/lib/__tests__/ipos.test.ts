@@ -10,28 +10,34 @@ import {
 
 describe("IPO Research Engine & Scoring", () => {
   it("resolves status dynamically according to current system clock", () => {
-    // Status resolution unit test with simulated dates
+    // Status resolution unit test with dynamic dates relative to current date
+    const d = (offsetDays: number) => {
+      const date = new Date();
+      date.setDate(date.getDate() + offsetDays);
+      return date.toISOString().split("T")[0];
+    };
+
     const openSample = {
-      openDate: "2026-10-28",
-      closeDate: "2026-11-03",
-      allotmentDate: "2026-11-06",
-      listingDate: "2026-11-10",
+      openDate: d(-2),
+      closeDate: d(2),
+      allotmentDate: d(5),
+      listingDate: d(8),
     };
     assert.equal(resolveIpoStatus(openSample), "open");
 
     const upcomingSample = {
-      openDate: "2026-11-15",
-      closeDate: "2026-11-18",
-      allotmentDate: "2026-11-20",
-      listingDate: "2026-11-23",
+      openDate: d(5),
+      closeDate: d(8),
+      allotmentDate: d(10),
+      listingDate: d(13),
     };
     assert.equal(resolveIpoStatus(upcomingSample), "upcoming");
 
     const listedSample = {
-      openDate: "2026-10-10",
-      closeDate: "2026-10-14",
-      allotmentDate: "2026-10-17",
-      listingDate: "2026-10-20",
+      openDate: d(-20),
+      closeDate: d(-17),
+      allotmentDate: d(-14),
+      listingDate: d(-10),
     };
     assert.equal(resolveIpoStatus(listedSample), "listed");
   });

@@ -180,13 +180,17 @@ export function TelegramSection() {
       const j = (await res.json()) as {
         ok: boolean;
         trades?: number;
+        sent?: number;
+        total?: number;
         notified?: { sent: number; total: number };
         error?: string;
       };
-      if (j.ok)
+      if (j.ok) {
+        const sentCount = j.sent ?? j.notified?.sent ?? 0;
         toast.success(
-          `F&O alert sent — ${j.trades ?? 0} trade card(s), ${j.notified?.sent ?? 0}/${j.notified?.total ?? 0} deliveries`,
+          `F&O alert sent for ${fnoSymbol} — ${j.trades ?? 1} trade card(s) delivered to ${sentCount} chat(s)`,
         );
+      }
       else toast.error(`F&O alert failed: ${j.error ?? "unknown"}`);
     } catch (e) {
       toast.error((e as Error).message);
@@ -373,6 +377,11 @@ export function TelegramSection() {
             onChange={(v) => updateSettings({ notifyFunds: v })}
             label="Mutual Fund digest — weekly, Monday 9:30 AM IST only"
           />
+          <Toggle
+            checked={settings.notifyFno}
+            onChange={(v) => updateSettings({ notifyFno: v })}
+            label="F&amp;O sniper trade alerts (9:15 AM – 3:30 PM IST · Mon–Fri) — DhanHQ live feed"
+          />
         </div>
       </div>
       <div className="mt-6 flex flex-wrap gap-2">
@@ -402,6 +411,7 @@ export function TelegramSection() {
             <option value="NIFTY">NIFTY 50</option>
             <option value="BANKNIFTY">BANK NIFTY</option>
             <option value="SENSEX">SENSEX</option>
+            <option value="FINNIFTY">FIN NIFTY</option>
           </select>
           <button
             disabled={sending || !master}
