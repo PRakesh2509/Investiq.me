@@ -88,7 +88,8 @@ export function useWorkstationFeed(instrument: string, tf: TF) {
               },
             ];
           });
-          void loadIntelligence(inst, res.spotPrice, res.changePct, res.direction, forceRefresh);
+          const callOrPut: "CALL" | "PUT" = res.direction.includes("CALL") ? "CALL" : "PUT";
+          void loadIntelligence(inst, res.spotPrice, res.changePct, callOrPut, forceRefresh);
         } else {
           setError("Live market data is unavailable right now.");
         }

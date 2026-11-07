@@ -17,6 +17,7 @@ export function OptionCalculator({
     setRiskPct,
     manualLots,
     setManualLots,
+    recommendedLots,
     customPremium,
     setCustomPremium,
     selectedContract,
@@ -30,7 +31,11 @@ export function OptionCalculator({
     tp2Profit,
     tp3Profit,
     maxBudget,
+    trailingSl,
+    peakWatermark,
+    isTp1Hit,
   } = calc;
+
   return (
     <div className="rounded-2xl border border-border bg-surface/60 p-4 shadow-lg backdrop-blur text-xs space-y-4">
       <div className="flex items-center justify-between border-b border-border pb-2.5">
@@ -44,7 +49,7 @@ export function OptionCalculator({
         </span>
       </div>
 
-      {/* Trading Capital Input & Risk % (Requirements 18, 19) */}
+      {/* Trading Capital Input & Risk % (Section 6.1) */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
@@ -80,7 +85,7 @@ export function OptionCalculator({
         </div>
       </div>
 
-      {/* Suggested Lot Calculation (Requirement 20) */}
+      {/* Suggested Lot Calculation (Section 6.1) */}
       <div className="flex items-center justify-between rounded-xl border border-border bg-background/50 p-2.5 text-[11px] font-mono">
         <div>
           <p className="text-muted-foreground">
@@ -91,12 +96,12 @@ export function OptionCalculator({
         <div className="text-right">
           <p className="text-[10px] uppercase text-muted-foreground">RECOMMENDED:</p>
           <p className="rounded bg-surface px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-border">
-            USE 1 LOT(S) ({lotSize} QTY)
+            USE {recommendedLots} LOT(S) ({recommendedLots * lotSize} QTY)
           </p>
         </div>
       </div>
 
-      {/* Manual Lot Selection (Requirement 21) */}
+      {/* Manual Lot Selection */}
       <div>
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
           MANUAL LOTS SELECTOR:
@@ -118,122 +123,94 @@ export function OptionCalculator({
         </div>
       </div>
 
-      {/* Custom Option Premium Input (Requirement 22) */}
-      <div>
-        <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-          CUSTOM OPTION PREMIUM (₹):
-        </label>
-        <input
-          type="text"
-          value={customPremium}
-          onChange={(e) => setCustomPremium(e.target.value)}
-          placeholder={`Current Est: ₹${data.recommendedPremium.toFixed(2)}`}
-          aria-label="Custom option premium"
-          className="mt-1 w-full rounded-lg border border-border bg-background/60 px-2.5 py-1.5 font-mono text-xs font-bold text-foreground focus:border-primary focus:outline-none transition"
-        />
-      </div>
+      {/* Contract & Live Premium Input (Section 6.2 & 6.3) */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+            SELECTED CONTRACT:
+          </label>
+          <input
+            type="text"
+            value={selectedContract}
+            readOnly
+            className="mt-1 w-full rounded-lg border border-border bg-background/40 px-2.5 py-1.5 font-mono text-xs font-bold text-foreground truncate"
+          />
+        </div>
 
-      {/* Contract Details, Max Loss & Target Calculator (Requirements 23-26, 40) */}
-      <div className="space-y-1.5 rounded-xl border border-border bg-background/50 p-3 font-mono text-[11px]">
-        <div className="flex justify-between border-b border-border/60 pb-1 text-muted-foreground">
-          <span>SELECTED CONTRACT:</span>
-          <span className="font-bold text-foreground">{selectedContract}</span>
-        </div>
-        <div className="flex justify-between border-b border-border/60 pb-1 text-muted-foreground">
-          <span>TOTAL QUANTITY:</span>
-          <span className="font-semibold text-foreground">
-            {totalQty} Qty ({manualLots} &times; {lotSize})
-          </span>
-        </div>
-        <div className="flex justify-between border-b border-border/60 pb-1 text-muted-foreground">
-          <span>CAPITAL INVESTED:</span>
-          <span className="font-bold text-foreground">
-            ₹{capitalInvested.toLocaleString("en-IN")}
-          </span>
-        </div>
-        <div className="flex justify-between border-b border-border/60 pb-1">
-          <span className="text-muted-foreground">MAX DOWNSIDE LOSS (-20% SL):</span>
-          <span className="font-bold text-rose-400">
-            -₹{maxLoss.toLocaleString("en-IN")} ({lossPct}% of Capital)
-          </span>
-        </div>
-        <div className="flex justify-between border-b border-border/60 pb-1">
-          <span className="text-muted-foreground">PROFIT LOCKED AT TP1 (+1.5R):</span>
-          <span className="font-bold text-emerald-400">
-            +₹{tp1Profit.toLocaleString("en-IN")} (50% Qty)
-          </span>
-        </div>
-        <div className="flex justify-between border-b border-border/60 pb-1">
-          <span className="text-muted-foreground">TARGET RETURN AT TP2 (+2.5R):</span>
-          <span className="font-bold text-emerald-400">
-            +₹{tp2Profit.toLocaleString("en-IN")} (75% Qty)
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">HERO RUNNER AT TP3 (&gt;3.5R):</span>
-          <span className="font-bold text-emerald-400">
-            +₹{tp3Profit.toLocaleString("en-IN")} (100% Qty)
-          </span>
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+            OPTION PREMIUM (₹):
+          </label>
+          <input
+            type="number"
+            step="0.05"
+            placeholder={premium.toFixed(2)}
+            value={customPremium}
+            onChange={(e) => setCustomPremium(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-background/60 px-2.5 py-1.5 font-mono text-xs font-bold text-emerald-400 focus:border-primary focus:outline-none transition"
+          />
         </div>
       </div>
 
-      {/* Dynamic Trailing Stop-Loss Engine (Requirements 27, 28, 38) */}
-      <div className="rounded-xl border border-border bg-surface/50 p-3 space-y-2">
-        <div className="flex items-center justify-between border-b border-border pb-1.5">
-          <div className="flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase text-foreground">
-            <span className="text-primary">⚡</span> DYNAMIC TRAILING SL ENGINE:
-          </div>
-          <span className="rounded bg-rose-500/20 px-2 py-0.5 text-[10px] font-mono font-bold text-rose-400 border border-rose-500/30">
-            ■ SL LEVEL: ₹{data.stopLoss.toFixed(2)}
+      {/* Real Execution Breakdown (Section 6.3) */}
+      <div className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-background/50 p-3 text-[11px] font-mono">
+        <div>
+          <p className="text-muted-foreground">TOTAL QUANTITY:</p>
+          <p className="font-bold text-foreground">
+            {totalQty} Qty ({manualLots} Lot{manualLots > 1 ? "s" : ""})
+          </p>
+        </div>
+        <div>
+          <p className="text-muted-foreground">CAPITAL INVESTED:</p>
+          <p className="font-bold text-foreground">₹{capitalInvested.toLocaleString("en-IN")}</p>
+        </div>
+        <div>
+          <p className="text-rose-400">MAX DOWNSIDE (-20% SL):</p>
+          <p className="font-bold text-rose-400">
+            -₹{maxLoss.toLocaleString("en-IN")} ({lossPct}% capital)
+          </p>
+        </div>
+        <div>
+          <p className="text-emerald-400">TP1 PROFIT (50% QTY):</p>
+          <p className="font-bold text-emerald-400">+₹{tp1Profit.toLocaleString("en-IN")}</p>
+        </div>
+        <div>
+          <p className="text-emerald-400">TP2 PROFIT (75% QTY):</p>
+          <p className="font-bold text-emerald-400">+₹{tp2Profit.toLocaleString("en-IN")}</p>
+        </div>
+        <div>
+          <p className="text-primary">TP3 HERO RUNNER (100%):</p>
+          <p className="font-bold text-primary">+₹{tp3Profit.toLocaleString("en-IN")}</p>
+        </div>
+      </div>
+
+      {/* Dynamic Trailing SL Engine (Section 6.4) */}
+      <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-[11px] font-mono space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="font-bold text-primary flex items-center gap-1.5">
+            ⚡ DYNAMIC TRAILING SL ENGINE:
+          </span>
+          <span className="rounded bg-surface px-2 py-0.5 text-[9px] font-bold text-muted-foreground border border-border">
+            PLAN (not a live order)
           </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+        <div className="grid grid-cols-2 gap-2 text-muted-foreground">
           <div>
-            <p className="text-[10px] uppercase text-muted-foreground">ACTIVE TRAILING SL:</p>
-            <p className="font-bold text-rose-400">₹{data.stopLoss.toFixed(2)}</p>
+            PEAK WATERMARK: <strong className="text-foreground">₹{peakWatermark.toFixed(2)}</strong>
           </div>
           <div>
-            <p className="text-[10px] uppercase text-muted-foreground">PEAK WATERMARK LTP:</p>
-            <p className="font-bold text-amber-400">₹{premium.toFixed(2)}</p>
+            ACTIVE TRAILING SL:{" "}
+            <strong className={isTp1Hit ? "text-emerald-400" : "text-rose-400"}>
+              ₹{trailingSl.toFixed(2)} {isTp1Hit ? "(Breakeven)" : "(-20%)"}
+            </strong>
           </div>
         </div>
 
-        <div className="border-t border-border/60 pt-1 text-[11px] font-mono text-muted-foreground">
-          <span>PLAN (not a live order): </span>
-          <span className="text-rose-400 font-semibold">
-            Planned trailing SL at ₹{data.stopLoss.toFixed(2)}
-          </span>
-        </div>
-
-        {/* Break-Even Protection (Requirement 28, 37) */}
-        <div className="rounded-lg border border-border/60 bg-background/50 p-2 text-[10px] text-muted-foreground leading-relaxed">
-          <strong className="text-primary">🛡️ REVERSAL PROTECTION ACTIVE:</strong> When price hits
-          TP1 (+1.5R), sell 50% lots and move SL to entry (breakeven). If market reverses, your loss
-          is ₹0 and you keep the 50% profit.
-        </div>
-      </div>
-
-      {/* Execution Management Rules (Requirements 35-39) */}
-      <div className="rounded-xl border border-border bg-background/40 p-3 text-[10px] text-muted-foreground space-y-1.5 leading-relaxed">
-        <p className="font-bold uppercase tracking-wider text-foreground flex items-center gap-1">
-          <span>📋</span> EXECUTION MANAGEMENT RULES
-        </p>
-        <p>
-          • <strong className="text-foreground">Max 20% Option SL Cap:</strong> Hard stop-loss on
-          option premium (capped at max 20% loss) eliminates huge option decay drawdowns.
-        </p>
-        <p>
-          • <strong className="text-foreground">TP1 Target (1.5R):</strong> Lock 50% lot profit
-          &amp; automatically shift SL to breakeven.
-        </p>
-        <p>
-          • <strong className="text-foreground">TP2 Target (2.5R):</strong> Runner position target
-          for maximum Risk:Reward.
-        </p>
-        <p>
-          • <strong className="text-foreground">Auto Square-off:</strong> Exit intraday positions
-          before 03:15 PM IST.
+        <p className="text-[10px] text-muted-foreground">
+          {isTp1Hit
+            ? "✅ TP1 reached: Stop Loss automatically shifted to breakeven entry."
+            : "Waiting for TP1 target hit (+30% gain) to shift SL to breakeven entry."}
         </p>
       </div>
     </div>

@@ -38,7 +38,7 @@ export interface FreshnessInput {
   asOfMs: number | null | undefined;
   nowMs: number;
   marketOpen: boolean;
-  /** "delayed" feeds (Yahoo, CBOE delayed quotes) can never be better than DELAYED. */
+  /** "delayed" feeds can never be better than DELAYED. */
   feed?: "realtime" | "delayed";
 }
 
@@ -313,7 +313,7 @@ export function isValidExpiry(value: unknown): value is string {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
 
-export const YAHOO_INTERVALS: readonly string[] = [
+export const ALLOWED_INTERVALS: readonly string[] = [
   "1m",
   "2m",
   "5m",
@@ -327,7 +327,7 @@ export const YAHOO_INTERVALS: readonly string[] = [
   "1wk",
   "1mo",
 ];
-export const YAHOO_RANGES: readonly string[] = [
+export const ALLOWED_RANGES: readonly string[] = [
   "1d",
   "5d",
   "1mo",
@@ -341,11 +341,11 @@ export const YAHOO_RANGES: readonly string[] = [
   "max",
 ];
 
-export function isAllowedYahooInterval(v: unknown): v is string {
-  return typeof v === "string" && YAHOO_INTERVALS.includes(v);
+export function isAllowedInterval(v: unknown): v is string {
+  return typeof v === "string" && ALLOWED_INTERVALS.includes(v);
 }
-export function isAllowedYahooRange(v: unknown): v is string {
-  return typeof v === "string" && YAHOO_RANGES.includes(v);
+export function isAllowedRange(v: unknown): v is string {
+  return typeof v === "string" && ALLOWED_RANGES.includes(v);
 }
 
 export function clampInt(value: unknown, min: number, max: number, fallback: number): number {

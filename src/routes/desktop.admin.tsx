@@ -5,12 +5,10 @@ import { Lock, LogOut } from "lucide-react";
 import { useAdmin } from "@/context/AdminContext";
 import { ApiKeysSection } from "@/components/admin/ApiKeysSection";
 import { NotificationsSection } from "@/components/admin/NotificationsSection";
-import { OverviewSection } from "@/components/admin/OverviewSection";
 import { SheetsSection } from "@/components/admin/SheetsSection";
 import { StocksSection } from "@/components/admin/StocksSection";
 import { TelegramSection } from "@/components/admin/TelegramSection";
 import { ADMIN_TABS, type AdminTab } from "@/components/admin/tabs";
-import { UsersSection } from "@/components/admin/UsersSection";
 
 export const Route = createFileRoute("/desktop/admin")({
   component: AdminPanel,
@@ -18,7 +16,7 @@ export const Route = createFileRoute("/desktop/admin")({
 
 function AdminPanel() {
   const { isAdmin, sessionReady, logout } = useAdmin();
-  const [tab, setTab] = useState<AdminTab>("overview");
+  const [tab, setTab] = useState<AdminTab>("apikeys");
 
   // Wait for the server to confirm the session before deciding what to render.
   if (!sessionReady) {
@@ -51,7 +49,7 @@ function AdminPanel() {
         <div>
           <h1 className="font-display text-3xl font-semibold">Admin Panel</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Configure integrations, manage users, and monitor notifications.
+            Configure integrations, API keys, and monitor notifications.
           </p>
         </div>
         <button
@@ -81,13 +79,11 @@ function AdminPanel() {
         ))}
       </div>
 
-      {tab === "overview" && <OverviewSection onSelectTab={setTab} />}
       {tab === "apikeys" && <ApiKeysSection />}
       {tab === "telegram" && <TelegramSection />}
       {tab === "sheets" && <SheetsSection />}
       {tab === "stocks" && <StocksSection />}
       {tab === "notifications" && <NotificationsSection />}
-      {tab === "users" && <UsersSection />}
     </div>
   );
 }

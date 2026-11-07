@@ -22,7 +22,7 @@ import {
   sendMessage,
   sendToMany,
 } from "../telegram.server.ts";
-import { derivePrevClose, quoteFromChart, toYahooSymbol } from "../yahoo.server.ts";
+import { toCleanSymbol } from "../dhan-quotes.server.ts";
 
 /* ------------------------------- cron-auth -------------------------------- */
 
@@ -298,38 +298,11 @@ test("sendToMany isolates per-recipient failures", async () => {
   assert.equal(res.errors.length, 1);
 });
 
-/* --------------------------------- yahoo ---------------------------------- */
+/* --------------------------------- dhan-quotes ---------------------------------- */
 
-test("toYahooSymbol only suffixes bare NSE tickers", () => {
-  assert.equal(toYahooSymbol("TCS"), "TCS.NS");
-  assert.equal(toYahooSymbol("^NSEI"), "^NSEI");
-  assert.equal(toYahooSymbol("RELIANCE.BO"), "RELIANCE.BO");
-});
-
-test("derivePrevClose uses the previous daily bar, not the 5d-old chartPreviousClose", () => {
-  const day = 86_400;
-  const t0 = 1_700_000_000;
-  const result = {
-    meta: {
-      regularMarketPrice: 110,
-      chartPreviousClose: 50,
-      regularMarketTime: t0 + 2 * day,
-      gmtoffset: 19_800,
-    },
-    timestamp: [t0, t0 + day, t0 + 2 * day],
-    indicators: { quote: [{ close: [100, 105, 110] }] },
-  };
-  assert.equal(derivePrevClose(result), 105);
-  const q = quoteFromChart("X.NS", result);
-  assert.ok(q);
-  assert.equal(Math.round(q.changePct * 100) / 100, 4.76);
-
-  // Today's bar not yet present: previous close is the last bar.
-  const early = { ...result, meta: { ...result.meta, regularMarketTime: t0 + 3 * day } };
-  assert.equal(derivePrevClose(early), 110);
-
-  // meta.previousClose wins when present; null-safe on empty data.
-  assert.equal(derivePrevClose({ meta: { previousClose: 7 } }), 7);
-  assert.equal(quoteFromChart("X", null), null);
-  assert.equal(quoteFromChart("X", { meta: {} }), null);
+test("toCleanSymbol normalizes tickers", () => {
+  assert.equal(toCleanSymbol("TCS"), "TCS");
+  assert.equal(toCleanSymbol("^NSEI"), "NSEI");
+  assert.equal(toCleanSymbol("RELIANCE.NS"), "RELIANCE");
+  assert.equal(toCleanSymbol("INFY.BO"), "INFY");
 });

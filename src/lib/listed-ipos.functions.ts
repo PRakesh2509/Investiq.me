@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { fetchDhanQuote } from "./dhan-quotes.server.ts";
 
 export type ListedIpo = {
   symbol: string;
@@ -64,22 +65,13 @@ function parseNseDate(s: string): string {
   return `${y}-${MONTHS[mon.toUpperCase()] ?? "01"}-${d.padStart(2, "0")}`;
 }
 
-async function yahooPrice(
+async function dhanPrice(
   symbol: string,
 ): Promise<{ price: number | null; dayChangePct: number | null }> {
   try {
-    const res = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`,
-      { headers: { "User-Agent": NSE_UA, Accept: "application/json" } },
-    );
-    if (!res.ok) return { price: null, dayChangePct: null };
-    const json: any = await res.json();
-    const meta = json?.chart?.result?.[0]?.meta;
-    const price = Number(meta?.regularMarketPrice);
-    const prev = Number(meta?.previousClose ?? meta?.chartPreviousClose);
-    if (!Number.isFinite(price) || price <= 0) return { price: null, dayChangePct: null };
-    const dayChangePct = Number.isFinite(prev) && prev > 0 ? ((price - prev) / prev) * 100 : null;
-    return { price, dayChangePct };
+    const q = await fetchDhanQuote(symbol);
+    if (!q || q.price <= 0) return { price: null, dayChangePct: null };
+    return { price: q.price, dayChangePct: q.changePct };
   } catch {
     return { price: null, dayChangePct: null };
   }
@@ -213,8 +205,7 @@ export const getListedIpos = createServerFn({ method: "GET" }).handler(
 
       const withPrices = await Promise.all(
         targetList.map(async (r) => {
-          let { price, dayChangePct } = await yahooPrice(`${r.symbol}.NS`);
-          if (price == null) ({ price, dayChangePct } = await yahooPrice(`${r.symbol}.BO`));
+          const { price, dayChangePct } = await dhanPrice(r.symbol);
 
           const changeAbs = price != null ? +(price - r.issuePrice).toFixed(2) : null;
           const changePct =

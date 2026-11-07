@@ -1,6 +1,5 @@
-// Nifty 100 universe with sector tags. All symbols use the Yahoo Finance NSE
-// suffix (.NS) at the call site. Used for live movers, sector heatmap, and
-// pre-market / post-market Telegram scans.
+// Nifty 100 universe with sector tags. Clean symbols for DhanHQ live feeds.
+// Used for live movers, sector heatmap, and pre-market / post-market Telegram scans.
 export interface NiftyStock {
   symbol: string;
   name: string;
@@ -136,7 +135,7 @@ export const NIFTY_UNIVERSE: NiftyStock[] = [
   { symbol: "BAJAJHLDNG", name: "Bajaj Holdings", sector: "Financials" },
 ];
 
-export const NIFTY_YAHOO_SYMBOLS = NIFTY_UNIVERSE.map((s) => `${s.symbol}.NS`).join(",");
+export const NIFTY_SYMBOLS = NIFTY_UNIVERSE.map((s) => s.symbol).join(",");
 
 export function sectorOf(symbol: string): string {
   const clean = symbol.replace(/\.NS$/i, "").toUpperCase();

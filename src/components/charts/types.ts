@@ -1,16 +1,16 @@
 import type { useServerFn } from "@tanstack/react-start";
 import type {
-  getYahooFundamentals,
-  getYahooFinancials,
-  getYahooNews,
-  getYahooHoldings,
-} from "@/lib/yahoo.functions";
+  getDhanFundamentals,
+  getDhanFinancials,
+  getDhanNews,
+  getDhanHoldings,
+} from "@/lib/dhan.functions";
 
 export type Fundamentals = Awaited<
-  ReturnType<ReturnType<typeof useServerFn<typeof getYahooFundamentals>>>
+  ReturnType<ReturnType<typeof useServerFn<typeof getDhanFundamentals>>>
 >;
 export type Financials = Awaited<
-  ReturnType<ReturnType<typeof useServerFn<typeof getYahooFinancials>>>
+  ReturnType<ReturnType<typeof useServerFn<typeof getDhanFinancials>>>
 >;
-export type News = Awaited<ReturnType<ReturnType<typeof useServerFn<typeof getYahooNews>>>>;
-export type Holdings = Awaited<ReturnType<ReturnType<typeof useServerFn<typeof getYahooHoldings>>>>;
+export type News = Awaited<ReturnType<ReturnType<typeof useServerFn<typeof getDhanNews>>>>;
+export type Holdings = Awaited<ReturnType<ReturnType<typeof useServerFn<typeof getDhanHoldings>>>>;

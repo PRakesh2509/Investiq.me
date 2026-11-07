@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { getFundData, parseMfApiResponse } from "@/lib/funds.functions";
 import { FUNDS } from "@/lib/funds";
-import { getYahooNews } from "@/lib/yahoo.functions";
+import { getDhanNews } from "@/lib/dhan.functions";
 import { ChevronLeft, RefreshCw } from "lucide-react";
 
 export const Route = createFileRoute("/desktop/fund/$code")({
@@ -32,14 +32,14 @@ const RANGES = [
 function FundDetail() {
   const { code } = Route.useParams();
   const fetchFund = useServerFn(getFundData);
-  const fetchNews = useServerFn(getYahooNews);
+  const fetchNews = useServerFn(getDhanNews);
   const [hist, setHist] = useState<{ date: string; nav: number }[]>([]);
   const [schemeName, setSchemeName] = useState<string>("");
   const [fundHouse, setFundHouse] = useState<string>("");
   const [range, setRange] = useState(RANGES[3]);
   const [loading, setLoading] = useState(false);
   const [news, setNews] = useState<Awaited<
-    ReturnType<ReturnType<typeof useServerFn<typeof getYahooNews>>>
+    ReturnType<ReturnType<typeof useServerFn<typeof getDhanNews>>>
   > | null>(null);
   const [tab, setTab] = useState<"overview" | "news">("overview");
 

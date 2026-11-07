@@ -1,12 +1,17 @@
 export const INTERVALS: Array<{ id: string; label: string; interval: string; range: string }> = [
-  { id: "1d", label: "1D", interval: "5m", range: "1d" },
-  { id: "1w", label: "1W", interval: "30m", range: "5d" },
-  { id: "1mo", label: "1M", interval: "1d", range: "1mo" },
-  { id: "3mo", label: "3M", interval: "1d", range: "3mo" },
-  { id: "6mo", label: "6M", interval: "1d", range: "6mo" },
-  { id: "1y", label: "1Y", interval: "1wk", range: "1y" },
-  { id: "5y", label: "5Y", interval: "1mo", range: "5y" },
-  { id: "all", label: "ALL", interval: "1mo", range: "max" },
+  { id: "1m", label: "1M", interval: "1m", range: "1d" },
+  { id: "5m", label: "5M", interval: "5m", range: "1d" },
+  { id: "15m", label: "15M", interval: "15m", range: "5d" },
+  { id: "1h", label: "1H", interval: "60m", range: "1mo" },
+  { id: "1d", label: "1D", interval: "1d", range: "3mo" },
+  { id: "1w", label: "1W", interval: "1wk", range: "1y" },
+
+
+
+
+
+
+
 ];
 export type Point = {
   t: string;

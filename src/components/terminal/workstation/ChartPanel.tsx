@@ -305,7 +305,7 @@ export function ChartPanel(props: {
           <div className="flex items-center justify-between gap-4 border-b border-border pb-1.5">
             <div className="flex items-center gap-1.5 text-primary font-bold">
               <span className="h-2 w-2 rounded-full bg-primary" />
-              {data.direction === "CALL" ? "LONG SETUP" : "SHORT SETUP"} (1:1.50 R:R)
+              {data.direction.includes("CALL") ? "LONG SETUP" : "SHORT SETUP"} (1:1.50 R:R)
             </div>
             <div className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
               ACTIVE · TP1: {curSymbol}

@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { NIFTY_UNIVERSE, sectorOf } from "@/lib/nifty-universe";
 import { hookFailure, hookResponse, readJsonBody, requireCronAuth } from "@/lib/cron-auth.server";
 import { escapeHtml, getBotToken, resolveChatIds, sendToMany } from "@/lib/telegram.server";
-import { fetchQuote, fetchQuotes, toYahooSymbol } from "@/lib/yahoo.server";
+import { fetchDhanQuote, fetchDhanQuotes } from "@/lib/dhan-quotes.server";
 
 interface Quote {
   symbol: string;
@@ -15,7 +15,7 @@ interface Quote {
 }
 
 async function fetchIndex(symbol: string): Promise<{ price: number; prev: number } | null> {
-  const q = await fetchQuote(symbol);
+  const q = await fetchDhanQuote(symbol);
   return q ? { price: q.price, prev: q.prevClose } : null;
 }
 
@@ -130,7 +130,7 @@ export const Route = createFileRoute("/api/public/hooks/postmarket-alert")({
           }
           const chatIds = resolveChatIds(body.chatIds);
 
-          const raw = await fetchQuotes(NIFTY_UNIVERSE.map((s) => toYahooSymbol(s.symbol)));
+          const raw = await fetchDhanQuotes(NIFTY_UNIVERSE.map((s) => s.symbol));
           const out: Quote[] = [];
           NIFTY_UNIVERSE.forEach((s, i) => {
             const q = raw[i];

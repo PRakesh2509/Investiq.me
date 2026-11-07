@@ -713,7 +713,7 @@ export async function getLiveDerivativesChain(rawSymbol: string): Promise<Chain>
     console.warn(`[ai-trades] Dhan live option chain error for ${cleanLabel}:`, (err as Error).message);
   }
 
-  // 2. Secondary: Dhan Live OHLC marketfeed tick for spot price (No Yahoo Finance)
+  // 2. Secondary: Dhan Live OHLC marketfeed tick for spot price
   let liveSpot = defaultSpot;
   try {
     const { getDhanOhlc } = await import("./dhan.server.ts");

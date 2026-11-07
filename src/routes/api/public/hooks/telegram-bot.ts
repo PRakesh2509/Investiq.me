@@ -17,7 +17,7 @@ import {
   parseChatIds,
   sendMessage as tgSend,
 } from "@/lib/telegram.server";
-import { fetchDailyCloses, fetchQuote, fetchQuotes, type YahooQuote } from "@/lib/yahoo.server";
+import { fetchDhanDailyCloses, fetchDhanQuote, fetchDhanQuotes, type DhanQuoteResult } from "@/lib/dhan-quotes.server";
 
 // Interactive Telegram bot webhook. Register with a secret so Telegram signs every call
 // with the X-Telegram-Bot-Api-Secret-Token header (must equal TELEGRAM_WEBHOOK_SECRET):
@@ -130,7 +130,7 @@ export function resolveSymbol(input: string): string {
     .replace(/\b(SHARE|STOCK|PRICE|QUOTE|CHART|CMP|TARGET|LEVELS)\b/g, "")
     .trim();
 
-  // Explicit Yahoo symbols with ^ or .
+  // Explicit symbols with ^ or .
   if (q.includes(".") || q.startsWith("^")) return q;
 
   // Direct alias match
@@ -179,20 +179,20 @@ function fmt(n: number, digits = 2) {
 async function handleSearch(token: string, chatId: number, input: string) {
   let symbol = resolveSymbol(input.slice(0, 40));
   let safeSymbol = escapeHtml(symbol);
-  let [q, closes] = await Promise.all([fetchQuote(symbol), fetchDailyCloses(symbol, "6mo")]);
+  let [q, closes] = await Promise.all([fetchDhanQuote(symbol), fetchDhanDailyCloses(symbol, 90)]);
 
-  // If quote not found and symbol is .NS, try BSE (.BO) fallback
-  if ((!q || !q.price) && symbol.endsWith(".NS")) {
-    const bseSymbol = symbol.replace(/\.NS$/i, ".BO");
-    const [bseQ, bseCloses] = await Promise.all([
-      fetchQuote(bseSymbol),
-      fetchDailyCloses(bseSymbol, "6mo"),
+  // If quote not found, try stripping exchange suffix
+  if (!q || !q.price) {
+    const cleanSymbol = symbol.replace(/\.(NS|BO)$/i, "");
+    const [cleanQ, cleanCloses] = await Promise.all([
+      fetchDhanQuote(cleanSymbol),
+      fetchDhanDailyCloses(cleanSymbol, 90),
     ]);
-    if (bseQ && bseQ.price) {
-      symbol = bseSymbol;
+    if (cleanQ && cleanQ.price) {
+      symbol = cleanSymbol;
       safeSymbol = escapeHtml(symbol);
-      q = bseQ;
-      closes = bseCloses;
+      q = cleanQ;
+      closes = cleanCloses;
     }
   }
 
@@ -205,9 +205,10 @@ async function handleSearch(token: string, chatId: number, input: string) {
     return;
   }
   const price = q.price;
-  const rsi = rsi14(closes);
-  const s20 = smaLast(closes, 20);
-  const s200 = smaLast(closes, 200);
+  const closePrices = closes.map((c) => c.close);
+  const rsi = rsi14(closePrices);
+  const s20 = smaLast(closePrices, 20);
+  const s200 = smaLast(closePrices, 200);
   const rsiTag = rsi < 30 ? "Oversold" : rsi > 70 ? "Overbought" : "Neutral";
   const macdBias = s20 > s200 ? "BULLISH" : "BEARISH";
   const target = price * 1.13;
@@ -219,7 +220,7 @@ async function handleSearch(token: string, chatId: number, input: string) {
   const change = q.change ?? 0;
   const changePct = q.changePct ?? 0;
   const sign = change >= 0 ? "+" : "";
-  const name = escapeHtml(q.name || symbol);
+  const name = escapeHtml(symbol);
 
   const lines = [
     `📊 <b>${name}</b> · <code>${safeSymbol}</code>`,
@@ -240,17 +241,17 @@ async function handleSearch(token: string, chatId: number, input: string) {
     `Trend: ${macdBias} · 20-DMA ₹${fmt(s20)} · 200-DMA ₹${fmt(s200)}`,
     ``,
     `📈 <b>KEY METRICS</b>`,
-    q.fiftyTwoWeekHigh ? `52W: ₹${fmt(q.fiftyTwoWeekLow)} – ₹${fmt(q.fiftyTwoWeekHigh)}` : ``,
+    q.high && q.low ? `Day Range: ₹${fmt(q.low)} – ₹${fmt(q.high)}` : ``,
     ``,
     `⚠️ AI-based research only · <b>Not investment advice</b> · Not SEBI registered.`,
   ].filter(Boolean);
   await sendMessage(token, chatId, lines.join("\n"));
 }
 
-type UniverseQuote = YahooQuote & { base: string; sector: string };
+type UniverseQuote = DhanQuoteResult & { base: string; sector: string };
 
 async function fetchUniverseQuotes(): Promise<UniverseQuote[]> {
-  const quotes = await fetchQuotes(NIFTY_UNIVERSE.map((s) => `${s.symbol}.NS`));
+  const quotes = await fetchDhanQuotes(NIFTY_UNIVERSE.map((s) => s.symbol));
   const out: UniverseQuote[] = [];
   NIFTY_UNIVERSE.forEach((s, i) => {
     const q = quotes[i];
@@ -329,7 +330,7 @@ async function handleFno(token: string, chatId: number, symbolArg?: string) {
 
   try {
     const quoteSym = sym === "BANKNIFTY" ? "^NSEBANK" : "^NSEI";
-    const quote = await fetchQuote(quoteSym);
+    const quote = await fetchDhanQuote(sym);
     const step = sym === "BANKNIFTY" ? 100 : 50;
     const defaultSpot = sym === "BANKNIFTY" ? 54700 : 22980;
     const spot = quote?.price ?? defaultSpot;

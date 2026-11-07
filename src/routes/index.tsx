@@ -4,8 +4,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { ArrowRight, BarChart3, Bitcoin, Brain, DollarSign, Search, Sparkles } from "lucide-react";
 import { DisclaimerModal, useDisclaimerAcknowledged } from "@/components/DisclaimerModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { NIFTY_UNIVERSE, NIFTY_YAHOO_SYMBOLS } from "@/lib/nifty-universe";
-import { getYahooQuotes } from "@/lib/yahoo.functions";
+import { NIFTY_UNIVERSE } from "@/lib/nifty-universe";
+import { getDhanQuotes } from "@/lib/dhan.functions";
 import { formatINR } from "@/lib/market-data";
 const logoAsset = { url: "/investiq-logo.png" };
 
@@ -91,7 +91,7 @@ function LandingPage() {
   const [query, setQuery] = useState("");
   const [showSuggest, setShowSuggest] = useState(false);
   const [quotes, setQuotes] = useState<LiveQuote[]>([]);
-  const fetchQuotes = useServerFn(getYahooQuotes);
+  const fetchQuotes = useServerFn(getDhanQuotes);
   const market = useMarketStatus();
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -99,7 +99,7 @@ function LandingPage() {
     let alive = true;
     const load = async () => {
       try {
-        const res = await fetchQuotes({ data: { symbols: NIFTY_YAHOO_SYMBOLS } });
+        const res = await fetchQuotes({ data: { symbols: NIFTY_UNIVERSE.slice(0, 30).map((s) => s.symbol).join(",") } });
         if (!alive || !res.ok) return;
         setQuotes(
           res.quotes.map((q) => ({
@@ -466,7 +466,7 @@ function LandingPage() {
                 {
                   icon: BarChart3,
                   title: "Live charts & F&O signals",
-                  body: "Real-time Yahoo Finance data with CPR, Camarilla and pivot-confluence F&O setups.",
+                  body: "Real-time DhanHQ marketfeed with CPR, Camarilla and pivot-confluence F&O setups.",
                   lead: false,
                 },
                 {

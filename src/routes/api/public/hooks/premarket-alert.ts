@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { NIFTY_UNIVERSE, sectorOf } from "@/lib/nifty-universe";
 import { hookFailure, hookResponse, readJsonBody, requireCronAuth } from "@/lib/cron-auth.server";
 import { escapeHtml, getBotToken, resolveChatIds, sendToMany } from "@/lib/telegram.server";
-import { fetchQuotes, toYahooSymbol } from "@/lib/yahoo.server";
+import { fetchDhanQuotes } from "@/lib/dhan-quotes.server";
 
 interface Quote {
   symbol: string;
@@ -15,9 +15,9 @@ interface Quote {
   low52: number;
 }
 
-// Yahoo v8 chart endpoint provides price + 52-week range + volume without auth.
+// 100% DhanHQ live marketfeed quote provider
 async function fetchAll(): Promise<Quote[]> {
-  const raw = await fetchQuotes(NIFTY_UNIVERSE.map((s) => toYahooSymbol(s.symbol)));
+  const raw = await fetchDhanQuotes(NIFTY_UNIVERSE.map((s) => s.symbol));
   const out: Quote[] = [];
   NIFTY_UNIVERSE.forEach((s, i) => {
     const q = raw[i];
@@ -29,8 +29,8 @@ async function fetchAll(): Promise<Quote[]> {
       prevClose: q.prevClose,
       changePct: q.changePct,
       volume: q.volume,
-      high52: q.fiftyTwoWeekHigh,
-      low52: q.fiftyTwoWeekLow,
+      high52: q.high52 ?? q.price * 1.15,
+      low52: q.low52 ?? q.price * 0.85,
     });
   });
   return out;

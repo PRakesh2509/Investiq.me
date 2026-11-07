@@ -57,17 +57,13 @@ export const getBars = createServerFn({ method: "GET" })
     const tf = TF_MAP[data.timeframe] ?? TF_MAP["5M"];
     const cleanSym = data.symbol.replace(/\^/g, "").replace(/\.NS$/i, "");
 
-    // DhanHQ first for Indian instruments, then Yahoo Finance; both go through the cached,
-    // retried provider layer. Bars are never generated.
+    // 100% DhanHQ market data provider. Bars are never generated.
     const result = await getInstrumentBars({
-      yahooSymbol: data.symbol,
+      symbol: cleanSym,
       interval: tf.interval,
       range: tf.range,
       isGlobal: !isIndian,
-      dhan:
-        isIndian && tf.dhanRange
-          ? { symbol: cleanSym, range: tf.dhanRange, minutes: tf.dhanMinutes }
-          : undefined,
+      dhan: { symbol: cleanSym, range: tf.dhanRange || tf.range, minutes: tf.dhanMinutes },
     });
 
     if (!result || result.bars.length === 0) {

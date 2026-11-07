@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  getYahooChart,
-  getYahooFundamentals,
-  getYahooFinancials,
-  getYahooNews,
-  getYahooHoldings,
-} from "@/lib/yahoo.functions";
+  getDhanFundamentals,
+  getDhanFinancials,
+  getDhanNews,
+  getDhanHoldings,
+} from "@/lib/dhan.functions";
 import { getLiveStockChart, type StockChartMeta } from "@/lib/indian-stocks.functions";
 import type { INTERVALS, Point } from "./constants";
 import type { Financials, Fundamentals, Holdings, News } from "./types";
@@ -17,8 +16,8 @@ const failed = (e: unknown) =>
   ({ ok: false, error: e instanceof Error ? e.message : "Request failed" }) as const;
 
 /**
- * Price series (live feed with Yahoo fallback) plus fundamentals, financials, news and
- * ETF holdings for a symbol. Only real server data is returned; on failure `error` is set
+ * Price series (100% Dhan-backed) plus fundamentals, financials, news and
+ * holdings for a symbol. Only real server data is returned; on failure `error` is set
  * and `data` stays empty (no synthetic series).
  */
 export function useStockCharts(symbol: string, interval: IntervalOption, live: boolean) {
@@ -26,19 +25,18 @@ export function useStockCharts(symbol: string, interval: IntervalOption, live: b
   const [stockMeta, setStockMeta] = useState<StockChartMeta | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [feedSource, setFeedSource] = useState<string>("DhanHQ / NSE Live");
+  const [feedSource, setFeedSource] = useState<string>("DhanHQ Live Direct Feed");
   const [isSimulated, setIsSimulated] = useState(false);
   const [fund, setFund] = useState<Fundamentals | null>(null);
   const [fin, setFin] = useState<Financials | null>(null);
   const [news, setNews] = useState<News | null>(null);
   const [holdings, setHoldings] = useState<Holdings | null>(null);
 
-  const fetchYahoo = useServerFn(getYahooChart);
   const fetchLiveChart = useServerFn(getLiveStockChart);
-  const fetchFund = useServerFn(getYahooFundamentals);
-  const fetchFin = useServerFn(getYahooFinancials);
-  const fetchNews = useServerFn(getYahooNews);
-  const fetchHoldings = useServerFn(getYahooHoldings);
+  const fetchFund = useServerFn(getDhanFundamentals);
+  const fetchFin = useServerFn(getDhanFinancials);
+  const fetchNews = useServerFn(getDhanNews);
+  const fetchHoldings = useServerFn(getDhanHoldings);
 
   // Ignore responses that belong to a previous symbol/range selection.
   const requestId = useRef(0);
@@ -54,88 +52,19 @@ export function useStockCharts(symbol: string, interval: IntervalOption, live: b
       if (res.ok && res.points.length) {
         setData(res.points);
         if (res.meta) setStockMeta(res.meta);
-        setFeedSource(res.feedSource);
+        setFeedSource(res.feedSource || "DhanHQ Live Direct Feed");
         setIsSimulated(Boolean(res.isSimulated));
         setError(null);
         return;
       }
-      const fallbackRes = await fetchYahoo({
-        data: { symbol: `${symbol}.NS`, interval: interval.interval, range: interval.range },
-      });
-      if (id !== requestId.current) return;
-      if (fallbackRes.ok && fallbackRes.points.length) {
-        const is1d = interval.range === "1d";
-        const is5d = interval.range === "5d";
-        setData(
-          fallbackRes.points.map((p) => {
-            const d = new Date(p.t);
-            const t = is1d
-              ? d.toLocaleTimeString("en-IN", {
-                  timeZone: "Asia/Kolkata",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  hour12: true,
-                })
-              : is5d
-                ? d.toLocaleString("en-IN", {
-                    timeZone: "Asia/Kolkata",
-                    day: "2-digit",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: true,
-                  })
-                : d.toLocaleString("en-IN", {
-                    timeZone: "Asia/Kolkata",
-                    day: "2-digit",
-                    month: "short",
-                    ...(interval.range === "5y" || interval.range === "max"
-                      ? { year: "numeric" }
-                      : {}),
-                  });
-            const fullTime =
-              d.toLocaleString("en-IN", {
-                timeZone: "Asia/Kolkata",
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-              }) + " IST";
-            return {
-              t,
-              fullTime,
-              price: p.price,
-              volume: p.volume ?? 0,
-              timestamp: p.t,
-            };
-          }),
-        );
-        setStockMeta({
-          open: fallbackRes.points[0]?.price ?? 0,
-          dayHigh: fallbackRes.dayHigh,
-          dayLow: fallbackRes.dayLow,
-          regularMarketVolume: fallbackRes.regularMarketVolume,
-          fiftyTwoWeekHigh: fallbackRes.fiftyTwoWeekHigh,
-          fiftyTwoWeekLow: fallbackRes.fiftyTwoWeekLow,
-          regularMarketPrice: fallbackRes.regularMarketPrice,
-          previousClose: fallbackRes.previousClose,
-          currency: fallbackRes.currency,
-        });
-        setFeedSource("NSE Live Feed");
-        setIsSimulated(false);
-        setError(null);
-      } else {
-        setError(`Live price data for ${symbol} is unavailable right now.`);
-      }
+      setError(`Live price data for ${symbol} is unavailable from DhanHQ.`);
     } catch (e) {
       if (id !== requestId.current) return;
       setError(e instanceof Error && e.message ? e.message : `Could not load ${symbol}.`);
     } finally {
       if (id === requestId.current) setLoading(false);
     }
-  }, [symbol, interval, fetchLiveChart, fetchYahoo]);
+  }, [symbol, interval, fetchLiveChart]);
 
   // New symbol: drop everything from the previous one before loading.
   useEffect(() => {
@@ -158,16 +87,16 @@ export function useStockCharts(symbol: string, interval: IntervalOption, live: b
     return () => window.clearInterval(id);
   }, [live, load]);
 
-  // Fundamentals + news + holdings (for ETFs) whenever the symbol changes.
+  // Fundamentals + news + holdings whenever the symbol changes.
   useEffect(() => {
     let cancelled = false;
-    const sym = `${symbol}.NS`;
+    const cleanSym = symbol.replace(/\.NS$/i, "").replace(/\.BO$/i, "").replace(/^\^/, "");
     (async () => {
       const [f, fi, n, h] = await Promise.allSettled([
-        fetchFund({ data: { symbol: sym } }),
-        fetchFin({ data: { symbol: sym } }),
-        fetchNews({ data: { query: sym, count: 12 } }),
-        fetchHoldings({ data: { symbol: sym } }),
+        fetchFund({ data: { symbol: cleanSym } }),
+        fetchFin({ data: { symbol: cleanSym } }),
+        fetchNews({ data: { query: cleanSym, count: 12 } }),
+        fetchHoldings({ data: { symbol: cleanSym } }),
       ]);
       if (cancelled) return;
       setFund(f.status === "fulfilled" ? f.value : (failed(f.reason) as unknown as Fundamentals));

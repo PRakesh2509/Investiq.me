@@ -5,7 +5,7 @@
  * Interfaces with authorized brokers (DhanHQ API v2 / Upstox API v2 / Baseline).
  *
  * Integrity rules:
- * - Candles are REAL (Yahoo Finance) or absent; they are never synthesised.
+ * - Candles are REAL (DhanHQ) or absent; they are never synthesised.
  * - Futures price / volume have no feed here and are reported as null (not estimated).
  * - A baseline/simulated option chain is flagged (`isSimulated`) so downstream gates can
  *   refuse to treat it as tradeable market data.

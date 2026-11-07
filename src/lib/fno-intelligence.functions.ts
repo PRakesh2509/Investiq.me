@@ -79,7 +79,7 @@ function countActiveBreakingEvents(
 type TechnicalInput = NonNullable<TradeScoringInput["technical"]>;
 
 /**
- * RSI / EMA / VWAP / Supertrend computed from REAL 5-minute bars (DhanHQ, then Yahoo Finance).
+ * RSI / EMA / VWAP / Supertrend computed from REAL 5-minute bars (DhanHQ).
  * Returns undefined when bars are unavailable so the scoring engine marks the factor missing
  * instead of receiving an invented number.
  */
@@ -90,11 +90,11 @@ async function loadRealTechnicals(
   const cfg = WORKSTATION_INSTRUMENTS[instrument];
   if (!cfg) return undefined;
   const result = await getInstrumentBars({
-    yahooSymbol: cfg.yahooSymbol,
+    symbol: instrument,
     interval: "5m",
     range: "5d",
     isGlobal: Boolean(cfg.isGlobal),
-    dhan: cfg.isGlobal ? undefined : { symbol: instrument, range: "5d", minutes: 5 },
+    dhan: { symbol: instrument, range: "5d", minutes: 5 },
   });
   if (!result || result.bars.length < 30) return undefined;
 

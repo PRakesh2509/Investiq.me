@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { formatINR } from "@/lib/market-data";
 import { NEWS } from "@/lib/desktop-data";
-import { NIFTY_UNIVERSE, NIFTY_YAHOO_SYMBOLS } from "@/lib/nifty-universe";
-import { getYahooQuotes } from "@/lib/yahoo.functions";
+import { NIFTY_UNIVERSE } from "@/lib/nifty-universe";
+
 import { getIndianStockQuotes } from "@/lib/indian-stocks.functions";
 import { useRecentViewed } from "@/lib/recent-viewed";
 import {
@@ -23,7 +23,7 @@ import {
   ChevronUp,
   Layers,
 } from "lucide-react";
-import { getDhanHoldings } from "@/lib/dhan.functions";
+import { getDhanHoldings, getDhanQuotes } from "@/lib/dhan.functions";
 import { DhanConnectModal } from "@/components/DhanConnectModal";
 
 export const Route = createFileRoute("/desktop/")({
@@ -39,7 +39,7 @@ type LiveQuote = {
 };
 
 function DesktopDashboard() {
-  const fetchQuotes = useServerFn(getYahooQuotes);
+  const fetchQuotes = useServerFn(getDhanQuotes);
   const fetchIndianQuotes = useServerFn(getIndianStockQuotes);
   const fetchHoldings = useServerFn(getDhanHoldings);
   const recent = useRecentViewed();
@@ -74,7 +74,7 @@ function DesktopDashboard() {
     try {
       const [stocksResult, indicesResult, dhanResult] = await Promise.allSettled([
         fetchIndianQuotes({ data: {} }),
-        fetchQuotes({ data: { symbols: "^NSEI,^BSESN,^NSEBANK,^CNXIT" } }),
+        fetchQuotes({ data: { symbols: "NIFTY,SENSEX,BANKNIFTY,NIFTYIT" } }),
         fetchHoldings(),
       ]);
       const stocksRes = stocksResult.status === "fulfilled" ? stocksResult.value : null;
@@ -96,12 +96,12 @@ function DesktopDashboard() {
       }
       if (idxRes?.ok) {
         const labels: Record<string, string> = {
-          "^NSEI": "NIFTY 50",
-          "^BSESN": "SENSEX",
-          "^NSEBANK": "BANK NIFTY",
-          "^CNXIT": "NIFTY IT",
+          NIFTY: "NIFTY 50",
+          SENSEX: "SENSEX",
+          BANKNIFTY: "BANK NIFTY",
+          NIFTYIT: "NIFTY IT",
         };
-        const order = ["^NSEI", "^BSESN", "^NSEBANK", "^CNXIT"];
+        const order = ["NIFTY", "SENSEX", "BANKNIFTY", "NIFTYIT"];
         const mapped = idxRes.quotes.map((q) => ({
           symbol: labels[q.symbol] ?? q.symbol,
           name: q.symbol,

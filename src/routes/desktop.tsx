@@ -18,6 +18,7 @@ import { NIFTY_UNIVERSE } from "@/lib/nifty-universe";
 import { toast } from "sonner";
 import AvgPriceCalculator from "@/components/AvgPriceCalculator";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { FnoTransitionOverlay } from "@/components/fno/FnoTransitionOverlay";
 const logoAsset = { url: "/investiq-logo.png" };
 
 export const Route = createFileRoute("/desktop")({
@@ -44,7 +45,7 @@ function resolveSearch(input: string): string | null {
     (s) => s.name.toUpperCase().includes(q) || s.symbol.includes(q),
   );
   if (loose) return loose.symbol;
-  // Fallback: treat raw input as Yahoo NSE symbol
+  // Fallback: clean raw input symbol
   return q.replace(/\.NS$/, "").replace(/[^A-Z0-9&-]/g, "") || null;
 }
 
@@ -56,6 +57,7 @@ function DesktopLayout() {
   const [modal, setModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [calcOpen, setCalcOpen] = useState(false);
+  const [showFnoTransition, setShowFnoTransition] = useState(false);
   const [u, setU] = useState("");
   const [p, setP] = useState("");
   const [signingIn, setSigningIn] = useState(false);
@@ -148,7 +150,13 @@ function DesktopLayout() {
 
           <span className="font-display text-lg font-semibold">
             <span className="text-gradient">Invest</span>IQ
-            <span className="ml-2 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-primary">
+            <span
+              onClick={(e) => {
+                e.preventDefault();
+                setShowFnoTransition(true);
+              }}
+              className="ml-2 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-primary cursor-pointer hover:bg-primary/20"
+            >
               F&amp;O Live
             </span>
           </span>
@@ -233,6 +241,12 @@ function DesktopLayout() {
                   key={n.to}
                   to={n.to as "/desktop"}
                   title={n.label}
+                  onClick={(e) => {
+                    if (n.to === "/desktop/terminal" && loc.pathname !== "/desktop/terminal") {
+                      e.preventDefault();
+                      setShowFnoTransition(true);
+                    }
+                  }}
                   className={`flex items-center gap-3 rounded-lg py-2.5 text-sm transition ${
                     sidebarOpen ? "px-3" : "justify-center px-0"
                   } ${
@@ -347,6 +361,15 @@ function DesktopLayout() {
       )}
 
       <AvgPriceCalculator open={calcOpen} onClose={() => setCalcOpen(false)} />
+
+      {showFnoTransition && (
+        <FnoTransitionOverlay
+          onComplete={() => {
+            setShowFnoTransition(false);
+            navigate({ to: "/desktop/terminal" });
+          }}
+        />
+      )}
     </div>
   );
 }

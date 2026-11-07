@@ -25,7 +25,6 @@ import {
   parseDhanOptionChain,
   parseOccSymbol,
   parseSensibullPartnerGreeks,
-  parseYahooChart,
 } from "../provider-parsers.ts";
 
 describe("TtlCache", () => {
@@ -207,49 +206,15 @@ describe("market hours and freshness", () => {
   });
 });
 
-describe("Yahoo chart parsing", () => {
-  const payload = {
-    chart: {
-      result: [
-        {
-          meta: { currency: "INR", regularMarketPrice: "101.5", chartPreviousClose: 100 },
-          timestamp: [1, 2, 3, 4],
-          indicators: {
-            quote: [
-              {
-                open: [1, null, 3, 4],
-                high: [2, null, 4, 5],
-                low: [0, null, 2, 3],
-                close: [1.5, null, 3.5, 4.5],
-                volume: [10, null, null, 40],
-              },
-            ],
-          },
-        },
-      ],
-    },
-  };
+describe("OHLCV aggregation", () => {
+  const bars = [
+    { time: 1, open: 1, high: 2, low: 0, close: 1.5, volume: 10 },
+    { time: 2, open: 3, high: 4, low: 2, close: 3.5, volume: 0 },
+    { time: 3, open: 4, high: 5, low: 3, close: 4.5, volume: 40 },
+  ];
 
-  test("drops null rows and coerces numeric strings", () => {
-    const c = parseYahooChart(payload);
-    assert.ok(c);
-    assert.equal(c.meta.regularMarketPrice, 101.5);
-    assert.equal(c.bars.length, 3);
-    assert.equal(c.bars[1].volume, 0);
-    assert.equal(c.points.length, 3);
-  });
-
-  test("returns null for malformed payloads", () => {
-    assert.equal(parseYahooChart(null), null);
-    assert.equal(parseYahooChart({ chart: { result: [] } }), null);
-    assert.equal(parseYahooChart({ chart: { result: null } }), null);
-    assert.equal(parseYahooChart("<html>"), null);
-  });
-
-  test("aggregateBars folds OHLCV", () => {
-    const c = parseYahooChart(payload);
-    assert.ok(c);
-    const [agg] = aggregateBars(c.bars, 3);
+  test("aggregateBars folds OHLCV correctly", () => {
+    const [agg] = aggregateBars(bars, 3);
     assert.deepEqual(agg, { time: 1, open: 1, high: 5, low: 0, close: 4.5, volume: 50 });
   });
 });

@@ -15,11 +15,16 @@ export function SectorsTab({ holdings }: { holdings: Holdings | null }) {
 
   const groups = useMemo<SectorGroup[]>(() => {
     if (!holdings || !holdings.ok) return [];
+    const totalVal =
+      holdings.summary?.totalCurrent ||
+      (holdings.holdings ?? []).reduce((acc, h) => acc + (h.currentValue || 0), 0) ||
+      1;
     const buckets = new Map<string, { symbol: string; name: string; pct: number }[]>();
     for (const h of holdings.holdings ?? []) {
-      const key = h.sector || "Other";
+      const key = (h as any).sector || "Portfolio Holdings";
       const arr = buckets.get(key) ?? [];
-      arr.push({ symbol: h.symbol, name: h.name || h.symbol, pct: h.pct });
+      const pct = Number((((h.currentValue || 0) / totalVal) * 100).toFixed(2));
+      arr.push({ symbol: h.symbol, name: (h as any).name || h.symbol, pct });
       buckets.set(key, arr);
     }
     let list: SectorGroup[] = Array.from(buckets.entries()).map(([sec, companies], i) => ({
@@ -28,8 +33,9 @@ export function SectorsTab({ holdings }: { holdings: Holdings | null }) {
       color: SECTOR_PALETTE[i % SECTOR_PALETTE.length],
       companies: companies.sort((a, b) => b.pct - a.pct),
     }));
-    if (list.length === 0 || (list.length === 1 && list[0].name === "Other")) {
-      list = (holdings.sectorWeightings ?? []).map((sw, i) => ({
+    const swList = (holdings.sectorWeightings as Array<{ name: string; pct: number }> | undefined) ?? [];
+    if (list.length === 0 || (list.length === 1 && list[0].name === "Portfolio Holdings" && swList.length > 0)) {
+      list = swList.map((sw, i) => ({
         name: titleize(sw.name),
         percentage: Number(sw.pct.toFixed(2)),
         color: SECTOR_PALETTE[i % SECTOR_PALETTE.length],
@@ -65,7 +71,7 @@ export function SectorsTab({ holdings }: { holdings: Holdings | null }) {
         </div>
         {holdings.ok && (
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            {holdings.name}
+            {(holdings as any).name || "Dhan Portfolio"}
           </span>
         )}
       </div>
@@ -81,11 +87,10 @@ export function SectorsTab({ holdings }: { holdings: Holdings | null }) {
                 <li key={g.name}>
                   <button
                     onClick={() => setSelected(g.name)}
-                    className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition ${
-                      on
+                    className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition ${on
                         ? "border-primary/50 bg-primary/10"
                         : "border-transparent hover:bg-accent/40"
-                    }`}
+                      }`}
                   >
                     <span
                       className="h-4 w-1 shrink-0 rounded-full"
@@ -175,4 +180,5 @@ export function SectorsTab({ holdings }: { holdings: Holdings | null }) {
       </div>
     </div>
   );
+}
 }

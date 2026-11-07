@@ -226,15 +226,14 @@ function round2(n: number) {
 }
 
 // Index F&O only — NO individual stock F&O.
-// `symbol` is the display code; `yahoo` is the full Yahoo Finance ticker.
-export const INDIA_FNO_UNIVERSE: Array<{ symbol: string; name: string; yahoo: string }> = [
-  { symbol: "NIFTY", name: "NIFTY 50", yahoo: "^NSEI" },
-  { symbol: "BANKNIFTY", name: "BANK NIFTY", yahoo: "^NSEBANK" },
-  { symbol: "SENSEX", name: "SENSEX", yahoo: "^BSESN" },
+export const INDIA_FNO_UNIVERSE: Array<{ symbol: string; name: string; ticker: string }> = [
+  { symbol: "NIFTY", name: "NIFTY 50", ticker: "NIFTY" },
+  { symbol: "BANKNIFTY", name: "BANK NIFTY", ticker: "BANKNIFTY" },
+  { symbol: "SENSEX", name: "SENSEX", ticker: "SENSEX" },
 ];
 
-export const USA_FNO_UNIVERSE: Array<{ symbol: string; name: string; yahoo: string }> = [
-  { symbol: "SPX", name: "S&P 500 (ES)", yahoo: "^GSPC" },
-  { symbol: "NDX", name: "Nasdaq 100 (NQ)", yahoo: "^NDX" },
-  { symbol: "DJI", name: "Dow Jones (YM)", yahoo: "^DJI" },
+export const USA_FNO_UNIVERSE: Array<{ symbol: string; name: string; ticker: string }> = [
+  { symbol: "SPX", name: "S&P 500 (ES)", ticker: "SPX" },
+  { symbol: "NDX", name: "Nasdaq 100 (NQ)", ticker: "NDX" },
+  { symbol: "DJI", name: "Dow Jones (YM)", ticker: "DJI" },
 ];

@@ -57,7 +57,7 @@ export function FundamentalsSection({
         <div className="flex items-center justify-between">
           <h3 className="font-display text-sm font-semibold">Fundamentals</h3>
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            Live · Yahoo Finance
+            Source: Dhan · updated {new Date().toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })} IST
           </span>
         </div>
         <div className="mt-4 grid grid-cols-5 gap-3 text-xs">

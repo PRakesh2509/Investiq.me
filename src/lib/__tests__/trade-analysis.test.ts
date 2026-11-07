@@ -384,7 +384,7 @@ describe("deriveTradeSetup", () => {
     // Data quality records the provenance.
     assert.equal(s.dataQuality?.technicals, "REAL");
     assert.equal(s.dataQuality?.chain, "LIVE_BROKER");
-    assert.equal(s.dataQuality?.candles.source, "YAHOO_5M");
+    assert.equal(s.dataQuality?.candles.source, "DHAN_5M");
     assert.equal(s.dataQuality?.candles.ageSeconds, 0);
     assert.equal(s.dataQuality?.macro, "UNAVAILABLE");
     assert.equal(s.conviction?.marketBias, state.fnoSignalAnalysis?.marketBias);
@@ -641,7 +641,7 @@ describe("high-profit trade loaders", () => {
 });
 
 describe("fetchMacroBackdrop", () => {
-  const yahoo = (price: number, prev: number) =>
+  const mockQuoteResponse = (price: number, prev: number) =>
     new Response(
       JSON.stringify({
         chart: {
@@ -660,7 +660,7 @@ describe("fetchMacroBackdrop", () => {
     );
 
   test("builds a factual summary from real quotes (no sentiment is invented)", async () => {
-    const macro = await fetchMacroBackdrop("GLOBAL_US", async () => yahoo(15, 14.5));
+    const macro = await fetchMacroBackdrop("GLOBAL_US", async () => mockQuoteResponse(15, 14.5));
     assert.equal(macro.available, true);
     assert.equal(macro.indicators.length, 4);
     assert.equal(macro.indicators[0].changePct, 3.45);

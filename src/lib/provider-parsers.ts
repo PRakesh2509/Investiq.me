@@ -38,59 +38,10 @@ export function rawFmt(o: unknown): string {
 }
 
 /* ----------------------------------------------------------------------------------------- */
-/* Yahoo Finance v8 chart                                                                    */
+/* Market OHLC & Candlestick Aggregation                                                     */
 /* ----------------------------------------------------------------------------------------- */
 
-const YahooMetaSchema = z
-  .object({
-    currency: optStr,
-    symbol: optStr,
-    longName: optStr,
-    shortName: optStr,
-    regularMarketPrice: optNum,
-    regularMarketTime: optNum,
-    regularMarketDayHigh: optNum,
-    regularMarketDayLow: optNum,
-    regularMarketVolume: optNum,
-    chartPreviousClose: optNum,
-    previousClose: optNum,
-    fiftyTwoWeekHigh: optNum,
-    fiftyTwoWeekLow: optNum,
-    exchangeTimezoneName: optStr,
-  })
-  .passthrough();
-
-const YahooResultSchema = z.object({
-  meta: YahooMetaSchema.catch({}),
-  timestamp: z.array(z.number()).optional().catch(undefined),
-  indicators: z
-    .object({
-      quote: z
-        .array(
-          z.object({
-            open: nullableNumArray,
-            high: nullableNumArray,
-            low: nullableNumArray,
-            close: nullableNumArray,
-            volume: nullableNumArray,
-          }),
-        )
-        .optional()
-        .catch(undefined),
-    })
-    .optional()
-    .catch(undefined),
-});
-
-const YahooChartEnvelope = z.object({
-  chart: z.object({
-    result: z.array(YahooResultSchema).nullable().optional(),
-  }),
-});
-
-export type YahooMeta = z.infer<typeof YahooMetaSchema>;
-
-export interface YahooBar {
+export interface OhlcBar {
   /** unix seconds */
   time: number;
   open: number;
@@ -101,9 +52,9 @@ export interface YahooBar {
 }
 
 /** Collapse every `factor` consecutive bars into one (OHLCV aggregation). */
-export function aggregateBars(bars: YahooBar[], factor: number): YahooBar[] {
+export function aggregateBars(bars: OhlcBar[], factor: number): OhlcBar[] {
   if (factor <= 1) return bars;
-  const out: YahooBar[] = [];
+  const out: OhlcBar[] = [];
   for (let i = 0; i < bars.length; i += factor) {
     const chunk = bars.slice(i, i + factor);
     if (chunk.length === 0) continue;
@@ -119,153 +70,9 @@ export function aggregateBars(bars: YahooBar[], factor: number): YahooBar[] {
   return out;
 }
 
-export interface YahooChartData {
-  meta: YahooMeta;
-  /** Fully-formed OHLC bars only. */
-  bars: YahooBar[];
-  /** Every timestamp with a numeric close (open/high/low may be missing). */
+export interface ChartData {
+  bars: OhlcBar[];
   points: Array<{ time: number; close: number; volume: number }>;
-}
-
-export function parseYahooChart(json: unknown): YahooChartData | null {
-  const env = YahooChartEnvelope.safeParse(json);
-  if (!env.success) return null;
-  const r = env.data.chart.result?.[0];
-  if (!r) return null;
-  const ts = r.timestamp ?? [];
-  const q = r.indicators?.quote?.[0];
-  const bars: YahooBar[] = [];
-  const points: Array<{ time: number; close: number; volume: number }> = [];
-  for (let i = 0; i < ts.length; i++) {
-    const o = q?.open?.[i];
-    const h = q?.high?.[i];
-    const l = q?.low?.[i];
-    const c = q?.close?.[i];
-    const v = q?.volume?.[i];
-    if (typeof c !== "number" || !Number.isFinite(c)) continue;
-    const volume = typeof v === "number" && Number.isFinite(v) ? v : 0;
-    points.push({ time: ts[i], close: c, volume });
-    if (typeof o === "number" && typeof h === "number" && typeof l === "number") {
-      bars.push({ time: ts[i], open: o, high: h, low: l, close: c, volume });
-    }
-  }
-  return { meta: r.meta, bars, points };
-}
-
-/** quoteSummary / search style envelopes where each module is a free-form record. */
-const ModuleRecord = z.record(z.unknown()).optional().catch(undefined);
-
-const YahooSummaryEnvelope = z.object({
-  quoteSummary: z.object({
-    result: z
-      .array(
-        z.object({
-          summaryDetail: ModuleRecord,
-          defaultKeyStatistics: ModuleRecord,
-          financialData: ModuleRecord,
-          price: ModuleRecord,
-          assetProfile: ModuleRecord,
-          topHoldings: z
-            .object({
-              sectorWeightings: z.array(z.record(z.unknown())).optional().catch(undefined),
-              holdings: z.array(z.record(z.unknown())).optional().catch(undefined),
-            })
-            .optional()
-            .catch(undefined),
-        }),
-      )
-      .nullable()
-      .optional(),
-  }),
-});
-
-export type YahooSummary = NonNullable<
-  NonNullable<z.infer<typeof YahooSummaryEnvelope>["quoteSummary"]["result"]>[number]
->;
-
-export function parseYahooSummary(json: unknown): YahooSummary | null {
-  const env = YahooSummaryEnvelope.safeParse(json);
-  if (!env.success) return null;
-  return env.data.quoteSummary.result?.[0] ?? null;
-}
-
-const YahooTimeseriesEnvelope = z.object({
-  timeseries: z.object({
-    result: z
-      .array(
-        z
-          .object({
-            meta: z
-              .object({ type: z.array(z.string()).optional() })
-              .optional()
-              .catch(undefined),
-          })
-          .passthrough(),
-      )
-      .nullable()
-      .optional(),
-  }),
-});
-
-export function parseYahooTimeseries(
-  json: unknown,
-): Record<string, Array<Record<string, unknown>>> {
-  const env = YahooTimeseriesEnvelope.safeParse(json);
-  const out: Record<string, Array<Record<string, unknown>>> = {};
-  if (!env.success) return out;
-  for (const r of env.data.timeseries.result ?? []) {
-    const t = r.meta?.type?.[0];
-    if (!t) continue;
-    const rows = (r as Record<string, unknown>)[t];
-    out[t] = Array.isArray(rows)
-      ? rows.filter((x): x is Record<string, unknown> => typeof x === "object" && x !== null)
-      : [];
-  }
-  return out;
-}
-
-export interface YahooNewsItem {
-  title: string;
-  publisher: string;
-  link: string;
-  providerPublishTime: number;
-  thumbnail: string;
-}
-
-const YahooNewsEnvelope = z.object({
-  news: z
-    .array(
-      z
-        .object({
-          title: optStr,
-          publisher: optStr,
-          link: optStr,
-          providerPublishTime: optNum,
-          thumbnail: z
-            .object({
-              resolutions: z
-                .array(z.object({ url: optStr }))
-                .optional()
-                .catch(undefined),
-            })
-            .optional()
-            .catch(undefined),
-        })
-        .passthrough(),
-    )
-    .optional(),
-});
-
-export function parseYahooNews(json: unknown): YahooNewsItem[] {
-  const env = YahooNewsEnvelope.safeParse(json);
-  if (!env.success) return [];
-  return (env.data.news ?? []).map((n) => ({
-    title: n.title ?? "",
-    publisher: n.publisher ?? "",
-    link: n.link ?? "",
-    providerPublishTime: (n.providerPublishTime ?? 0) * 1000,
-    thumbnail: n.thumbnail?.resolutions?.[0]?.url ?? "",
-  }));
 }
 
 /* ----------------------------------------------------------------------------------------- */

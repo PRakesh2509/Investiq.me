@@ -158,7 +158,7 @@ function DesktopCharts() {
   const changePct = first ? ((last - first) / first) * 100 : 0;
   const positive = changePct >= 0;
 
-  // Live fundamentals (Yahoo) with fallback to static meta.
+  // Live fundamentals (Dhan) with fallback to static meta.
   const fLive = fund && fund.ok ? fund : null;
 
   const displayOpen = stockMeta?.open ?? first ?? 0;
@@ -175,19 +175,19 @@ function DesktopCharts() {
   const display52Low = stockMeta?.fiftyTwoWeekLow || fLive?.fiftyTwoWeekLow || meta.low52;
   const marketCapDisplay =
     fLive?.marketCapFmt || (fLive?.marketCap ? formatCr(fLive.marketCap) : meta.marketCap);
-  const peDisplay = fLive?.peTTM ? fLive.peTTM.toFixed(2) : meta.pe ? meta.pe.toFixed(2) : "—";
-  const pbDisplay = fLive?.pbRatio ? fLive.pbRatio.toFixed(2) : "—";
-  const deDisplay = fLive?.debtToEquity ? (fLive.debtToEquity / 100).toFixed(2) : "—";
-  const roeDisplay = fLive?.roe ? `${fLive.roe.toFixed(2)}%` : "—";
-  const epsDisplay = fLive?.epsTTM ? fLive.epsTTM.toFixed(2) : meta.eps ? meta.eps.toFixed(2) : "—";
+  const peDisplay = fLive?.peTTM ? Number(fLive.peTTM).toFixed(2) : meta.pe ? Number(meta.pe).toFixed(2) : "—";
+  const pbDisplay = fLive?.pbRatio ? Number(fLive.pbRatio).toFixed(2) : "—";
+  const deDisplay = fLive?.debtToEquity ? (Number(fLive.debtToEquity) / 100).toFixed(2) : "—";
+  const roeDisplay = fLive?.roe ? `${Number(fLive.roe).toFixed(2)}%` : "—";
+  const epsDisplay = fLive?.epsTTM ? Number(fLive.epsTTM).toFixed(2) : meta.eps ? Number(meta.eps).toFixed(2) : "—";
   const dyDisplay = fLive?.dividendYield
-    ? `${fLive.dividendYield.toFixed(2)}%`
+    ? `${Number(fLive.dividendYield).toFixed(2)}%`
     : meta.divYield
-      ? `${meta.divYield.toFixed(2)}%`
+      ? `${Number(meta.divYield).toFixed(2)}%`
       : "—";
-  const bvDisplay = fLive?.bookValue ? fLive.bookValue.toFixed(2) : "—";
+  const bvDisplay = fLive?.bookValue ? Number(fLive.bookValue).toFixed(2) : "—";
 
-  // AI Recommendation — combines RSI + momentum + fundamentals + Yahoo analyst view.
+  // AI Recommendation — combines RSI + momentum + fundamentals + analyst view.
   const aiRec = useMemo(() => {
     let score = 0;
     const reasons: string[] = [];
@@ -222,10 +222,11 @@ function DesktopCharts() {
       score += 1;
       reasons.push("Strong ROE");
     }
-    if (fLive?.recommendationKey === "buy" || fLive?.recommendationKey === "strong_buy") {
+    const rec = (fLive?.recommendationKey || "").toLowerCase();
+    if (rec === "buy" || rec === "strong_buy") {
       score += 1;
       reasons.push("Analyst BUY");
-    } else if (fLive?.recommendationKey === "sell") {
+    } else if (rec === "sell") {
       score -= 1;
       reasons.push("Analyst SELL");
     }

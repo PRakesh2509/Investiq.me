@@ -22,7 +22,7 @@ src/
                        alert, Telegram bot. All require authentication.
   components/          UI (terminal, option chain, tradingview widgets, shadcn/ui in ui/)
   context/             Client state: AdminContext, OnboardingContext
-  lib/                 Data engines and services (Dhan, Upstox, Groww, Sensibull, Yahoo, IPO,
+  lib/                 Data engines and services (Dhan, Upstox, Groww, Sensibull, IPO,
                        funds, F&O engine, Greeks, scoring, backtest, regime detection)
     *.server.ts        Server-only modules (secrets, service-role Supabase, provider tokens).
                        Never import these from client code.

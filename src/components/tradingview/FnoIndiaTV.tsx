@@ -15,10 +15,10 @@ const INSTRUMENTS = [
 ] as const;
 
 const INTERVALS = [
-  { label: "5m", value: "5", yahoo: { interval: "5m", range: "1d" } },
-  { label: "15m", value: "15", yahoo: { interval: "15m", range: "5d" } },
-  { label: "1h", value: "60", yahoo: { interval: "60m", range: "1mo" } },
-  { label: "1D", value: "D", yahoo: { interval: "1d", range: "6mo" } },
+  { label: "5m", value: "5", chart: { interval: "5m", range: "1d" } },
+  { label: "15m", value: "15", chart: { interval: "15m", range: "5d" } },
+  { label: "1h", value: "60", chart: { interval: "60m", range: "1mo" } },
+  { label: "1D", value: "D", chart: { interval: "1d", range: "6mo" } },
 ] as const;
 
 /** TradingView-powered Indian index F&O panel: chart + technical rating + watchlist. */
@@ -67,8 +67,8 @@ export default function FnoIndiaTV() {
         dhanSymbol={sym.dhan}
         exchange={sym.exchange}
         label={sym.label}
-        interval={interval.yahoo.interval}
-        range={interval.yahoo.range}
+        interval={interval.chart.interval}
+        range={interval.chart.range}
         height={520}
       />
 

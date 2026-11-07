@@ -5,7 +5,7 @@
  * sample used only for layout, fallbacks and company descriptions. Prices and day changes are not
  * live and the series from generateSeries() are deterministic pseudo-random walks, never real
  * history. Any surface that renders these numbers must badge them as simulated (see
- * `MARKET_DATA_IS_SIMULATED`); use the DhanHQ / Yahoo server functions for real quotes.
+ * `MARKET_DATA_IS_SIMULATED`); use the DhanHQ server functions for real quotes.
  */
 export const MARKET_DATA_IS_SIMULATED = true as const;
 

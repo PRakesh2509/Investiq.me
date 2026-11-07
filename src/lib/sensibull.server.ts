@@ -273,7 +273,7 @@ export async function fetchSensibullGreeksChartData(
   if (!isGlobal && getSensibullPartnerConfig()) {
     const expiryGuess = requestedExpiry ?? nextThursdayISO();
     const tY = calculateTimeToExpiryYears(expiryGuess);
-    const quote = await getInstrumentQuote({ yahooSymbol: cfg.yahooSymbol, dhanSymbol: key });
+    const quote = await getInstrumentQuote({ dhanSymbol: key, symbol: key });
     if (quote) {
       const partner = await fetchPartnerGreeks(
         cleanSym,
@@ -362,7 +362,7 @@ export async function fetchSensibullGreeksChartData(
   }
 
   const quote = await getInstrumentQuote({
-    yahooSymbol: cfg.yahooSymbol,
+    symbol: key,
     dhanSymbol: isGlobal ? undefined : key,
     isGlobal,
   });

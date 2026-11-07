@@ -1,13 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { getDhanOhlc, getDhanChartCandles, getDhanCredentials } from "./dhan.server.ts";
-import { fetchYahooChart, getInstrumentQuote } from "./market-data-provider.server.ts";
+import { getDhanChartCandles } from "./dhan.server.ts";
+import { fetchDhanQuotes } from "./dhan-quotes.server.ts";
 import { NIFTY_UNIVERSE, NiftyStock } from "./nifty-universe";
 import {
   TtlCache,
   classifyFreshness,
-  isAllowedYahooInterval,
-  isAllowedYahooRange,
+  isAllowedInterval,
+  isAllowedRange,
   isMarketOpenAt,
   isValidSymbol,
   parseSymbolList,
@@ -26,174 +26,134 @@ export interface LiveStockQuote {
   low: number;
   prevClose: number;
   volume: number;
-  /** 0 when `week52Available` is false (the DhanHQ feed carries no 52-week range). */
   high52: number;
   low52: number;
-  feedSource: "DhanHQ Live" | "NSE Live";
-  /** Optional provenance. */
-  week52Available?: boolean;
-  freshnessStatus?: FreshnessStatus;
+  week52Available: boolean;
+  feedSource: string;
+  freshnessStatus: FreshnessStatus;
 }
 
-// Small bounded TTL cache (keyed by the requested symbol set) to keep prices snappy and avoid
-// upstream rate limits. Best-effort only: Workers isolates are recycled at any time.
-const QUOTE_TTL_MS = 10_000;
-const quoteCache = new TtlCache<{ quotes: LiveStockQuote[]; feedSource: string }>(20);
-
+const quoteCache = new TtlCache<{ quotes: LiveStockQuote[]; feedSource: string }>(10);
 const round2 = (n: number) => +n.toFixed(2);
 
+/**
+ * 100% Dhan-backed stock quotes for the Nifty universe or an arbitrary symbol list.
+ */
 export const getIndianStockQuotes = createServerFn({ method: "POST" })
-  .validator((d) => z.object({ symbols: z.string().max(4000).optional() }).parse(d))
-  .handler(
-    async ({
-      data,
-    }): Promise<{
-      ok: boolean;
-      quotes: LiveStockQuote[];
-      feedSource: string;
-      isSimulated?: boolean;
-      freshnessStatus?: FreshnessStatus;
-    }> => {
-      const symbols = parseSymbolList(data?.symbols, 150).map((s) =>
-        s.toUpperCase().replace(/\.NS$/i, ""),
-      );
-      const cacheKey = symbols.length > 0 ? [...symbols].sort().join(",") : "*";
+  .validator((d) =>
+    z
+      .object({
+        symbols: z.string().max(4000).optional(),
+      })
+      .optional()
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const rawSymbols = data?.symbols ? parseSymbolList(data.symbols, 120) : [];
+    const isUniverse = rawSymbols.length === 0;
+    const targetUniverse: NiftyStock[] = isUniverse
+      ? NIFTY_UNIVERSE
+      : rawSymbols.map((s) => {
+        const clean = s.replace(/\.NS$/i, "").toUpperCase();
+        const match = NIFTY_UNIVERSE.find((u) => u.symbol === clean);
+        return match ?? { symbol: clean, name: clean, sector: "Other" };
+      });
 
-      const cached = quoteCache.get(cacheKey, QUOTE_TTL_MS);
-      if (cached && cached.quotes.length > 0) {
-        return { ok: true, ...cached, isSimulated: false };
-      }
+    const now = Date.now();
+    const marketOpen = isMarketOpenAt(new Date(now), false);
+    const ttlMs = marketOpen ? 10_000 : 60_000;
+    const cacheKey = isUniverse ? "__UNIVERSE__" : targetUniverse.map((s) => s.symbol).sort().join(",");
 
-      const targetList: NiftyStock[] =
-        symbols.length > 0
-          ? symbols.map(
-              (s) =>
-                NIFTY_UNIVERSE.find((u) => u.symbol === s) ?? {
-                  symbol: s,
-                  name: s,
-                  sector: "Other",
-                },
-            )
-          : NIFTY_UNIVERSE;
-
-      const now = Date.now();
-      const marketOpen = isMarketOpenAt(new Date(now), false);
-
-      // 1. DhanHQ first (authorized broker feed)
-      const dhanCreds = getDhanCredentials();
-      if (dhanCreds) {
-        try {
-          const dhanOhlcMap = await getDhanOhlc(targetList.map((s) => s.symbol));
-          if (dhanOhlcMap && Object.keys(dhanOhlcMap).length > 0) {
-            const freshnessStatus = classifyFreshness({
-              asOfMs: now,
-              nowMs: now,
-              marketOpen,
-              feed: "realtime",
-            });
-            const quotes: LiveStockQuote[] = [];
-            for (const item of targetList) {
-              const d = dhanOhlcMap[item.symbol];
-              if (d && d.price > 0) {
-                const prevClose = d.close > 0 ? d.close : d.open;
-                const change = round2(d.price - prevClose);
-                const changePct = prevClose > 0 ? round2((change / prevClose) * 100) : 0;
-                quotes.push({
-                  symbol: item.symbol,
-                  name: item.name,
-                  sector: item.sector,
-                  price: round2(d.price),
-                  change,
-                  changePct,
-                  open: round2(d.open),
-                  high: round2(d.high),
-                  low: round2(d.low),
-                  prevClose: round2(prevClose),
-                  volume: d.volume,
-                  high52: 0,
-                  low52: 0,
-                  week52Available: false,
-                  feedSource: "DhanHQ Live",
-                  freshnessStatus,
-                });
-              }
-            }
-            if (quotes.length > 0) {
-              const payload = { quotes, feedSource: "DhanHQ Live Feed" };
-              quoteCache.set(cacheKey, payload);
-              return { ok: true, ...payload, isSimulated: false, freshnessStatus };
-            }
-          }
-        } catch {
-          /* fall through to Yahoo Finance */
-        }
-      }
-
-      // 2. Yahoo Finance fallback (delayed), fetched in small parallel batches
-      const fetchOne = async (item: NiftyStock): Promise<LiveStockQuote | null> => {
-        const q = await getInstrumentQuote({ yahooSymbol: `${item.symbol}.NS` });
-        if (!q || q.price <= 0) return null;
-        return {
-          symbol: item.symbol,
-          name: item.name,
-          sector: item.sector,
-          price: q.price,
-          change: q.change,
-          changePct: q.changePct,
-          open: q.open,
-          high: q.high,
-          low: q.low,
-          prevClose: q.prevClose,
-          volume: q.volume,
-          high52: q.high52 ?? 0,
-          low52: q.low52 ?? 0,
-          week52Available: q.high52 !== undefined && q.low52 !== undefined,
-          feedSource: "NSE Live",
-          freshnessStatus: q.freshnessStatus,
-        };
-      };
-
-      const results: LiveStockQuote[] = [];
-      const CHUNK_SIZE = 15;
-      for (let i = 0; i < targetList.length; i += CHUNK_SIZE) {
-        const batch = targetList.slice(i, i + CHUNK_SIZE);
-        const batchRes = await Promise.all(batch.map(fetchOne));
-        for (const q of batchRes) {
-          if (q) results.push(q);
-        }
-      }
-
-      const freshnessStatus = results[0]?.freshnessStatus;
-      if (results.length > 0) {
-        quoteCache.set(cacheKey, { quotes: results, feedSource: "NSE Live Feed" });
-      }
-
+    const hit = quoteCache.get(cacheKey, ttlMs);
+    if (hit) {
       return {
         ok: true,
-        quotes: results,
-        feedSource: dhanCreds ? "DhanHQ Live Feed" : "NSE Live Feed",
+        quotes: hit.quotes,
+        feedSource: hit.feedSource,
         isSimulated: false,
-        freshnessStatus,
+        freshnessStatus: marketOpen ? ("LIVE" as FreshnessStatus) : ("MARKET_CLOSED" as FreshnessStatus),
       };
-    },
-  );
+    }
+
+    try {
+      const symbolsToFetch = targetUniverse.map((u) => u.symbol);
+      const dhanQuotes = await fetchDhanQuotes(symbolsToFetch);
+      const quotes: LiveStockQuote[] = [];
+
+      for (let i = 0; i < targetUniverse.length; i++) {
+        const item = targetUniverse[i];
+        const q = dhanQuotes[i];
+        if (q && q.price > 0) {
+          quotes.push({
+            symbol: item.symbol,
+            name: item.name,
+            sector: item.sector,
+            price: round2(q.price),
+            change: round2(q.change),
+            changePct: round2(q.changePct),
+            open: round2(q.open),
+            high: round2(q.high),
+            low: round2(q.low),
+            prevClose: round2(q.prevClose),
+            volume: q.volume,
+            high52: q.high52 ?? 0,
+            low52: q.low52 ?? 0,
+            week52Available: q.high52 !== undefined,
+            feedSource: "DhanHQ Live Direct Feed",
+            freshnessStatus: marketOpen ? "LIVE" : "MARKET_CLOSED",
+          });
+        }
+      }
+
+      if (quotes.length > 0) {
+        const payload = { quotes, feedSource: "DhanHQ Live Direct Feed" };
+        quoteCache.set(cacheKey, payload);
+        return {
+          ok: true,
+          ...payload,
+          isSimulated: false,
+          freshnessStatus: marketOpen ? ("LIVE" as FreshnessStatus) : ("MARKET_CLOSED" as FreshnessStatus),
+        };
+      }
+    } catch {
+      // ignore
+    }
+
+    const stale = quoteCache.getStale(cacheKey, 24 * 3600_000);
+    if (stale) {
+      return {
+        ok: true,
+        quotes: stale.value.quotes,
+        feedSource: "DhanHQ Marketfeed (Cached)",
+        isSimulated: false,
+        freshnessStatus: marketOpen ? ("STALE" as FreshnessStatus) : ("MARKET_CLOSED" as FreshnessStatus),
+      };
+    }
+
+    return {
+      ok: false,
+      quotes: [],
+      feedSource: "DhanHQ",
+      error: "Not available from Dhan",
+    };
+  });
 
 export interface StockChartPoint {
   t: string;
+  fullTime: string;
   price: number;
   volume: number;
-  open: number;
-  high: number;
-  low: number;
-  fullTime?: string;
-  timestamp?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  timestamp: number;
 }
 
 export interface StockChartMeta {
-  open?: number;
-  dayHigh?: number;
-  dayLow?: number;
-  regularMarketVolume?: number;
+  open: number;
+  dayHigh: number;
+  dayLow: number;
+  regularMarketVolume: number;
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
   regularMarketPrice?: number;
@@ -206,8 +166,8 @@ export const getLiveStockChart = createServerFn({ method: "GET" })
     z
       .object({
         symbol: z.string().min(1).max(32).refine(isValidSymbol, "Invalid symbol"),
-        range: z.string().refine(isAllowedYahooRange, "Unsupported range").default("1d"),
-        interval: z.string().refine(isAllowedYahooInterval, "Unsupported interval").default("5m"),
+        range: z.string().refine(isAllowedRange, "Unsupported range").default("1d"),
+        interval: z.string().refine(isAllowedInterval, "Unsupported interval").default("5m"),
       })
       .parse(d),
   )
@@ -221,93 +181,35 @@ export const getLiveStockChart = createServerFn({ method: "GET" })
       feedSource: string;
       isSimulated?: boolean;
     }> => {
-      const cleanSym = data.symbol.replace(/\.NS$/i, "").toUpperCase();
+      const cleanSym = data.symbol.replace(/\.NS$/i, "").replace(/\.BO$/i, "").replace(/^\^/, "").toUpperCase();
 
-      // 1. DhanHQ Charts if credentials are configured
-      const dhanCreds = getDhanCredentials();
-      if (dhanCreds) {
-        try {
-          const dhanCandles = await getDhanChartCandles(cleanSym, data.range);
-          if (dhanCandles && dhanCandles.length > 0) {
-            const is1d = data.range === "1d";
-            const is5d = data.range === "5d";
-            const points: StockChartPoint[] = dhanCandles.map((c) => {
-              const d = new Date(c.t);
-              const t = is1d
-                ? d.toLocaleTimeString("en-IN", {
-                    timeZone: "Asia/Kolkata",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: true,
-                  })
-                : is5d
-                  ? d.toLocaleString("en-IN", {
-                      timeZone: "Asia/Kolkata",
-                      day: "2-digit",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: true,
-                    })
-                  : d.toLocaleString("en-IN", {
-                      timeZone: "Asia/Kolkata",
-                      day: "2-digit",
-                      month: "short",
-                      ...(data.range === "5y" || data.range === "max" ? { year: "numeric" } : {}),
-                    });
-              const fullTime =
-                d.toLocaleString("en-IN", {
-                  timeZone: "Asia/Kolkata",
-                  day: "2-digit",
-                  month: "short",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  hour12: true,
-                }) + " IST";
-              return {
-                t,
-                fullTime,
-                price: round2(c.price),
-                volume: c.volume,
-                open: round2(c.open),
-                high: round2(c.high),
-                low: round2(c.low),
-                timestamp: d.getTime(),
-              };
-            });
-            const chartMeta: StockChartMeta = {
-              open: round2(dhanCandles[0].open),
-              dayHigh: round2(Math.max(...dhanCandles.map((c) => c.high))),
-              dayLow: round2(Math.min(...dhanCandles.map((c) => c.low))),
-              regularMarketVolume: dhanCandles.reduce((s, c) => s + c.volume, 0),
-            };
-            return { ok: true, points, meta: chartMeta, feedSource: "DhanHQ Historical", isSimulated: false };
-          }
-        } catch {
-          /* fall through to Yahoo Finance */
-        }
-      }
+      try {
+        const intervalMins =
+          data.interval === "1m"
+            ? 1
+            : data.interval === "15m"
+              ? 15
+              : data.interval === "60m" || data.interval === "1h"
+                ? 60
+                : data.interval === "1d"
+                  ? 1440
+                  : 5;
 
-      // 2. Fallback to Yahoo Finance Chart
-      const r = await fetchYahooChart(`${cleanSym}.NS`, data.interval, data.range);
-      if (r) {
-        const { bars, points: closes, meta: yMeta } = r.chart;
-        const byTime = new Map(bars.map((b) => [b.time, b]));
-        const is1d = data.range === "1d";
-        const is5d = data.range === "5d";
-        const points: StockChartPoint[] = closes.map((p) => {
-          const b = byTime.get(p.time);
-          const d = new Date(p.time * 1000);
-          const t = is1d
-            ? d.toLocaleTimeString("en-IN", {
+        const dhanCandles = await getDhanChartCandles(cleanSym, data.range, intervalMins);
+        if (dhanCandles && dhanCandles.length > 0) {
+          const is1d = data.range === "1d";
+          const is5d = data.range === "5d";
+          const points: StockChartPoint[] = dhanCandles.map((c) => {
+            const d = new Date(c.t);
+            const t = is1d
+              ? d.toLocaleTimeString("en-IN", {
                 timeZone: "Asia/Kolkata",
                 hour: "2-digit",
                 minute: "2-digit",
                 hour12: true,
               })
-            : is5d
-              ? d.toLocaleString("en-IN", {
+              : is5d
+                ? d.toLocaleString("en-IN", {
                   timeZone: "Asia/Kolkata",
                   day: "2-digit",
                   month: "short",
@@ -315,60 +217,53 @@ export const getLiveStockChart = createServerFn({ method: "GET" })
                   minute: "2-digit",
                   hour12: true,
                 })
-              : d.toLocaleString("en-IN", {
+                : d.toLocaleString("en-IN", {
                   timeZone: "Asia/Kolkata",
                   day: "2-digit",
                   month: "short",
                   ...(data.range === "5y" || data.range === "max" ? { year: "numeric" } : {}),
                 });
-          const fullTime =
-            d.toLocaleString("en-IN", {
-              timeZone: "Asia/Kolkata",
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true,
-            }) + " IST";
-          return {
-            t,
-            fullTime,
-            price: round2(p.close),
-            volume: p.volume,
-            open: round2(b?.open ?? p.close),
-            high: round2(b?.high ?? p.close),
-            low: round2(b?.low ?? p.close),
-            timestamp: p.time * 1000,
+            const fullTime =
+              d.toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata",
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+              }) + " IST";
+            return {
+              t,
+              fullTime,
+              price: round2(c.price),
+              volume: c.volume,
+              open: round2(c.open),
+              high: round2(c.high),
+              low: round2(c.low),
+              timestamp: d.getTime(),
+            };
+          });
+          const chartMeta: StockChartMeta = {
+            open: round2(dhanCandles[0].open),
+            dayHigh: round2(Math.max(...dhanCandles.map((c) => c.high))),
+            dayLow: round2(Math.min(...dhanCandles.map((c) => c.low))),
+            regularMarketVolume: dhanCandles.reduce((s, c) => s + c.volume, 0),
+            regularMarketPrice: points[points.length - 1]?.price ?? 0,
+            previousClose: points[0]?.price ?? 0,
+            currency: "INR",
           };
-        });
-
-        const chartMeta: StockChartMeta = {
-          open: round2(bars[0]?.open ?? closes[0]?.close ?? 0),
-          dayHigh: round2(
-            yMeta.regularMarketDayHigh ??
-              (bars.length ? Math.max(...bars.map((b) => b.high)) : closes[0]?.close ?? 0),
-          ),
-          dayLow: round2(
-            yMeta.regularMarketDayLow ??
-              (bars.length ? Math.min(...bars.map((b) => b.low)) : closes[0]?.close ?? 0),
-          ),
-          regularMarketVolume:
-            yMeta.regularMarketVolume ?? closes.reduce((sum, c) => sum + c.volume, 0),
-          fiftyTwoWeekHigh: yMeta.fiftyTwoWeekHigh ? round2(yMeta.fiftyTwoWeekHigh) : undefined,
-          fiftyTwoWeekLow: yMeta.fiftyTwoWeekLow ? round2(yMeta.fiftyTwoWeekLow) : undefined,
-          regularMarketPrice: yMeta.regularMarketPrice
-            ? round2(yMeta.regularMarketPrice)
-            : round2(closes[closes.length - 1]?.close ?? 0),
-          previousClose: round2(
-            yMeta.chartPreviousClose ?? yMeta.previousClose ?? closes[0]?.close ?? 0,
-          ),
-          currency: yMeta.currency ?? "INR",
-        };
-
-        return { ok: true, points, meta: chartMeta, feedSource: "NSE Live Feed", isSimulated: false };
+          return { ok: true, points, meta: chartMeta, feedSource: "DhanHQ Historical", isSimulated: false };
+        }
+      } catch {
+        // ignore
       }
 
-      return { ok: false, points: [], feedSource: "Unavailable", isSimulated: false };
+      return {
+        ok: false,
+        points: [],
+        feedSource: "DhanHQ",
+        isSimulated: false,
+      };
     },
   );

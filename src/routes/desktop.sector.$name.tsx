@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { NIFTY_UNIVERSE } from "@/lib/nifty-universe";
-import { getYahooQuotes } from "@/lib/yahoo.functions";
+import { getDhanQuotes } from "@/lib/dhan.functions";
 import { formatINR } from "@/lib/market-data";
 import { PremiumLoader } from "@/components/PremiumLoader";
 import { ArrowDownRight, ArrowUpRight, ChevronLeft, RefreshCw } from "lucide-react";
@@ -16,7 +16,7 @@ type Q = { symbol: string; name: string; price: number; changePct: number; volum
 function SectorPage() {
   const { name } = Route.useParams();
   const sector = decodeURIComponent(name);
-  const fetchQuotes = useServerFn(getYahooQuotes);
+  const fetchQuotes = useServerFn(getDhanQuotes);
   const [quotes, setQuotes] = useState<Q[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +30,7 @@ function SectorPage() {
     if (members.length === 0) return;
     setLoading(true);
     try {
-      const symbols = members.map((m) => `${m.symbol}.NS`).join(",");
+      const symbols = members.map((m) => m.symbol).join(",");
       const res = await fetchQuotes({ data: { symbols } });
       if (res.ok) {
         setQuotes(

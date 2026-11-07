@@ -1,28 +1,45 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 /**
- * Returns a short-lived pre-authorized websocket URI for the Upstox market data
- * feed. The access token itself is never sent to the browser.
+ * Server feed endpoint for DhanHQ market data ticks (100% Dhan-backed).
  */
 export const Route = createFileRoute("/api/market-feed")({
   server: {
     handlers: {
-      GET: async () => {
-        const { getAccessToken, fetchMarketFeedUri, MissingEnvError, UpstoxAuthError } =
-          await import("@/lib/upstox.server");
-        const { safeErrorMessage } = await import("@/lib/provider-utils");
+      GET: async ({ request }) => {
+        const { getLiveTick, isIndianMarketOpenNow } = await import("@/lib/live-feed.server");
+        const url = new URL(request.url);
+        const symbol = url.searchParams.get("symbol") || "NIFTY 50";
         try {
-          const uri = await fetchMarketFeedUri(getAccessToken());
-          return Response.json({ ok: true, uri }, { headers: { "cache-control": "no-store" } });
-        } catch (e) {
-          const err = e as Error;
-          const tokenExpired = err instanceof UpstoxAuthError;
-          const missing = err instanceof MissingEnvError ? err.missing : undefined;
-          const message = safeErrorMessage(err, "market feed unavailable");
-          console.error("[market-feed]", message);
+          const isOpen = isIndianMarketOpenNow();
+          const tick = await getLiveTick(symbol);
           return Response.json(
-            { ok: false, error: message, tokenExpired, missing },
-            { status: tokenExpired ? 401 : 500 },
+            {
+              ok: true,
+              symbol,
+              isMarketOpen: isOpen,
+              tick,
+              feedSource: "DhanHQ Live Direct Feed v2",
+              timestamp: Date.now(),
+            },
+            {
+              headers: {
+                "Content-Type": "application/json",
+                "Cache-Control": "no-store",
+              },
+            },
+          );
+        } catch (e) {
+          return Response.json(
+            {
+              ok: false,
+              symbol,
+              error: (e as Error).message,
+            },
+            {
+              status: 500,
+              headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+            },
           );
         }
       },

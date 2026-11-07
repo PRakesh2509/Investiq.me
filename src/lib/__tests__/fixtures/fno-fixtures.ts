@@ -124,7 +124,7 @@ export function makeSnapshot(opts: SnapshotOptions): FnoMarketSnapshot {
     totalPutVolume: 380000,
     rows,
     bars,
-    barsSource: bars.length > 0 ? "YAHOO_5M" : "UNAVAILABLE",
+    barsSource: bars.length > 0 ? "DHAN_5M" : "UNAVAILABLE",
     barsLastAt: bars.length > 0 ? new Date(bars[bars.length - 1].time * 1000).toISOString() : null,
     barsError: bars.length > 0 ? undefined : "no candles",
     provider: simulated ? "Internal Baseline" : "DhanHQ v2",

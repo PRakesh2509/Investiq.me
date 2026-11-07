@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { Loader2, TrendingDown, TrendingUp } from "lucide-react";
 import type { ListedIpo } from "@/lib/listed-ipos.functions";
 import { fmtDate, inr } from "./format";
@@ -75,12 +76,16 @@ export function ListedIposPanel({
                   className="border-b border-border/60 last:border-0 hover:bg-accent/40"
                 >
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
+                    <Link
+                      to="/desktop/charts"
+                      search={{ symbol: r.symbol }}
+                      className="flex items-center gap-2 hover:opacity-80 transition cursor-pointer"
+                    >
                       <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
                         {r.symbol}
                       </span>
-                      <span className="truncate text-xs text-muted-foreground">{r.company}</span>
-                    </div>
+                      <span className="truncate text-xs text-foreground font-medium hover:underline">{r.company}</span>
+                    </Link>
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-xs">{inr(r.issuePrice)}</td>
                   <td className="px-4 py-3 text-right font-mono text-xs">{inr(r.price)}</td>
