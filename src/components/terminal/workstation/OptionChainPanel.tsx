@@ -73,9 +73,8 @@ export function OptionChainPanel({
           <p className="mt-0.5 font-bold text-foreground text-sm flex items-center gap-1">
             {data.pcr?.toFixed(2) ?? "1.00"}
             <span
-              className={`text-[10px] font-semibold ${
-                (data.pcr ?? 1) >= 1 ? "text-emerald-400" : "text-rose-400"
-              }`}
+              className={`text-[10px] font-semibold ${(data.pcr ?? 1) >= 1 ? "text-emerald-400" : "text-rose-400"
+                }`}
             >
               {(data.pcr ?? 1) >= 1.2 ? "(Bullish Buildup)" : (data.pcr ?? 1) <= 0.8 ? "(Bearish Buildup)" : "(Neutral)"}
             </span>
@@ -128,9 +127,8 @@ export function OptionChainPanel({
             {(data.strikes ?? []).map((row) => (
               <tr
                 key={row.strike}
-                className={`hover:bg-accent/30 transition ${
-                  row.isAtm ? "bg-primary/10 border-y border-primary/40 font-bold" : ""
-                }`}
+                className={`hover:bg-accent/30 transition ${row.isAtm ? "bg-primary/10 border-y border-primary/40 font-bold" : ""
+                  }`}
               >
                 {/* CE Data */}
                 <td className="py-2 px-2 text-left text-muted-foreground">
@@ -158,13 +156,12 @@ export function OptionChainPanel({
                 </td>
                 <td className="py-2 px-2">
                   <span
-                    className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
-                      row.callType === "ITM"
-                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                        : row.callType === "ATM"
-                          ? "bg-primary text-primary-foreground shadow-glow"
-                          : "bg-surface text-muted-foreground border border-border"
-                    }`}
+                    className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${row.callType === "ITM"
+                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                      : row.callType === "ATM"
+                        ? "bg-primary text-primary-foreground shadow-glow"
+                        : "bg-surface text-muted-foreground border border-border"
+                      }`}
                   >
                     {row.callType}
                   </span>
@@ -178,13 +175,12 @@ export function OptionChainPanel({
                 {/* PE Data */}
                 <td className="py-2 px-2">
                   <span
-                    className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
-                      row.putType === "ITM"
-                        ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
-                        : row.putType === "ATM"
-                          ? "bg-primary text-primary-foreground shadow-glow"
-                          : "bg-surface text-muted-foreground border border-border"
-                    }`}
+                    className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${row.putType === "ITM"
+                      ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                      : row.putType === "ATM"
+                        ? "bg-primary text-primary-foreground shadow-glow"
+                        : "bg-surface text-muted-foreground border border-border"
+                      }`}
                   >
                     {row.putType}
                   </span>

@@ -7,7 +7,7 @@ import {
   getDhanCredentials,
 } from "./dhan.server.ts";
 import { getLiveTick, isIndianMarketOpenNow, formatIstTimestamp } from "./live-feed.server.ts";
-import { resolveDhanInstrument, INDEX_SPECS } from "./dhan-instrument-master.server.ts";
+import { resolveDhanInstrument, getDhanTokenStatus, INDEX_SPECS } from "./dhan-instrument-master.server.ts";
 import type { FreshnessStatus } from "./provider-utils.ts";
 
 export interface OptionStrikeRow {
@@ -122,6 +122,15 @@ export interface TerminalWorkstationData {
   freshnessStatus: FreshnessStatus;
   asOf: number;
   dataQualityNotes?: string[];
+  tokenStatus?: DhanTokenHealth;
+}
+
+export interface DhanTokenHealth {
+  configured: boolean;
+  validUntil: string | null;
+  lastRefreshed: string | null;
+  isExpired: boolean;
+  hoursRemaining: number;
 }
 
 export const WORKSTATION_INSTRUMENTS: Record<
@@ -482,6 +491,80 @@ export async function getTerminalSnapshot(
   selectedExpiry?: string,
 ): Promise<TerminalWorkstationData> {
   const cfg = WORKSTATION_INSTRUMENTS[instrument] ?? WORKSTATION_INSTRUMENTS["NIFTY 50"];
+  const tokenHealth = getDhanTokenStatus();
+
+  if (cfg.isGlobal) {
+    const istNow = `${formatIstTimestamp()} IST`;
+    return {
+      ok: false,
+      instrument,
+      name: cfg.name,
+      tag: cfg.tag,
+      tvSymbol: cfg.tvSymbol,
+      spotPrice: 0,
+      change: 0,
+      changePct: 0,
+      open: 0,
+      high: 0,
+      low: 0,
+      volume: 0,
+      lotSize: cfg.lotSize,
+      step: cfg.step,
+      currency: cfg.currency,
+      isMarketOpen: false,
+      marketSessionText: "DHAN_UNAVAILABLE",
+      timestampIst: istNow,
+      direction: "NO TRADE",
+      actionText: "NOT AVAILABLE",
+      grade: "DHAN_UNAVAILABLE",
+      confidenceScore: 0,
+      rationale: "Not available: Dhan covers Indian markets only.",
+      contractName: "—",
+      expiryDate: "—",
+      spotEntry: 0,
+      recommendedPremium: 0,
+      tp1: 0,
+      tp2: 0,
+      tp3: 0,
+      stopLoss: 0,
+      trailingSl: 0,
+      peakWatermark: 0,
+      trailingStatus: "DHAN_UNAVAILABLE",
+      confluences: {
+        structure: false,
+        momentum: false,
+        volume: false,
+        trend: false,
+        vix: false,
+        timing: false,
+        macro: false,
+        passedCount: 0,
+        totalCount: 7,
+      },
+      influencingNews: [],
+      disclaimer: "Not available: Dhan covers Indian markets only.",
+      expiries: [],
+      selectedExpiry: "",
+      strikes: [],
+      pcr: 0,
+      maxPain: 0,
+      callBuildup: "Not available: Dhan covers Indian markets only.",
+      putBuildup: "Not available: Dhan covers Indian markets only.",
+      recentSignals: [],
+      winRatePct: null,
+      winRateText: "No closed signals yet",
+      profitFactor: null,
+      profitFactorText: "No closed signals yet",
+      totalSignalsTracked: 0,
+      isSimulated: false,
+      dataSource: "Not available: Dhan covers Indian markets only.",
+      freshnessStatus: "STALE",
+      asOf: Date.now(),
+      dataQualityNotes: ["Not available: Dhan covers Indian markets only."],
+      tokenStatus: tokenHealth,
+    };
+  }
+
   const cleanSym = cfg.tag;
   const lookup = resolveDhanInstrument(cleanSym);
   const lotSize = lookup.lotSize > 0 ? lookup.lotSize : cfg.lotSize;
@@ -806,6 +889,7 @@ export async function getTerminalSnapshot(
       `Data streamed directly from authorized DhanHQ v2 Marketfeed (${cleanSym}).`,
       "100% Dhan live quotes with verified Greeks and open interest.",
     ],
+    tokenStatus: tokenHealth,
   };
 }
 
@@ -860,6 +944,17 @@ export const getTerminalBars = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }): Promise<TerminalBarsResult> => {
     const cfg = WORKSTATION_INSTRUMENTS[data.instrument] ?? WORKSTATION_INSTRUMENTS["NIFTY 50"];
+    if (cfg.isGlobal) {
+      return {
+        ok: false,
+        bars: [],
+        isSimulated: false,
+        dataSource: "Not available: Dhan covers Indian markets only.",
+        freshnessStatus: "STALE",
+        asOf: Date.now(),
+        dataQualityNotes: ["Not available: Dhan covers Indian markets only."],
+      };
+    }
     const cleanSym = cfg.tag;
 
     let range = "1d";

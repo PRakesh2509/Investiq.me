@@ -76,17 +76,16 @@ export function normalizeInstrument(raw: string | null | undefined): SupportedIn
   if (!s) return null;
 
   // Exact canonical codes first
-  if (s === "NIFTY" || s === "NIFTY50" || s === "NSEINDEXNIFTY50" || s === "NSEI") return "NIFTY";
+  if (s === "NIFTY" || s === "NIFTY50" || s === "NSEINDEXNIFTY50") return "NIFTY";
   if (
     s === "BANKNIFTY" ||
     s === "NIFTYBANK" ||
     s === "NSEINDEXNIFTYBANK" ||
-    s === "NSEBANK" ||
     s === "BANK"
   ) {
     return "BANKNIFTY";
   }
-  if (s === "SENSEX" || s === "BSESENSEX" || s === "BSEINDEXSENSEX" || s === "BSESN") return "SENSEX";
+  if (s === "SENSEX" || s === "BSESENSEX" || s === "BSEINDEXSENSEX") return "SENSEX";
   if (
     s === "FINNIFTY" ||
     s === "NIFTYFINSERVICE" ||

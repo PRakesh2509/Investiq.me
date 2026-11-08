@@ -24,16 +24,16 @@ describe("Signals API - Instrument Normalization and Market Routing", () => {
     assert.strictEqual(normalizeInstrument("NIFTY 50"), "NIFTY");
     assert.strictEqual(normalizeInstrument("nifty"), "NIFTY");
     assert.strictEqual(normalizeInstrument("NIFTY50"), "NIFTY");
-    assert.strictEqual(normalizeInstrument("^NSEI"), "NIFTY");
+    assert.strictEqual(normalizeInstrument("NIFTY 50"), "NIFTY");
 
     assert.strictEqual(normalizeInstrument("BANK NIFTY"), "BANKNIFTY");
     assert.strictEqual(normalizeInstrument("banknifty"), "BANKNIFTY");
     assert.strictEqual(normalizeInstrument("NIFTY BANK"), "BANKNIFTY");
-    assert.strictEqual(normalizeInstrument("^NSEBANK"), "BANKNIFTY");
+    assert.strictEqual(normalizeInstrument("BANK NIFTY"), "BANKNIFTY");
 
     assert.strictEqual(normalizeInstrument("SENSEX"), "SENSEX");
     assert.strictEqual(normalizeInstrument("BSE SENSEX"), "SENSEX");
-    assert.strictEqual(normalizeInstrument("^BSESN"), "SENSEX");
+    assert.strictEqual(normalizeInstrument("SENSEX"), "SENSEX");
 
     assert.strictEqual(normalizeInstrument("FIN NIFTY"), "FINNIFTY");
     assert.strictEqual(normalizeInstrument("FINNIFTY"), "FINNIFTY");

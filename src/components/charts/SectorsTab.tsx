@@ -181,4 +181,3 @@ export function SectorsTab({ holdings }: { holdings: Holdings | null }) {
     </div>
   );
 }
-}

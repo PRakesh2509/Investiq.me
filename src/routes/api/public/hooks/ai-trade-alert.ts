@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { hookFailure, hookResponse, readJsonBody, requireCronAuth } from "@/lib/cron-auth.server";
-import { getBotToken, resolveChatIds } from "@/lib/telegram.server";
+import { getBotToken, resolveChatIds, sendMessage } from "@/lib/telegram.server";
 
 /**
  * Auto Grade A+ F&O sniper trade alerts.
@@ -52,6 +52,25 @@ export const Route = createFileRoute("/api/public/hooks/ai-trade-alert")({
           const token = getBotToken();
           if (!token) return hookFailure("TELEGRAM_BOT_TOKEN not configured", 503);
           const chatIds = resolveChatIds(body?.chatIds);
+
+          const { getDhanTokenStatus } = await import("@/lib/dhan-instrument-master.server.ts");
+          const tokenStatus = getDhanTokenStatus();
+          if (tokenStatus.isExpired && tokenStatus.configured) {
+            for (const cid of chatIds) {
+              await sendMessage(
+                token,
+                cid,
+                `🚨 <b>InvestIQ System Alert: Dhan Access Token Expired</b>\n\n` +
+                  `Token expired at <code>${tokenStatus.validUntil ?? "recently"}</code>.\n` +
+                  `Daily token renewal is required. Please update DHAN_ACCESS_TOKEN in Admin Settings to resume real-time derivatives market feeds.`,
+              );
+            }
+            return Response.json({
+              ok: false,
+              error: "DHAN_TOKEN_EXPIRED",
+              validUntil: tokenStatus.validUntil,
+            });
+          }
 
           const { getLiveDerivativesChain, generatePremiumTrades, sendFnoAlerts } =
             await import("@/lib/ai-trades.server.ts");

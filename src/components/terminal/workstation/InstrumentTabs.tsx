@@ -35,16 +35,16 @@ export function InstrumentTabs({
         {GLOBAL_TABS.map((t) => (
           <button
             key={t}
-            onClick={() => setInstrument(t)}
-            className={`rounded-lg px-3 py-1 font-medium transition ${
-              instrument === t
-                ? "bg-gradient-primary text-primary-foreground font-bold shadow-glow"
-                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-            }`}
+            disabled
+            title="Not available: Dhan covers Indian markets only."
+            className="cursor-not-allowed rounded-lg border border-border/40 bg-surface/20 px-3 py-1 font-medium text-muted-foreground/40 opacity-60 line-through transition"
           >
             {t}
           </button>
         ))}
+        <span className="font-mono text-[10px] italic text-amber-500/80">
+          (Not available: Dhan covers Indian markets only.)
+        </span>
       </div>
     </div>
   );

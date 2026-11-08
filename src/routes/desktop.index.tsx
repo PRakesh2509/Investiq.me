@@ -315,10 +315,10 @@ function DesktopDashboard() {
         {(indices.length > 0
           ? indices
           : [
-              { symbol: "NIFTY 50", name: "^NSEI", price: 0, changePct: 0, volume: 0 },
-              { symbol: "SENSEX", name: "^BSESN", price: 0, changePct: 0, volume: 0 },
-              { symbol: "BANK NIFTY", name: "^NSEBANK", price: 0, changePct: 0, volume: 0 },
-              { symbol: "NIFTY IT", name: "^CNXIT", price: 0, changePct: 0, volume: 0 },
+              { symbol: "NIFTY 50", name: "13", price: 0, changePct: 0, volume: 0 },
+              { symbol: "SENSEX", name: "51", price: 0, changePct: 0, volume: 0 },
+              { symbol: "BANK NIFTY", name: "25", price: 0, changePct: 0, volume: 0 },
+              { symbol: "NIFTY IT", name: "29", price: 0, changePct: 0, volume: 0 },
             ]
         ).map((i) => {
           const pos = i.changePct >= 0;

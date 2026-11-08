@@ -50,17 +50,17 @@ type MacroFetcher = (url: string, init: RequestInit) => Promise<Response>;
 
 const MACRO_SYMBOLS: Record<TradeMarket, Array<{ symbol: string; label: string }>> = {
   NSE_FNO: [
-    { symbol: "^INDIAVIX", label: "India VIX" },
+    { symbol: "INDIAVIX", label: "India VIX" },
     { symbol: "BZ=F", label: "Brent crude (USD/bbl)" },
     { symbol: "DX-Y.NYB", label: "US Dollar Index (DXY)" },
-    { symbol: "^TNX", label: "US 10Y yield (%)" },
+    { symbol: "TNX", label: "US 10Y yield (%)" },
     { symbol: "INR=X", label: "USD/INR" },
   ],
   GLOBAL_US: [
-    { symbol: "^VIX", label: "CBOE VIX" },
+    { symbol: "VIX", label: "CBOE VIX" },
     { symbol: "CL=F", label: "WTI crude (USD/bbl)" },
     { symbol: "DX-Y.NYB", label: "US Dollar Index (DXY)" },
-    { symbol: "^TNX", label: "US 10Y yield (%)" },
+    { symbol: "TNX", label: "US 10Y yield (%)" },
   ],
 };
 

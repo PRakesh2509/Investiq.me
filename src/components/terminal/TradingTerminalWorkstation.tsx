@@ -101,6 +101,46 @@ export default function TradingTerminalWorkstation() {
 
       <InstrumentTabs instrument={instrument} setInstrument={setInstrument} />
 
+      {data?.tokenStatus?.isExpired && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-500/60 bg-rose-950/40 p-3 text-xs text-rose-300 shadow-md"
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-bold uppercase tracking-wider text-rose-400">
+              🚨 DHAN ACCESS TOKEN EXPIRED:
+            </span>
+            <span>
+              Daily token refresh is required (expired: {data.tokenStatus.validUntil ?? "recently"}).
+              Update your token in Admin Settings to resume real-time feeds.
+            </span>
+          </div>
+          <span className="rounded bg-rose-500/20 px-2 py-0.5 font-mono text-[10px] font-bold text-rose-300">
+            ACTION REQUIRED
+          </span>
+        </div>
+      )}
+
+      {data?.grade === "DHAN_UNAVAILABLE" && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/50 bg-amber-950/30 p-3 text-xs text-amber-300 shadow-md"
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-bold uppercase tracking-wider text-amber-400">
+              ⚠️ DHAN FEED STATUS:
+            </span>
+            <span>
+              {data.rationale} · Last successful Dhan timestamp:{" "}
+              <strong>{data.timestampIst}</strong>
+            </span>
+          </div>
+          <span className="rounded bg-amber-500/20 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-300">
+            DHAN_UNAVAILABLE
+          </span>
+        </div>
+      )}
+
       {error && (
         <div
           role="alert"

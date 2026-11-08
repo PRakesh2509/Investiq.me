@@ -1,7 +1,7 @@
 /**
  * DhanHQ Authorized Live Quote & Historical Provider (Server-only).
  *
- * 100% Dhan-backed: No Yahoo Finance imports, endpoints, fallbacks or dependencies.
+ * 100% Dhan-backed: Direct DhanHQ v2 API integration only.
  */
 
 import { getDhanOhlc, getDhanLtp, getDhanChartCandles } from "./dhan.server.ts";

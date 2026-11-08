@@ -50,7 +50,7 @@ describe("TtlCache", () => {
 
 describe("input validators", () => {
   test("symbols", () => {
-    for (const ok of ["RELIANCE.NS", "^NSEI", "NIFTY 50", "M&M", "ES=F", "BAJAJ-AUTO"]) {
+    for (const ok of ["RELIANCE.NS", "NIFTY", "NIFTY 50", "M&M", "ES=F", "BAJAJ-AUTO"]) {
       assert.ok(isValidSymbol(ok), ok);
     }
     for (const bad of ["", "a/b", "x?y=1", "../etc", "<script>", "A".repeat(33), 5]) {

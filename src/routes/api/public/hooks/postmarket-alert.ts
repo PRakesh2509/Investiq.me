@@ -54,9 +54,9 @@ async function buildMessage(section: Section, quotes: Quote[]): Promise<string> 
 
   if (section === "summary" || section === "all") {
     const [nifty, sensex, bank] = await Promise.all([
-      fetchIndex("^NSEI"),
-      fetchIndex("^BSESN"),
-      fetchIndex("^NSEBANK"),
+      fetchIndex("NIFTY"),
+      fetchIndex("SENSEX"),
+      fetchIndex("BANKNIFTY"),
     ]);
     const adv = quotes.filter((q) => q.changePct > 0).length;
     const dec = quotes.filter((q) => q.changePct < 0).length;

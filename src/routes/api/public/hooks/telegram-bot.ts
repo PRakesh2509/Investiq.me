@@ -112,14 +112,14 @@ const COMMON_ALIASES: Record<string, string> = {
   IRFC: "IRFC",
   ZOMATO: "ZOMATO",
   PAYTM: "PAYTM",
-  NIFTY: "^NSEI",
-  "NIFTY 50": "^NSEI",
-  NIFTY50: "^NSEI",
-  BANKNIFTY: "^NSEBANK",
-  "BANK NIFTY": "^NSEBANK",
-  "NIFTY BANK": "^NSEBANK",
-  SENSEX: "^BSESN",
-  FINNIFTY: "NIFTY_FIN_SERVICE.NS",
+  NIFTY: "NIFTY",
+  "NIFTY 50": "NIFTY",
+  NIFTY50: "NIFTY",
+  BANKNIFTY: "BANKNIFTY",
+  "BANK NIFTY": "BANKNIFTY",
+  "NIFTY BANK": "BANKNIFTY",
+  SENSEX: "SENSEX",
+  FINNIFTY: "FINNIFTY",
 };
 
 export function resolveSymbol(input: string): string {
@@ -329,7 +329,6 @@ async function handleFno(token: string, chatId: number, symbolArg?: string) {
   await sendMessage(token, chatId, `🔍 <i>Analyzing Sensibull Greeks View & option chain for ${sym}...</i>`);
 
   try {
-    const quoteSym = sym === "BANKNIFTY" ? "^NSEBANK" : "^NSEI";
     const quote = await fetchDhanQuote(sym);
     const step = sym === "BANKNIFTY" ? 100 : 50;
     const defaultSpot = sym === "BANKNIFTY" ? 54700 : 22980;

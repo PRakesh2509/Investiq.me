@@ -302,7 +302,7 @@ test("sendToMany isolates per-recipient failures", async () => {
 
 test("toCleanSymbol normalizes tickers", () => {
   assert.equal(toCleanSymbol("TCS"), "TCS");
-  assert.equal(toCleanSymbol("^NSEI"), "NSEI");
+  assert.equal(toCleanSymbol("^NIFTY"), "NIFTY");
   assert.equal(toCleanSymbol("RELIANCE.NS"), "RELIANCE");
   assert.equal(toCleanSymbol("INFY.BO"), "INFY");
 });

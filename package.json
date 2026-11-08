@@ -13,8 +13,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "check:no-yahoo": "node scripts/assert-no-yahoo.mjs",
     "test": "node --experimental-strip-types --test \"src/lib/__tests__/*.test.ts\"",
-    "check": "npm run lint && npm run typecheck && npm run test",
+    "check": "npm run check:no-yahoo && npm run lint && npm run typecheck && npm run test",
     "cf:dev": "npm run build && npx wrangler dev",
     "cf:deploy": "npm run build && npx wrangler deploy"
   },
