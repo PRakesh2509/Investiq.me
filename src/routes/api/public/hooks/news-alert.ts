@@ -207,6 +207,14 @@ function pickSlice(): Entry[] {
   return out;
 }
 
+function isMarketHours(): boolean {
+  const d = new Date(Date.now() + 5.5 * 3600 * 1000);
+  const day = d.getUTCDay();
+  if (day === 0 || day === 6) return false;
+  const mins = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;
+}
+
 export const Route = createFileRoute("/api/public/hooks/news-alert")({
   server: {
     handlers: {
@@ -214,10 +222,20 @@ export const Route = createFileRoute("/api/public/hooks/news-alert")({
         const denied = await requireCronAuth(request);
         if (denied) return denied;
         try {
+          const body = await readJsonBody<{ chatIds?: string[]; force?: boolean }>(request);
+          const force = !!body?.force;
+          if (!force && !isMarketHours()) {
+            return hookResponse({
+              sent: 0,
+              skipped: 1,
+              errors: [],
+              reason: "outside market hours (09:15-15:30 IST Mon-Fri)",
+            });
+          }
+
           const token = getBotToken();
           if (!token) return hookFailure("TELEGRAM_BOT_TOKEN not configured", 503);
-          const body = await readJsonBody<{ chatIds: string[] }>(request);
-          const chatIds = resolveChatIds(body.chatIds);
+          const chatIds = resolveChatIds(body?.chatIds);
           const { alreadySent, claimOnce, releaseClaim } = await import("@/lib/hook-dedupe.server");
 
           const slice = pickSlice();

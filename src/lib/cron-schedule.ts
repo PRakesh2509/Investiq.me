@@ -23,30 +23,55 @@ const HOOK_BASE = "/api/public/hooks";
 
 export const CRON_JOBS: readonly CronJob[] = [
   {
-    cron: "15 3 * * 1-5",
-    description: "Pre-market brief - 08:45 IST, Mon-Fri",
+    cron: "30 3 * * 1-5",
+    description: "Pre-market top-gainers alert - 09:00 IST, Mon-Fri",
     hooks: [`${HOOK_BASE}/premarket-alert`],
   },
   {
-    cron: "15 6 * * 1-5",
-    description: "Midday digests (RSI picks, mutual funds, IPOs) - 11:45 IST, Mon-Fri",
-    hooks: [`${HOOK_BASE}/rsi-alert`, `${HOOK_BASE}/funds-alert`, `${HOOK_BASE}/ipo-alert`],
+    cron: "0 4 * * 1",
+    description: "Mutual Fund digest - weekly, Monday 09:30 IST only",
+    hooks: [`${HOOK_BASE}/funds-alert`],
   },
   {
-    cron: "15 10 * * 1-5",
-    description: "Post-market summary - 15:45 IST, Mon-Fri",
+    cron: "0 4 * * 1-5",
+    description: "IPO alerts (morning check) - 09:30 IST, Mon-Fri",
+    hooks: [`${HOOK_BASE}/ipo-alert`],
+  },
+  {
+    cron: "15 6 * * 1-5",
+    description: "Daily RSI alerts - 11:45 IST, Mon-Fri",
+    hooks: [`${HOOK_BASE}/rsi-alert`],
+  },
+  {
+    cron: "0 8 * * 1-5",
+    description: "IPO alerts (afternoon check) - 13:30 IST, Mon-Fri",
+    hooks: [`${HOOK_BASE}/ipo-alert`],
+  },
+  {
+    cron: "45 10 * * 1-5",
+    description: "Post-market summary - 16:15 IST, Mon-Fri",
+    hooks: [`${HOOK_BASE}/postmarket-alert`],
+  },
+  {
+    cron: "0 11 * * 1-5",
+    description: "Post-market sectors - 16:30 IST, Mon-Fri",
+    hooks: [`${HOOK_BASE}/postmarket-alert`],
+  },
+  {
+    cron: "15 11 * * 1-5",
+    description: "Post-market trending - 16:45 IST, Mon-Fri",
     hooks: [`${HOOK_BASE}/postmarket-alert`],
   },
   {
     // 03:00-10:50 UTC = 08:30-16:20 IST (covers NSE 09:15-15:30; hook skips outside hours)
     cron: "*/10 3-10 * * 1-5",
-    description: "Market news headline - every 10 min, 08:30-16:20 IST, Mon-Fri",
+    description: "Stock & ETF news - every 10 min during market hours, Mon-Fri",
     hooks: [`${HOOK_BASE}/news-alert`],
   },
   {
     // The hook itself returns {skipped:true} outside 09:15-15:30 IST.
     cron: "*/15 3-10 * * 1-5",
-    description: "AI F&O trade alerts - every 15 min during NSE hours, Mon-Fri",
+    description: "F&O sniper trade alerts - every 15 min during market hours, Mon-Fri",
     hooks: [`${HOOK_BASE}/ai-trade-alert`],
   },
 ];

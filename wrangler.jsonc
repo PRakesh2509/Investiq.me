@@ -17,16 +17,26 @@
   },
   // Cron Triggers run in UTC. Keep in sync with src/lib/cron-schedule.ts (unit-tested).
   // IST = UTC+5:30:
-  //   15 3  * * 1-5     08:45 IST  pre-market brief
-  //   15 6  * * 1-5     11:45 IST  RSI picks + mutual funds + IPO digests
-  //   15 10 * * 1-5     15:45 IST  post-market summary
-  //   */10 3-10 * * 1-5 news headline, 08:30-16:20 IST
-  //   */15 3-10 * * 1-5 AI F&O trade alerts (hook skips outside 09:15-15:30 IST)
+  //   30 3  * * 1-5     09:00 IST  pre-market top gainers (Mon-Fri)
+  //   0 4   * * 1       09:30 IST  mutual fund weekly digest (Monday only)
+  //   0 4   * * 1-5     09:30 IST  IPO alerts morning check (Mon-Fri)
+  //   15 6  * * 1-5     11:45 IST  daily RSI alerts (Mon-Fri)
+  //   0 8   * * 1-5     13:30 IST  IPO alerts afternoon check (Mon-Fri)
+  //   45 10 * * 1-5     16:15 IST  post-market summary (Mon-Fri)
+  //   0 11  * * 1-5     16:30 IST  post-market sectors (Mon-Fri)
+  //   15 11 * * 1-5     16:45 IST  post-market trending (Mon-Fri)
+  //   */10 3-10 * * 1-5 08:30-16:20 IST stock & ETF news (market hours 09:15-15:30)
+  //   */15 3-10 * * 1-5 09:15-15:30 IST F&O sniper trade alerts (DhanHQ live feed)
   "triggers": {
     "crons": [
-      "15 3 * * 1-5",
+      "30 3 * * 1-5",
+      "0 4 * * 1",
+      "0 4 * * 1-5",
       "15 6 * * 1-5",
-      "15 10 * * 1-5",
+      "0 8 * * 1-5",
+      "45 10 * * 1-5",
+      "0 11 * * 1-5",
+      "15 11 * * 1-5",
       "*/10 3-10 * * 1-5",
       "*/15 3-10 * * 1-5"
     ]

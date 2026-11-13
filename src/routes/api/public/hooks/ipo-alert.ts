@@ -53,6 +53,11 @@ export const Route = createFileRoute("/api/public/hooks/ipo-alert")({
             chatIds: string[];
           }>(request);
           const force = !!body.force;
+          const istNow = new Date(Date.now() + 5.5 * 3600 * 1000);
+          const day = istNow.getUTCDay();
+          if (!force && (day === 0 || day === 6)) {
+            return hookResponse({ sent: 0, skipped: 1, errors: [], reason: "weekend (Mon-Fri only)" });
+          }
           const chatIds = resolveChatIds(body.chatIds);
           const { alreadySent, claimOnce, releaseClaim } = await import("@/lib/hook-dedupe.server");
 

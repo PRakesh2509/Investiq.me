@@ -113,6 +113,18 @@ async function buildMessage(section: Section, quotes: Quote[]): Promise<string> 
   return lines.join("\n");
 }
 
+const sentPostmarketKeys = new Set<string>();
+
+function resolveSectionForIstTime(): Section {
+  const d = new Date(Date.now() + 5.5 * 3600 * 1000);
+  const mins = d.getUTCHours() * 60 + d.getUTCMinutes();
+  // 16:15 IST = 975 mins, 16:30 IST = 990 mins, 16:45 IST = 1005 mins
+  if (mins >= 1000) return "trending";
+  if (mins >= 985) return "sectors";
+  if (mins >= 970) return "summary";
+  return "all";
+}
+
 export const Route = createFileRoute("/api/public/hooks/postmarket-alert")({
   server: {
     handlers: {
@@ -123,12 +135,40 @@ export const Route = createFileRoute("/api/public/hooks/postmarket-alert")({
           const token = getBotToken();
           if (!token) return hookFailure("TELEGRAM_BOT_TOKEN not configured", 503);
 
-          const body = await readJsonBody<{ section: Section; chatIds: string[] }>(request);
-          const section: Section = body.section ?? "all";
+          const istNow = new Date(Date.now() + 5.5 * 3600 * 1000);
+          const day = istNow.getUTCDay(); // 0 = Sun, 1 = Mon ...
+          const dateStr = istNow.toISOString().slice(0, 10);
+
+          const url = new URL(request.url);
+          const body = await readJsonBody<{ section?: Section; chatIds?: string[]; force?: boolean }>(request);
+          const force = !!body?.force;
+
+          if (!force && (day === 0 || day === 6)) {
+            return hookResponse({
+              sent: 0,
+              skipped: 1,
+              errors: [],
+              reason: "Post-market alert runs on Mon-Fri only",
+            });
+          }
+
+          const querySection = url.searchParams.get("section") as Section | null;
+          const section: Section = body?.section ?? querySection ?? resolveSectionForIstTime();
           if (!SECTIONS.includes(section)) {
             return hookFailure(`section must be one of ${SECTIONS.join(", ")}`, 400);
           }
-          const chatIds = resolveChatIds(body.chatIds);
+
+          const dedupKey = `${section}_${dateStr}`;
+          if (!force && sentPostmarketKeys.has(dedupKey)) {
+            return hookResponse({
+              sent: 0,
+              skipped: 1,
+              errors: [],
+              reason: `Post-market ${section} already sent today (${dateStr})`,
+            });
+          }
+
+          const chatIds = resolveChatIds(body?.chatIds);
 
           const raw = await fetchDhanQuotes(NIFTY_UNIVERSE.map((s) => s.symbol));
           const out: Quote[] = [];
@@ -149,6 +189,9 @@ export const Route = createFileRoute("/api/public/hooks/postmarket-alert")({
 
           const message = await buildMessage(section, out);
           const res = await sendToMany(token, chatIds, message, { delayMs: 150 });
+          if (res.delivered > 0 && !force) {
+            sentPostmarketKeys.add(dedupKey);
+          }
           return hookResponse({
             sent: res.delivered,
             skipped: NIFTY_UNIVERSE.length - out.length,

@@ -41,7 +41,6 @@ test("runCronHooks POSTs each hook with the secret header and survives failures"
         method: request.method,
         secret: request.headers.get(CRON_SECRET_HEADER),
       });
-      if (request.url.endsWith("funds-alert")) throw new Error("boom");
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     },
   });
@@ -53,7 +52,21 @@ test("runCronHooks POSTs each hook with the secret header and survives failures"
   assert.ok(seen.every((s) => s.method === "POST" && s.secret === "s3cret"));
   assert.deepEqual(
     results.map((r) => r.ok),
-    [true, false, true],
+    [true],
+  );
+
+  // Failure handling verification
+  const failedResults = await runCronHooks("0 4 * * 1", {
+    secret: "s3cret",
+    urlFor: (path) => `https://example.test${path}`,
+    log: { error() {}, warn() {}, info() {} },
+    dispatch: async () => {
+      throw new Error("hook network error");
+    },
+  });
+  assert.deepEqual(
+    failedResults.map((r) => r.ok),
+    [false],
   );
 });
 

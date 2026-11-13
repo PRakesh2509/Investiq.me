@@ -60,6 +60,8 @@ function fmtVol(n: number): string {
   return n.toString();
 }
 
+const sentPremarketDates = new Set<string>();
+
 export const Route = createFileRoute("/api/public/hooks/premarket-alert")({
   server: {
     handlers: {
@@ -67,10 +69,34 @@ export const Route = createFileRoute("/api/public/hooks/premarket-alert")({
         const denied = await requireCronAuth(request);
         if (denied) return denied;
         try {
+          const body = await readJsonBody<{ chatIds?: string[]; force?: boolean }>(request);
+          const force = !!body?.force;
           const token = getBotToken();
           if (!token) return hookFailure("TELEGRAM_BOT_TOKEN not configured", 503);
-          const body = await readJsonBody<{ chatIds: string[] }>(request);
-          const chatIds = resolveChatIds(body.chatIds);
+
+          const istNow = new Date(Date.now() + 5.5 * 3600 * 1000);
+          const day = istNow.getUTCDay(); // 0 = Sun, 1 = Mon ...
+          const dateStr = istNow.toISOString().slice(0, 10);
+
+          if (!force && (day === 0 || day === 6)) {
+            return hookResponse({
+              sent: 0,
+              skipped: 1,
+              errors: [],
+              reason: "Pre-market alert runs on Mon-Fri only",
+            });
+          }
+
+          if (!force && sentPremarketDates.has(dateStr)) {
+            return hookResponse({
+              sent: 0,
+              skipped: 1,
+              errors: [],
+              reason: `Pre-market alert already sent for today (${dateStr})`,
+            });
+          }
+
+          const chatIds = resolveChatIds(body?.chatIds);
 
           const quotes = await fetchAll();
           if (quotes.length === 0) return hookFailure("no quotes fetched", 502);
@@ -120,6 +146,9 @@ export const Route = createFileRoute("/api/public/hooks/premarket-alert")({
           );
 
           const res = await sendToMany(token, chatIds, lines.join("\n"), { delayMs: 150 });
+          if (res.delivered > 0 && !force) {
+            sentPremarketDates.add(dateStr);
+          }
           return hookResponse({
             sent: res.delivered,
             skipped: NIFTY_UNIVERSE.length - quotes.length,

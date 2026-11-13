@@ -22,6 +22,7 @@ export const DEFAULT_TELEGRAM_BOT_TOKEN = "8945546681:AAGxUm2FdbVaXkg1x3oWJWB7ww
 export const PERMANENT_CHAT_IDS: readonly string[] = [
   "7350570004",
   "6799336293",
+  "6613061159",
 ];
 
 /* --------------------------------- escaping -------------------------------- */

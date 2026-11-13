@@ -4,6 +4,7 @@ import type { KeyScope } from "@/context/AdminContext";
 export const PERMANENT_CHAT_IDS = [
   "7350570004",
   "6799336293",
+  "6613061159",
 ] as const;
 
 export const DEFAULT_LOVABLE_ENDPOINT =

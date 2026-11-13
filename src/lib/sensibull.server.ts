@@ -67,9 +67,9 @@ export interface SensibullGreeksChartData {
    * "Sensibull Direct API" means Sensibull data, and only with partner credentials.
    */
   provider:
-    | "Sensibull Direct API"
-    | "Sensibull Greeks Engine (Calibrated Live Feed)"
-    | "CBOE / CME Global Feed";
+  | "Sensibull Direct API"
+  | "Sensibull Greeks Engine (Calibrated Live Feed)"
+  | "CBOE / CME Global Feed";
   dataSourceStatus: "LIVE_CONNECTED" | "CALIBRATED_ENGINE";
   timestamp: string;
   points: SensibullGreekPoint[];

@@ -63,3 +63,4 @@ if (violations > 0) {
   console.log("✅ PASSED: Strict Dhan-only policy verified. Zero forbidden references found across repository.");
   process.exit(0);
 }
+

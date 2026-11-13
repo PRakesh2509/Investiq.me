@@ -44,6 +44,8 @@ async function readSheet(url: string, sheetName: string) {
   return parseCsv(await res.text());
 }
 
+const sentRsiDates = new Set<string>();
+
 export const Route = createFileRoute("/api/public/hooks/rsi-alert")({
   server: {
     handlers: {
@@ -51,10 +53,34 @@ export const Route = createFileRoute("/api/public/hooks/rsi-alert")({
         const denied = await requireCronAuth(request);
         if (denied) return denied;
         try {
-          const body = await readJsonBody<{ chatIds: string[] }>(request);
+          const body = await readJsonBody<{ chatIds?: string[]; force?: boolean }>(request);
+          const force = !!body?.force;
           const token = getBotToken();
           if (!token) return hookFailure("TELEGRAM_BOT_TOKEN not configured", 503);
-          const chatIds = resolveChatIds(body.chatIds);
+
+          const istNow = new Date(Date.now() + 5.5 * 3600 * 1000);
+          const day = istNow.getUTCDay(); // 0 = Sun, 1 = Mon ...
+          const dateStr = istNow.toISOString().slice(0, 10);
+
+          if (!force && (day === 0 || day === 6)) {
+            return hookResponse({
+              sent: 0,
+              skipped: 1,
+              errors: [],
+              reason: "RSI alert runs on Mon-Fri only",
+            });
+          }
+
+          if (!force && sentRsiDates.has(dateStr)) {
+            return hookResponse({
+              sent: 0,
+              skipped: 1,
+              errors: [],
+              reason: `RSI alert already sent for today (${dateStr})`,
+            });
+          }
+
+          const chatIds = resolveChatIds(body?.chatIds);
 
           const sheetUrl = process.env.RSI_SHEET_URL || DEFAULT_SHEET_URL;
           const sheetName = process.env.RSI_SHEET_NAME || DEFAULT_SHEET_NAME;
@@ -110,6 +136,9 @@ export const Route = createFileRoute("/api/public/hooks/rsi-alert")({
             `\n\n<i>Not investment advice. RSI &lt; 30 = oversold zone.</i>`;
 
           const res = await sendToMany(token, chatIds, message, { delayMs: 150 });
+          if (res.delivered > 0 && !force) {
+            sentRsiDates.add(dateStr);
+          }
           return hookResponse({
             sent: res.delivered,
             skipped: 0,
