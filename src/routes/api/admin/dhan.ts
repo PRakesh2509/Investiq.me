@@ -3,6 +3,7 @@ import { adminJson, requireAdmin, requireAdminMutation } from "@/lib/admin-sessi
 import {
   getDhanCredentials,
   setDhanRuntimeCredentials,
+  clearDhanAuthFailure,
   testDhanConnection,
   sanitizeDhanToken,
   writeDhanEnvFile,
@@ -94,6 +95,7 @@ export const Route = createFileRoute("/api/admin/dhan")({
 
         // Authentication succeeded: save credentials
         setDhanRuntimeCredentials(creds);
+        clearDhanAuthFailure();
         if (typeof process !== "undefined" && process.env) {
           process.env.DHAN_CLIENT_ID = creds.clientId;
           process.env.DHAN_ACCESS_TOKEN = creds.accessToken;

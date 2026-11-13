@@ -14,6 +14,97 @@ export const Route = createFileRoute("/desktop/admin")({
   component: AdminPanel,
 });
 
+function AdminLoginForm() {
+  const { loginDetailed } = useAdmin();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim() || !password.trim()) {
+      setError("Please enter both username and password");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await loginDetailed(username.trim(), password.trim());
+      if (res.ok) {
+        toast.success("Signed in to Admin Panel");
+      } else {
+        setError(res.error || "Invalid username or password");
+        toast.error(res.error || "Authentication failed");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to sign in");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="grid min-h-[60vh] place-items-center">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-surface/80 p-8 shadow-xl backdrop-blur">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Lock className="h-6 w-6" />
+        </div>
+        <h1 className="mt-4 text-center font-display text-2xl font-semibold">Admin Panel Sign In</h1>
+        <p className="mt-1 text-center text-xs text-muted-foreground">
+          Enter admin credentials to manage DhanHQ integration, API keys, and alert dispatches.
+        </p>
+
+        {error && (
+          <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Username"
+              autoComplete="username"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              autoComplete="current-password"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg bg-primary py-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50"
+          >
+            {loading ? "Signing in..." : "Sign In to Admin Panel"}
+          </button>
+        </form>
+
+        <div className="mt-6 border-t border-border pt-4 text-center">
+          <Link to="/desktop" className="text-xs text-muted-foreground hover:text-foreground">
+            ← Back to Terminal
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminPanel() {
   const { isAdmin, sessionReady, logout } = useAdmin();
   const [tab, setTab] = useState<AdminTab>("apikeys");
@@ -24,23 +115,7 @@ function AdminPanel() {
   }
 
   if (!isAdmin) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <div className="max-w-md rounded-2xl border border-border bg-surface/60 p-8 text-center">
-          <Lock className="mx-auto h-8 w-8 text-muted-foreground" />
-          <h1 className="mt-4 font-display text-xl font-semibold">Admin only</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Triple-click the footer at the bottom of the page to sign in.
-          </p>
-          <Link
-            to="/desktop"
-            className="mt-6 inline-block rounded-lg border border-border bg-background/50 px-4 py-2 text-sm hover:bg-accent"
-          >
-            Back to dashboard
-          </Link>
-        </div>
-      </div>
-    );
+    return <AdminLoginForm />;
   }
 
   return (

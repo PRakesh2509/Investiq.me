@@ -369,7 +369,7 @@ function DesktopCharts() {
             </p>
             <h2 className="mt-1 font-display text-2xl font-semibold">{fLive?.name || meta.name}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              {symbol}.NS · ISIN {meta.isin}
+              {symbol} · NSE · ISIN {meta.isin}
             </p>
           </div>
           <div className="text-right">
@@ -468,12 +468,20 @@ function DesktopCharts() {
                 className="mt-4 flex h-[400px] flex-col items-center justify-center gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-6 text-center text-sm text-destructive"
               >
                 <span>{error}</span>
-                <button
-                  onClick={() => void reload()}
-                  className="inline-flex items-center gap-2 rounded-lg border border-destructive/40 px-3 py-1.5 text-xs font-semibold hover:bg-destructive/20"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" /> Retry
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => void reload()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-destructive/40 px-3 py-1.5 text-xs font-semibold hover:bg-destructive/20"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Retry
+                  </button>
+                  <button
+                    onClick={() => setDhanModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                  >
+                    <Zap className="h-3.5 w-3.5" /> Connect Dhan / Update Token
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="mt-4 h-[400px] w-full">

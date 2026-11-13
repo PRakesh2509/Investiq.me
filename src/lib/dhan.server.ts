@@ -152,21 +152,76 @@ function authHeaders(creds: DhanCredentials): Record<string, string> {
   };
 }
 
+let dhanAuthFailureReason: string | null = null;
+let lastTelegramTokenWarningMs = 0;
+
+export function markDhanAuthFailure(reason: string) {
+  dhanAuthFailureReason = reason;
+  void sendTelegramTokenExpiredWarning(reason);
+}
+
+export function clearDhanAuthFailure() {
+  dhanAuthFailureReason = null;
+}
+
+export function getDhanAuthFailure(): string | null {
+  return dhanAuthFailureReason;
+}
+
+export async function sendTelegramTokenExpiredWarning(reason?: string) {
+  const now = Date.now();
+  if (now - lastTelegramTokenWarningMs < 60 * 60 * 1000) return; // throttle 1 hr
+  lastTelegramTokenWarningMs = now;
+  try {
+    const { getBotToken, resolveChatIds, sendMessage } = await import("./telegram.server.ts");
+    const botToken = getBotToken();
+    if (!botToken) return;
+    const chatIds = resolveChatIds();
+    for (const cid of chatIds) {
+      await sendMessage(
+        botToken,
+        cid,
+        `🚨 <b>InvestIQ System Alert: DhanHQ Access Token Expired</b>\n\n` +
+          `DhanHQ rejected market feed authentication: <i>${reason || "Client ID or user generated access token is invalid or expired."}</i>\n\n` +
+          `Daily token renewal is required (every 24 hours). Please log into Dhan Web, generate a fresh token, and update it in InvestIQ Admin Settings / Dhan Connect to resume live market feeds.`,
+      );
+    }
+  } catch {
+    // ignore
+  }
+}
+
 /** Read-only POST (market-feed / charts / option chain): safe to retry. */
-function dhanPost(path: string, creds: DhanCredentials, body: unknown, timeoutMs = 6000) {
-  return fetchJsonWithRetry(
+async function dhanPost(path: string, creds: DhanCredentials, body: unknown, timeoutMs = 6000) {
+  const res = await fetchJsonWithRetry(
     `${DHAN_BASE}${path}`,
     { method: "POST", headers: authHeaders(creds), body: JSON.stringify(body) },
     { timeoutMs, retries: 2, idempotent: true },
   );
+  if (res.status === 401 || (res.json as Record<string, unknown>)?.errorCode === "DH-901") {
+    markDhanAuthFailure(
+      String((res.json as Record<string, unknown>)?.errorMessage || "Dhan access token expired or invalid"),
+    );
+  } else if (res.ok) {
+    clearDhanAuthFailure();
+  }
+  return res;
 }
 
-function dhanGet(path: string, creds: DhanCredentials, timeoutMs = 6000) {
-  return fetchJsonWithRetry(
+async function dhanGet(path: string, creds: DhanCredentials, timeoutMs = 6000) {
+  const res = await fetchJsonWithRetry(
     `${DHAN_BASE}${path}`,
     { method: "GET", headers: authHeaders(creds) },
     { timeoutMs, retries: 2 },
   );
+  if (res.status === 401 || (res.json as Record<string, unknown>)?.errorCode === "DH-901") {
+    markDhanAuthFailure(
+      String((res.json as Record<string, unknown>)?.errorMessage || "Dhan access token expired or invalid"),
+    );
+  } else if (res.ok) {
+    clearDhanAuthFailure();
+  }
+  return res;
 }
 
 const quoteCache = new TtlCache<DhanQuoteRow[]>(100);
@@ -415,7 +470,7 @@ export async function getDhanChartCandles(
 
   const daysBack =
     range === "1d"
-      ? 2
+      ? 5
       : range === "5d" || range === "1w"
         ? 7
         : range === "1mo"
@@ -468,8 +523,20 @@ export async function getDhanChartCandles(
     if (!res.ok) return candleCache.getStale(cacheKey, 24 * 3600_000)?.value ?? null;
     const points = parseDhanCandles(res.json);
     if (points.length === 0) return null;
-    candleCache.set(cacheKey, points);
-    return points;
+
+    let finalPoints = points;
+    if (range === "1d" && points.length > 75) {
+      // Find the date of the latest candle in IST exchange time
+      const lastCandleMs = points[points.length - 1].t;
+      const lastDateStr = isoDate(lastCandleMs + 330 * 60_000);
+      const sessionPoints = points.filter((p) => isoDate(p.t + 330 * 60_000) === lastDateStr);
+      if (sessionPoints.length > 0) {
+        finalPoints = sessionPoints;
+      }
+    }
+
+    candleCache.set(cacheKey, finalPoints);
+    return finalPoints;
   } catch {
     return candleCache.getStale(cacheKey, 24 * 3600_000)?.value ?? null;
   }

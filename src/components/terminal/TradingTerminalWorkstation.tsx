@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useAdmin } from "@/context/AdminContext";
 import { adminPost } from "../adminFetch";
 import { WORKSTATION_INSTRUMENTS } from "@/lib/terminal-workstation.functions";
+import { DhanConnectModal } from "@/components/DhanConnectModal";
 import GeopoliticalMacroIntelligence from "./GeopoliticalMacroIntelligence";
 import BacktestValidationModal from "./BacktestValidationModal";
 import { REFRESH_INTERVAL_MS, type TF } from "./workstation/constants";
@@ -29,6 +30,7 @@ export default function TradingTerminalWorkstation() {
   const [sendingAlert, setSendingAlert] = useState<boolean>(false);
   const [setupActive, setSetupActive] = useState<boolean>(true);
   const [isBacktestModalOpen, setIsBacktestModalOpen] = useState<boolean>(false);
+  const [dhanModalOpen, setDhanModalOpen] = useState<boolean>(false);
 
   // Technical indicator overlays
   const [toggles, setToggles] = useState<ChartToggles>({
@@ -104,27 +106,30 @@ export default function TradingTerminalWorkstation() {
       {data?.tokenStatus?.isExpired && (
         <div
           role="alert"
-          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-500/60 bg-rose-950/40 p-3 text-xs text-rose-300 shadow-md"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/60 bg-rose-950/40 p-3.5 text-xs text-rose-300 shadow-md backdrop-blur"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <span className="font-bold uppercase tracking-wider text-rose-400">
               🚨 DHAN ACCESS TOKEN EXPIRED:
             </span>
             <span>
-              Daily token refresh is required (expired: {data.tokenStatus.validUntil ?? "recently"}).
-              Update your token in Admin Settings to resume real-time feeds.
+              Daily token renewal required ({data.tokenStatus.validUntil ? `expired: ${data.tokenStatus.validUntil}` : "daily 24h cycle"}).
+              Update your token to stream tick-by-tick real-time F&O feeds.
             </span>
           </div>
-          <span className="rounded bg-rose-500/20 px-2 py-0.5 font-mono text-[10px] font-bold text-rose-300">
-            ACTION REQUIRED
-          </span>
+          <button
+            onClick={() => setDhanModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500 px-3 py-1.5 font-mono text-xs font-bold text-white shadow hover:bg-rose-600 transition"
+          >
+            Update Token / Connect Dhan
+          </button>
         </div>
       )}
 
       {data?.grade === "DHAN_UNAVAILABLE" && (
         <div
           role="alert"
-          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/50 bg-amber-950/30 p-3 text-xs text-amber-300 shadow-md"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/50 bg-amber-950/30 p-3.5 text-xs text-amber-300 shadow-md backdrop-blur"
         >
           <div className="flex items-center gap-2">
             <span className="font-bold uppercase tracking-wider text-amber-400">
@@ -135,9 +140,12 @@ export default function TradingTerminalWorkstation() {
               <strong>{data.timestampIst}</strong>
             </span>
           </div>
-          <span className="rounded bg-amber-500/20 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-300">
-            DHAN_UNAVAILABLE
-          </span>
+          <button
+            onClick={() => setDhanModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/50 bg-amber-500/20 px-3 py-1 font-mono text-xs font-bold text-amber-200 hover:bg-amber-500/30 transition"
+          >
+            Connect Dhan
+          </button>
         </div>
       )}
 
@@ -242,6 +250,13 @@ export default function TradingTerminalWorkstation() {
         report={intelligence?.backtestReport ?? null}
         isOpen={isBacktestModalOpen}
         onClose={() => setIsBacktestModalOpen(false)}
+      />
+
+      {/* DhanHQ Direct Connection & Token Renewal Modal */}
+      <DhanConnectModal
+        isOpen={dhanModalOpen}
+        onClose={() => setDhanModalOpen(false)}
+        onStatusChange={() => void refresh(true)}
       />
 
       <StatusStrip

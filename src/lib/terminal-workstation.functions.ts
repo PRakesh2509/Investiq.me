@@ -756,7 +756,12 @@ export async function getTerminalSnapshot(
   let confidenceScore = 92;
   let rationale = "";
 
-  if (passed >= 5 && isEmaBullish && isSupertrendBullish) {
+  if (tokenHealth.isExpired) {
+    direction = "NO TRADE";
+    grade = "DHAN_UNAVAILABLE";
+    confidenceScore = 0;
+    rationale = `DhanHQ access token expired (${tokenHealth.validUntil ?? "daily renewal required"}). Update token in Admin Settings or click Update Token to resume live calculations.`;
+  } else if (passed >= 5 && isEmaBullish && isSupertrendBullish) {
     direction = "BUY CALL";
     grade = passed >= 6 ? "A+ CONFLUENCE" : "A CONFLUENCE";
     confidenceScore = passed >= 6 ? 94 : 88;
@@ -1035,31 +1040,19 @@ export const getTerminalBars = createServerFn({ method: "GET" })
       // Fallback
     }
 
-    // Baseline session bars if market is closed
-    const nowSec = Math.floor(Date.now() / 1000);
-    const basePrice = cfg.defaultSpot;
-    const dummyBars: WorkstationBar[] = Array.from({ length: 75 }, (_, i) => {
-      const t = nowSec - (75 - i) * 60;
-      const variation = Math.sin(i / 5) * (basePrice * 0.003);
-      const close = +(basePrice + variation).toFixed(2);
-      return {
-        time: t,
-        open: +(close - 2).toFixed(2),
-        high: +(close + 5).toFixed(2),
-        low: +(close - 5).toFixed(2),
-        close,
-        volume: 15000 + (i % 10) * 1000,
-      };
-    });
-
     const istNow = `${formatIstTimestamp()} IST`;
+    const tokenStatus = getDhanTokenStatus();
     return {
-      ok: true,
-      bars: dummyBars,
+      ok: false,
+      bars: [],
       isSimulated: false,
       dataSource: `Dhan · updated ${istNow}`,
-      freshnessStatus: "MARKET_CLOSED",
+      freshnessStatus: tokenStatus.isExpired ? "STALE" : isIndianMarketOpenNow() ? "LIVE" : "MARKET_CLOSED",
       asOf: Date.now(),
-      dataQualityNotes: ["Market session closed: displaying cached session candles."],
+      dataQualityNotes: [
+        tokenStatus.isExpired
+          ? "DhanHQ Access Token expired. Update token in Admin Settings or click Update Token to resume live chart feeds."
+          : "Market session closed or live chart candles temporarily unavailable from DhanHQ.",
+      ],
     };
   });

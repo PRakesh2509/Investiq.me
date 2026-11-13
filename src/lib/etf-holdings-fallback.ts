@@ -20,24 +20,24 @@ const nifty50: EtfProfile = {
     { name: "Metals & Mining", pct: 3.2 },
   ],
   holdings: [
-    { symbol: "HDFCBANK.NS", name: "HDFC Bank", pct: 12.3, sector: "Financial Services" },
+    { symbol: "HDFCBANK", name: "HDFC Bank", pct: 12.3, sector: "Financial Services" },
     {
-      symbol: "RELIANCE.NS",
+      symbol: "RELIANCE",
       name: "Reliance Industries",
       pct: 9.7,
       sector: "Oil Gas & Consumable Fuels",
     },
-    { symbol: "ICICIBANK.NS", name: "ICICI Bank", pct: 8.1, sector: "Financial Services" },
-    { symbol: "INFY.NS", name: "Infosys", pct: 5.1, sector: "Information Technology" },
-    { symbol: "BHARTIARTL.NS", name: "Bharti Airtel", pct: 4.8, sector: "Telecom" },
+    { symbol: "ICICIBANK", name: "ICICI Bank", pct: 8.1, sector: "Financial Services" },
+    { symbol: "INFY", name: "Infosys", pct: 5.1, sector: "Information Technology" },
+    { symbol: "BHARTIARTL", name: "Bharti Airtel", pct: 4.8, sector: "Telecom" },
     {
-      symbol: "TCS.NS",
+      symbol: "TCS",
       name: "Tata Consultancy Services",
       pct: 3.9,
       sector: "Information Technology",
     },
-    { symbol: "ITC.NS", name: "ITC", pct: 3.7, sector: "Consumer Goods" },
-    { symbol: "LT.NS", name: "Larsen & Toubro", pct: 3.6, sector: "Construction" },
+    { symbol: "ITC", name: "ITC", pct: 3.7, sector: "Consumer Goods" },
+    { symbol: "LT", name: "Larsen & Toubro", pct: 3.6, sector: "Construction" },
   ],
 };
 
@@ -49,12 +49,12 @@ const bank: EtfProfile = {
     { name: "Financial Services", pct: 10.3 },
   ],
   holdings: [
-    { symbol: "HDFCBANK.NS", name: "HDFC Bank", pct: 27.4, sector: "Private Banks" },
-    { symbol: "ICICIBANK.NS", name: "ICICI Bank", pct: 23.1, sector: "Private Banks" },
-    { symbol: "SBIN.NS", name: "State Bank of India", pct: 10.8, sector: "Public Sector Banks" },
-    { symbol: "KOTAKBANK.NS", name: "Kotak Mahindra Bank", pct: 9.7, sector: "Private Banks" },
-    { symbol: "AXISBANK.NS", name: "Axis Bank", pct: 9.4, sector: "Private Banks" },
-    { symbol: "BANKBARODA.NS", name: "Bank of Baroda", pct: 3.9, sector: "Public Sector Banks" },
+    { symbol: "HDFCBANK", name: "HDFC Bank", pct: 27.4, sector: "Private Banks" },
+    { symbol: "ICICIBANK", name: "ICICI Bank", pct: 23.1, sector: "Private Banks" },
+    { symbol: "SBIN", name: "State Bank of India", pct: 10.8, sector: "Public Sector Banks" },
+    { symbol: "KOTAKBANK", name: "Kotak Mahindra Bank", pct: 9.7, sector: "Private Banks" },
+    { symbol: "AXISBANK", name: "Axis Bank", pct: 9.4, sector: "Private Banks" },
+    { symbol: "BANKBARODA", name: "Bank of Baroda", pct: 3.9, sector: "Public Sector Banks" },
   ],
 };
 
@@ -65,12 +65,12 @@ const psuBank: EtfProfile = {
     { name: "Financial Services", pct: 8.5 },
   ],
   holdings: [
-    { symbol: "SBIN.NS", name: "State Bank of India", pct: 32.8, sector: "Public Sector Banks" },
-    { symbol: "BANKBARODA.NS", name: "Bank of Baroda", pct: 14.4, sector: "Public Sector Banks" },
-    { symbol: "PNB.NS", name: "Punjab National Bank", pct: 12.7, sector: "Public Sector Banks" },
-    { symbol: "CANBK.NS", name: "Canara Bank", pct: 10.3, sector: "Public Sector Banks" },
+    { symbol: "SBIN", name: "State Bank of India", pct: 32.8, sector: "Public Sector Banks" },
+    { symbol: "BANKBARODA", name: "Bank of Baroda", pct: 14.4, sector: "Public Sector Banks" },
+    { symbol: "PNB", name: "Punjab National Bank", pct: 12.7, sector: "Public Sector Banks" },
+    { symbol: "CANBK", name: "Canara Bank", pct: 10.3, sector: "Public Sector Banks" },
     {
-      symbol: "UNIONBANK.NS",
+      symbol: "UNIONBANK",
       name: "Union Bank of India",
       pct: 8.9,
       sector: "Public Sector Banks",
@@ -83,16 +83,16 @@ const it: EtfProfile = {
   sectorWeightings: [{ name: "Information Technology", pct: 100 }],
   holdings: [
     {
-      symbol: "TCS.NS",
+      symbol: "TCS",
       name: "Tata Consultancy Services",
       pct: 27.6,
       sector: "Information Technology",
     },
-    { symbol: "INFY.NS", name: "Infosys", pct: 25.8, sector: "Information Technology" },
-    { symbol: "HCLTECH.NS", name: "HCL Technologies", pct: 9.4, sector: "Information Technology" },
-    { symbol: "TECHM.NS", name: "Tech Mahindra", pct: 7.1, sector: "Information Technology" },
-    { symbol: "WIPRO.NS", name: "Wipro", pct: 6.9, sector: "Information Technology" },
-    { symbol: "LTIM.NS", name: "LTIMindtree", pct: 6.2, sector: "Information Technology" },
+    { symbol: "INFY", name: "Infosys", pct: 25.8, sector: "Information Technology" },
+    { symbol: "HCLTECH", name: "HCL Technologies", pct: 9.4, sector: "Information Technology" },
+    { symbol: "TECHM", name: "Tech Mahindra", pct: 7.1, sector: "Information Technology" },
+    { symbol: "WIPRO", name: "Wipro", pct: 6.9, sector: "Information Technology" },
+    { symbol: "LTIM", name: "LTIMindtree", pct: 6.2, sector: "Information Technology" },
   ],
 };
 
@@ -104,12 +104,12 @@ const metal: EtfProfile = {
     { name: "Industrial Materials", pct: 4.5 },
   ],
   holdings: [
-    { symbol: "TATASTEEL.NS", name: "Tata Steel", pct: 18.9, sector: "Metals & Mining" },
-    { symbol: "HINDALCO.NS", name: "Hindalco Industries", pct: 16.6, sector: "Metals & Mining" },
-    { symbol: "JSWSTEEL.NS", name: "JSW Steel", pct: 15.8, sector: "Steel" },
-    { symbol: "VEDL.NS", name: "Vedanta", pct: 12.4, sector: "Metals & Mining" },
-    { symbol: "COALINDIA.NS", name: "Coal India", pct: 11.6, sector: "Metals & Mining" },
-    { symbol: "NMDC.NS", name: "NMDC", pct: 5.7, sector: "Industrial Materials" },
+    { symbol: "TATASTEEL", name: "Tata Steel", pct: 18.9, sector: "Metals & Mining" },
+    { symbol: "HINDALCO", name: "Hindalco Industries", pct: 16.6, sector: "Metals & Mining" },
+    { symbol: "JSWSTEEL", name: "JSW Steel", pct: 15.8, sector: "Steel" },
+    { symbol: "VEDL", name: "Vedanta", pct: 12.4, sector: "Metals & Mining" },
+    { symbol: "COALINDIA", name: "Coal India", pct: 11.6, sector: "Metals & Mining" },
+    { symbol: "NMDC", name: "NMDC", pct: 5.7, sector: "Industrial Materials" },
   ],
 };
 
@@ -181,16 +181,16 @@ const midcap: EtfProfile = {
     { name: "Chemicals", pct: 6.5 },
   ],
   holdings: [
-    { symbol: "INDHOTEL.NS", name: "Indian Hotels", pct: 3.1, sector: "Consumer Services" },
+    { symbol: "INDHOTEL", name: "Indian Hotels", pct: 3.1, sector: "Consumer Services" },
     {
-      symbol: "PERSISTENT.NS",
+      symbol: "PERSISTENT",
       name: "Persistent Systems",
       pct: 2.9,
       sector: "Information Technology",
     },
-    { symbol: "CUMMINSIND.NS", name: "Cummins India", pct: 2.6, sector: "Capital Goods" },
-    { symbol: "BHARATFORG.NS", name: "Bharat Forge", pct: 2.4, sector: "Automobile" },
-    { symbol: "LUPIN.NS", name: "Lupin", pct: 2.3, sector: "Healthcare" },
+    { symbol: "CUMMINSIND", name: "Cummins India", pct: 2.6, sector: "Capital Goods" },
+    { symbol: "BHARATFORG", name: "Bharat Forge", pct: 2.4, sector: "Automobile" },
+    { symbol: "LUPIN", name: "Lupin", pct: 2.3, sector: "Healthcare" },
   ],
 };
 
@@ -205,11 +205,11 @@ const next50: EtfProfile = {
     { name: "Power", pct: 6.9 },
   ],
   holdings: [
-    { symbol: "ADANIENT.NS", name: "Adani Enterprises", pct: 4.4, sector: "Conglomerate" },
-    { symbol: "DMART.NS", name: "Avenue Supermarts", pct: 3.7, sector: "Consumer Services" },
-    { symbol: "ZOMATO.NS", name: "Zomato", pct: 3.5, sector: "Consumer Services" },
-    { symbol: "PFC.NS", name: "Power Finance Corporation", pct: 3.3, sector: "Financial Services" },
-    { symbol: "IRCTC.NS", name: "IRCTC", pct: 3.1, sector: "Consumer Services" },
+    { symbol: "ADANIENT", name: "Adani Enterprises", pct: 4.4, sector: "Conglomerate" },
+    { symbol: "DMART", name: "Avenue Supermarts", pct: 3.7, sector: "Consumer Services" },
+    { symbol: "ZOMATO", name: "Zomato", pct: 3.5, sector: "Consumer Services" },
+    { symbol: "PFC", name: "Power Finance Corporation", pct: 3.3, sector: "Financial Services" },
+    { symbol: "IRCTC", name: "IRCTC", pct: 3.1, sector: "Consumer Services" },
   ],
 };
 
@@ -223,11 +223,11 @@ const cpse: EtfProfile = {
     { name: "Financial Services", pct: 7.2 },
   ],
   holdings: [
-    { symbol: "NTPC.NS", name: "NTPC", pct: 19.5, sector: "Power" },
-    { symbol: "ONGC.NS", name: "ONGC", pct: 18.9, sector: "Oil Gas & Consumable Fuels" },
-    { symbol: "POWERGRID.NS", name: "Power Grid Corporation", pct: 9.8, sector: "Power" },
-    { symbol: "COALINDIA.NS", name: "Coal India", pct: 8.9, sector: "Metals & Mining" },
-    { symbol: "BEL.NS", name: "Bharat Electronics", pct: 8.1, sector: "Capital Goods" },
+    { symbol: "NTPC", name: "NTPC", pct: 19.5, sector: "Power" },
+    { symbol: "ONGC", name: "ONGC", pct: 18.9, sector: "Oil Gas & Consumable Fuels" },
+    { symbol: "POWERGRID", name: "Power Grid Corporation", pct: 9.8, sector: "Power" },
+    { symbol: "COALINDIA", name: "Coal India", pct: 8.9, sector: "Metals & Mining" },
+    { symbol: "BEL", name: "Bharat Electronics", pct: 8.1, sector: "Capital Goods" },
   ],
 };
 

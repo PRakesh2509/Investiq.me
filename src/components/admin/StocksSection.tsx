@@ -35,7 +35,7 @@ export function StocksSection() {
             const meta = STOCKS[s]!;
             return (
               <tr key={s}>
-                <td className="font-mono">{s}.NS</td>
+                <td className="font-mono">{s} (NSE)</td>
                 <td>{meta.name}</td>
                 <td>NSE</td>
                 <td className="text-muted-foreground">{meta.sector}</td>

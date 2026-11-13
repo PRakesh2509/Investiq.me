@@ -7,7 +7,7 @@
  */
 
 import { readEnv } from "./api-auth.server.ts";
-import { getDhanCredentials, DHAN_INDEX_MAP } from "./dhan.server.ts";
+import { getDhanCredentials, getDhanAuthFailure, DHAN_INDEX_MAP } from "./dhan.server.ts";
 import dhanScripMap from "./dhan-scrip-map.json" with { type: "json" };
 
 export interface ScripRecord {
@@ -352,6 +352,25 @@ export function searchDhanInstruments(query: string, limit = 20): InstrumentLook
   return results;
 }
 
+function decodeBase64Json(base64Str: string): Record<string, unknown> | null {
+  try {
+    let base64 = base64Str.replace(/-/g, "+").replace(/_/g, "/");
+    while (base64.length % 4) base64 += "=";
+    const jsonStr =
+      typeof Buffer !== "undefined"
+        ? Buffer.from(base64, "base64").toString("utf8")
+        : decodeURIComponent(
+            atob(base64)
+              .split("")
+              .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+              .join(""),
+          );
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Checks Dhan Access Token status and calculates remaining validity.
  */
@@ -373,20 +392,21 @@ export function getDhanTokenStatus(): {
     };
   }
 
+  const authFailure = getDhanAuthFailure();
+
   // Dhan JWT tokens encode expiry (exp in seconds)
   try {
     const parts = creds.accessToken.split(".");
     if (parts.length === 3) {
-      const payloadJson = Buffer.from(parts[1], "base64").toString("utf8");
-      const payload = JSON.parse(payloadJson);
-      if (payload.exp) {
+      const payload = decodeBase64Json(parts[1]);
+      if (payload && typeof payload.exp === "number") {
         const expMs = payload.exp * 1000;
         const now = Date.now();
         const diffMs = expMs - now;
         const hoursRemaining = Math.max(0, +(diffMs / (1000 * 60 * 60)).toFixed(1));
-        const isExpired = diffMs <= 0;
+        const isExpired = diffMs <= 0 || Boolean(authFailure);
         const validUntil = new Date(expMs).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-        const iatMs = payload.iat ? payload.iat * 1000 : expMs - 24 * 60 * 60 * 1000;
+        const iatMs = typeof payload.iat === "number" ? payload.iat * 1000 : expMs - 24 * 60 * 60 * 1000;
         const lastRefreshed = new Date(iatMs).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
         return {
@@ -394,20 +414,20 @@ export function getDhanTokenStatus(): {
           validUntil: `${validUntil} IST`,
           lastRefreshed: `${lastRefreshed} IST`,
           isExpired,
-          hoursRemaining,
+          hoursRemaining: isExpired ? 0 : hoursRemaining,
         };
       }
     }
   } catch {
-    // If not a standard JWT, assume valid 24 hours from current session
+    // If not a standard JWT
   }
 
   return {
     configured: true,
-    validUntil: "Expires 24h after generation",
+    validUntil: authFailure ? "Token Rejected / Expired by DhanHQ" : "Daily Renewal Required",
     lastRefreshed: "Current session",
-    isExpired: false,
-    hoursRemaining: 12,
+    isExpired: Boolean(authFailure),
+    hoursRemaining: authFailure ? 0 : 0,
   };
 }
 

@@ -136,14 +136,14 @@ export function resolveSymbol(input: string): string {
   // Direct alias match
   if (COMMON_ALIASES[q]) {
     const target = COMMON_ALIASES[q];
-    return target.startsWith("^") || target.includes(".") ? target : `${target}.NS`;
+    return target.replace(/\.NS$/i, "");
   }
 
   // Strip common corporate suffixes
   const stripped = q.replace(/\b(LIMITED|LTD\.?|CORP\.?|INDIA)\b/g, "").trim();
   if (COMMON_ALIASES[stripped]) {
     const target = COMMON_ALIASES[stripped];
-    return target.startsWith("^") || target.includes(".") ? target : `${target}.NS`;
+    return target.replace(/\.NS$/i, "");
   }
 
   // Direct match to NIFTY_UNIVERSE
@@ -154,22 +154,22 @@ export function resolveSymbol(input: string): string {
       s.symbol === stripped ||
       s.name.toUpperCase() === stripped,
   );
-  if (direct) return `${direct.symbol}.NS`;
+  if (direct) return direct.symbol;
 
   // Dhan scrip map check (over 10,000 Indian NSE stocks)
   const scripMapObj = dhanScripMap as Record<string, number>;
-  if (scripMapObj[q]) return `${q}.NS`;
-  if (stripped && scripMapObj[stripped]) return `${stripped}.NS`;
+  if (scripMapObj[q]) return q;
+  if (stripped && scripMapObj[stripped]) return stripped;
 
   // Loose match by name contains
   const loose = q
     ? NIFTY_UNIVERSE.find((s) => s.name.toUpperCase().includes(stripped || q))
     : undefined;
-  if (loose) return `${loose.symbol}.NS`;
+  if (loose) return loose.symbol;
 
   // Clean fallback ticker
   const cleanTicker = (stripped || q).replace(/[^A-Z0-9&-]/g, "");
-  return cleanTicker ? `${cleanTicker}.NS` : `${q}.NS`;
+  return cleanTicker || q;
 }
 
 function fmt(n: number, digits = 2) {

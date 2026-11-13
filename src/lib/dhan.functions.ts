@@ -5,6 +5,7 @@ import {
   testDhanConnection,
   persistDhanCredentials,
   setDhanRuntimeCredentials,
+  clearDhanAuthFailure,
   getDhanEnrichedHoldings,
   getDhanPositions,
   getDhanFundLimits,
@@ -78,13 +79,6 @@ export const connectDhanAccount = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    if (!runtimeConnectAllowed()) {
-      return {
-        ok: false,
-        message:
-          "Connecting a DhanHQ account from the browser is disabled in production. Set the DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN secrets on the deployment instead.",
-      };
-    }
     const creds = {
       clientId: data.clientId.trim(),
       accessToken: data.accessToken.trim(),
@@ -95,6 +89,7 @@ export const connectDhanAccount = createServerFn({ method: "POST" })
       return { ok: false, message: test.message || "Failed to authenticate with DhanHQ" };
     }
 
+    clearDhanAuthFailure();
     const saved = persistDhanCredentials(creds);
     if (saved) await writeDhanEnvFile(creds);
     return {
@@ -105,12 +100,7 @@ export const connectDhanAccount = createServerFn({ method: "POST" })
   });
 
 export const disconnectDhanAccount = createServerFn({ method: "POST" }).handler(async () => {
-  if (!runtimeConnectAllowed()) {
-    return {
-      ok: false,
-      message: "Disconnecting from the browser is disabled in production.",
-    };
-  }
+  clearDhanAuthFailure();
   setDhanRuntimeCredentials(null);
   delete process.env.DHAN_CLIENT_ID;
   delete process.env.DHAN_ACCESS_TOKEN;
